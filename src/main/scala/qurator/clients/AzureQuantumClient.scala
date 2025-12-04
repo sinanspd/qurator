@@ -1,0 +1,122 @@
+package qurator.clients
+
+import cats.syntax.all._
+import eu.timepit.refined.auto._
+import org.http4s.Method._
+import org.http4s._
+import org.http4s.circe.CirceEntityEncoder._
+import org.http4s.circe._
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+import org.http4s.client._
+import org.http4s.client.dsl.Http4sClientDsl
+import org.http4s.util.CaseInsensitiveString
+import cats.effect.kernel.MonadCancelThrow
+import java.nio.charset.StandardCharsets
+import fs2.Chunk
+import java.time.format.DateTimeFormatter
+import java.time.ZonedDateTime
+import java.time.ZoneOffset
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import java.security.MessageDigest
+import org.http4s.ember.client.EmberClientBuilder
+import cats.effect.IO
+import qurator.domain.Braket.BraketDeviceDetailsResponse
+import cats.effect.{Async, Concurrent}
+import fs2.hashing.Hashing
+import cats.effect.Sync
+import org.typelevel.log4cats.Logger
+import qurator.domain.ID
+import qurator.domain.DeviceQueueInformation.DeviceQueueInformationId
+import io.circe.syntax._ 
+import qurator.domain.Azure._
+
+trait AzureQuantumClient[F[_]] {
+   //def fetchBearerToken: F[String] //This is more secure but requires tremendous setup in Azure. Implement later.
+   def fetchDeviceInformation: F[AzureDeviceStatusResponse]
+   def submitJob(jobId: String, jobRequest: AzureJobCreateRequest): F[AzureJobResponse]
+   def getQuantumTask(jobId: String): F[AzureJobResponse]
+}
+
+object AzureQuantumClient {
+  def make[F[_]: JsonDecoder: MonadCancelThrow : Logger](
+      cfg: AzureConfig,
+      client: Client[F]
+  ): AzureQuantumClient[F] =
+    new AzureQuantumClient[F] with Http4sClientDsl[F] { 
+
+        def fetchDeviceInformation: F[AzureDeviceStatusResponse] = 
+            Logger[F].info(s"Fetching Azure Quantum device information") *>
+            Uri.fromString(s"https://eastus.quantum.azure.com/subscriptions/${cfg.subId}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.Quantum/workspaces/${cfg.workspace}/providerStatus?api-version=2025-09-01-preview")
+            .liftTo[F].flatMap { uri =>
+                val req = GET(
+                    uri,
+                    Header.Raw(CaseInsensitiveString("Accept"), "application/json"),
+                    Header.Raw(CaseInsensitiveString("x-ms-quantum-api-key"), cfg.apiKey.value),
+                )
+
+                client.run(req).use { resp =>
+                    resp.status match {
+                        case Status.Ok =>
+                        resp.asJsonDecode[AzureDeviceStatusResponse]
+                    //   case st =>
+                    //     Error(
+                    //       Option(st.reason).getOrElse("unknown")
+                    //     ).raiseError[F, BackendsResponseV2]
+                    }
+                }
+            }
+
+        def submitJob(jobId: String, jobRequest: AzureJobCreateRequest): F[AzureJobResponse] = 
+            Logger[F].info(s"Submitting Azure Quantum job with ID: $jobId") *> 
+                Uri.fromString(s"https://eastus.quantum.azure.com/subscriptions/${cfg.subId}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.Quantum/workspaces/${cfg.workspace}/jobs/${jobId}?api-version=2025-09-01-preview")
+                .liftTo[F].flatMap{uri => 
+                    val req = Request[F](
+                                method = Method.PUT,
+                                uri = uri,
+                            ).withHeaders(
+                                Headers(
+                                Header.Raw(CaseInsensitiveString("Accept"), "application/json"),
+                                Header.Raw(CaseInsensitiveString("x-ms-quantum-api-key"), cfg.apiKey.value),
+                                )
+                            )
+                            .withEntity(jobRequest.asJson)
+
+                    client.run(req).use { resp => 
+                        resp.status match {
+                            case Status.Accepted | Status.Ok =>
+                                resp.asJsonDecode[AzureJobResponse]
+                            // case st => 
+                            //     Error(
+                            //         Option(st.reason).getOrElse("unknown")
+                            //     ).raiseError[F, AzureJobResponse]
+                        }
+                    }
+                }
+
+        def getQuantumTask(jobId: String): F[AzureJobResponse] = 
+            Logger[F].info(s"Fetching Azure Quantum job status for job ID: $jobId") *>
+            Uri.fromString(s"https://eastus.quantum.azure.com/subscriptions/${cfg.subId}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.Quantum/workspaces/${cfg.workspace}/jobs/${jobId}?api-version=2025-09-01-preview")
+            .liftTo[F].flatMap { uri =>
+                val req = GET(
+                    uri,
+                    Header.Raw(CaseInsensitiveString("Accept"), "application/json"),
+                    Header.Raw(CaseInsensitiveString("x-ms-quantum-api-key"), cfg.apiKey.value),
+                )
+
+                client.run(req).use { resp =>
+                    resp.status match {
+                        case Status.Ok =>
+                        resp.asJsonDecode[AzureJobResponse]
+                    //   case st =>
+                    //     Error(
+                    //       Option(st.reason).getOrElse("unknown")
+                    //     ).raiseError[F, BackendsResponseV2]
+                    }
+                }
+            }    
+    }   
+}
+
+
+        

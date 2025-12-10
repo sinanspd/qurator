@@ -18,10 +18,14 @@ import java.time.ZoneId
 import java.time.Instant
 import skunk.codec.all._
 import eu.timepit.refined.auto._
+import java.time.LocalDateTime
 
 trait DataPersistanceService[F[_]] {
     def getDeviceQueueInformationByPage(page: Int): F[List[DeviceQueueInformation]]
     def persistDeviceQueueInformation(l : List[DeviceQueueInformationCreate]): F[Unit]
+    def fetchQueueInformationAfterDate(date: LocalDateTime, device: String): F[List[DeviceQueueInformation]]
+    def getQueueMinAfterDateForDevice(date: LocalDateTime, device: String): F[Option[DeviceQueueInformation]]
+    def getQueueMaxAfterDateForDevice(date: LocalDateTime, device: String): F[Option[DeviceQueueInformation]]
 }
 
 object DataPersistanceService {
@@ -79,6 +83,30 @@ object DataPersistanceService {
               cmd.stream(page, 1024).compile.toList
             }
         }
+
+      def fetchQueueInformationAfterDate(date: LocalDateTime, device: String): F[List[DeviceQueueInformation]] = 
+        Logger[F].info(s"Fetching device queue information after $date") *> 
+        postgres.use { session => 
+          session.prepare(fetchAfterDate).flatMap { cmd =>
+            cmd.stream(date ~ device, 1024).compile.toList
+          }
+        }
+
+      def getQueueMinAfterDateForDevice(date: LocalDateTime, device: String): F[Option[DeviceQueueInformation]] = 
+        Logger[F].info(s"Fetching min device queue information after $date") *> 
+        postgres.use { session => 
+          session.prepare(fetchMinAfterDateForDevice).flatMap { cmd =>
+            cmd.option(date ~ device)
+          }
+        }
+
+      def getQueueMaxAfterDateForDevice(date: LocalDateTime, device: String): F[Option[DeviceQueueInformation]] = 
+        Logger[F].info(s"Fetching max device queue information after $date") *>
+        postgres.use { session => 
+          session.prepare(fetchMinAfterDateForDevice).flatMap { cmd =>
+            cmd.option(date ~ device)
+          }
+        }
     }
 }
 
@@ -97,5 +125,31 @@ private object DataPersistanceServiceSQL{
          FROM device_queue_info
          ORDER BY created_at DESC
          OFFSET $int4 LIMIT 1000
+        """.query(decoder)
+
+    val fetchAfterDate: Query[LocalDateTime ~ String, DeviceQueueInformation] =
+        sql"""
+         SELECT uuid, name, provider, queue_length, wait_time_avg, wait_time_p50, wait_time_p95, queue_type, created_at
+         FROM device_queue_info
+         WHERE created_at > $timestamp AND name = $varchar
+         ORDER BY created_at DESC
+        """.query(decoder)
+
+    val fetchMinAfterDateForDevice: Query[LocalDateTime ~ String, DeviceQueueInformation] =
+        sql"""
+         SELECT uuid, name, provider, queue_length, wait_time_avg, wait_time_p50, wait_time_p95, queue_type, created_at
+         FROM device_queue_info
+         WHERE created_at > $timestamp AND name = $varchar
+         ORDER BY queue_length ASC
+         LIMIT 1
+        """.query(decoder)
+
+    val fetchMaxAfterDateForDevice: Query[LocalDateTime ~ String, DeviceQueueInformation] =
+        sql"""
+         SELECT uuid, name, provider, queue_length, wait_time_avg, wait_time_p50, wait_time_p95, queue_type, created_at
+         FROM device_queue_info
+         WHERE created_at > $timestamp AND name = $varchar
+         ORDER BY queue_length DESC
+         LIMIT 1
         """.query(decoder)
 }

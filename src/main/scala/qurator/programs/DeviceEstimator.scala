@@ -16,11 +16,10 @@ final case class DeviceEstimator[F[_]: Logger: MonadCancelThrow](
     def estimateDeviceQueueLength(device: String): F[Int] = 
         for {
             _ <- Logger[F].info(s"Estimating device performance for device: $device")
-            //get min max queue times for device over last 90 days
             now = java.time.LocalDateTime.now()
-            days90ago = now.minusDays(10)
-            minQueueInfoOpt <- persistanceService.getQueueMinAfterDateForDevice(days90ago, device)
-            maxQueueInfoOpt <- persistanceService.getQueueMaxAfterDateForDevice(days90ago, device)
+            days10ago = now.minusDays(10)
+            minQueueInfoOpt <- persistanceService.getQueueMinAfterDateForDevice(days10ago, device)
+            maxQueueInfoOpt <- persistanceService.getQueueMaxAfterDateForDevice(days10ago, device)
             _ <- (minQueueInfoOpt, maxQueueInfoOpt) match {
                 case (Some(minInfo), Some(maxInfo)) => 
                     Logger[F].info(s"Device: $device, Min Queue Length: ${minInfo.queueLength}, Max Queue Length: ${maxInfo.queueLength}")

@@ -132,7 +132,8 @@ lazy val root = project
      skunkCore,
      skunkCirce,
      "io.circe" %% "circe-generic-extras" % "0.14.3",
-     "com.magine" %% "http4s-aws" % "6.2.1"
+     "com.magine" %% "http4s-aws" % "6.2.1",
+     "com.sinanspd" %% "qure" % "0.1.20-SNAPSHOT"
     )
   )
 

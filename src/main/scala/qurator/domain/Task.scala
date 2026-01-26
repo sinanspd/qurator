@@ -17,32 +17,59 @@ import eu.timepit.refined.types.net.UserPortNumber
 import eu.timepit.refined.types.numeric.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
 import io.estatico.newtype.macros.newtype
+import com.sinanspd.qure.circuit.Circuit
 
 object Task{
-    
+
+    @derive(decoder, encoder, eqv, show, uuid)
+    @newtype
     case class TaskId(value: UUID) 
-
-    sealed trait TaskType 
-    case object ClassicalTask extends TaskType
-    case object QuantumTask extends TaskType
-
-    case class TaskQasm(value: String)
 
     case class TaskQubits(value: Int)
     case class TaskShots(value: Int)
     case class TaskDepth(value: Int)
 
-    case class Task(
+    sealed trait Task
+    case class ClassicalTask(
+       uuid: TaskId,
+       program: Any, //TODO: Fix This 
+       parentTasks: List[TaskId],
+       childTasks: List[TaskId],
+       createdAt: LocalDateTime
+    ) extends Task
+
+    case class QuantumTask(
         uuid: TaskId,
-        taskType: TaskType,
-        qasm: TaskQasm,
+        circuit: Circuit,
         qubits: TaskQubits,
         shots: TaskShots,
         depth: TaskDepth,
         parentTasks: List[TaskId],
         childTasks: List[TaskId],
         createdAt: LocalDateTime
+    ) extends Task
+
+
+    sealed trait TaskRequest 
+
+    case class SynronizedQuantumTaskRequest(l: List[NewQuantumTaskRequest]) extends TaskRequest
+
+    case class NewClassicalTaskRequest(
+       program: Any, //TODO: Fix This 
+       parentTasks: List[TaskId],
+       childTasks: List[TaskId],
+       createdAt: LocalDateTime
     )
+
+    case class NewQuantumTaskRequest(
+        circuit: Circuit,
+        qubits: TaskQubits,
+        shots: TaskShots,
+        depth: TaskDepth,
+        parentTasks: List[TaskId],
+        childTasks: List[TaskId],
+        createdAt: LocalDateTime
+    ) extends TaskRequest
 
     case class TaskAssignment(
         taskId: TaskId,

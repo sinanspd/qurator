@@ -14,6 +14,7 @@ import cats.effect.kernel.Ref
 import qurator.domain.ID
 import scala.concurrent.duration._
 import qurator.domain.device.Device
+import java.time.LocalDateTime
 
 
 trait Scheduler[F[_]]{
@@ -128,16 +129,17 @@ object Scheduler{
                 }
 
                 possiblyMergedTasks <- attemptToMergeSyncTasks(tasks)
-                groupId <- ID.make[F, SyncGroupId]
-                sg = SychronizedTaskList(
+                groupId <- ID.make[F, SyncronizedQuantumTaskId]
+                sg = SyncronizedQuantumTaskList(
                     groupId,
-                    mergedTasks,
-                    str.t1BudgetMillis,
-                    str.createdAt
+                    possiblyMergedTasks,
+                    str.t1Budget,
+                    LocalDateTime.now()
                 )
-                allParents = str.l.foldLeft(List.empty)((a, b) => a.parentTasks ++ b)
-                _ <- if(allParents.isEmpty){enqueueReady(sg)}else{enqueuePending(sg)}
+                allParents = str.l.foldLeft(List.empty[TaskId])((a, b) => a ++ b.parentTasks)
+                _ <- if(allParents.isEmpty){enqueueReady(List(sg))}else{enqueuePending(List(sg))}
             }yield ()
+
 
         def startScheduling(): F[Unit] = {
             def pickNextReady: F[Option[Task]] =
@@ -287,16 +289,6 @@ object Scheduler{
             }.map(acc => SynchronizedPlan(acc.assignments))
         }
 
-
-
-        /**
-         * The general idea behind merging is this:
-         * The goal is to attempt to merge tasks that are similar in depth 
-         * and can fit on the same device while maintaining high fidelity 
-         * Not all tasks will be merged but more than one task can be merged into one
-         * This obv. turns into an exponential problem if we try all possible merge combinations 
-         *
-         * */
 
         private def attemptToMergeSyncTasks(
             tasks: List[QuantumTask]

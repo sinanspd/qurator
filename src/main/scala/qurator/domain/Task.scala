@@ -25,6 +25,10 @@ object Task{
     @newtype
     case class TaskId(value: UUID) 
 
+    @derive(decoder, encoder, eqv, show, uuid)
+    @newtype
+    case class SyncronizedQuantumTaskId(value: UUID)
+
     case class TaskQubits(value: Int)
     case class TaskShots(value: Int)
     case class TaskDepth(value: Int)
@@ -49,10 +53,17 @@ object Task{
         createdAt: LocalDateTime
     ) extends Task
 
+    case class SyncronizedQuantumTaskList(
+        uuid: SyncronizedQuantumTaskId,
+        tasks: List[QuantumTask], 
+        t1Budged: Long, 
+        createdAt: LocalDateTime
+    ) extends Task
+
 
     sealed trait TaskRequest 
 
-    case class SynronizedQuantumTaskRequest(l: List[NewQuantumTaskRequest]) extends TaskRequest
+    case class SynronizedQuantumTaskRequest(l: List[NewQuantumTaskRequest], t1Budget: Long) extends TaskRequest
 
     case class NewClassicalTaskRequest(
        program: Any, //TODO: Fix This 

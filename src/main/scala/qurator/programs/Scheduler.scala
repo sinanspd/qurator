@@ -13,6 +13,7 @@ import com.sinanspd.qure.circuit.gates.Gate
 import cats.effect.kernel.Ref
 import qurator.domain.ID
 import scala.concurrent.duration._
+import qurator.domain.device.Device
 
 
 trait Scheduler[F[_]]{
@@ -41,6 +42,7 @@ object Scheduler{
         //TODO Do we really need to account for classial communication cost? Will it not be more or less constant in this setting? 
         //TODO think about reservations?? 
         //TODO Synched tasks should be cut as well?? 
+        //TODO consider impact of cross talk when scheduling multiple tasks on the same device.
 
         def submitTask(taskReq: TaskRequest): F[Unit] = taskReq match{
             case str : SynronizedQuantumTaskRequest => submitSynronizedTaskRequest(str)
@@ -108,25 +110,24 @@ object Scheduler{
                     }
             } yield () 
 
-        private def submitSynronizedTaskRequest(str: SynronizedTaskRequest): F[Unit] = 
+        private def submitSynronizedTaskRequest(str: SynronizedQuantumTaskRequest): F[Unit] = 
             for{
                 tasks <- str.l.traverse{req => 
                     ID.make[F, TaskId].map{tid =>
-                        Task(
+                        QuantumTask(
                             tid,
-                            req.taskType,
-                            req.qasm, 
-                            red.qubits,
+                            req.circuit, 
+                            req.qubits,
                             req.shots,
                             req.depth,
                             req.parentTasks,
-                            rep.childTasks,
+                            req.childTasks,
                             req.createdAt
                         )    
                     }
                 }
 
-                possiblyMergedTasks <- attemptToMergeSyncTasks(tasks, targetEstimatedFidelity)
+                possiblyMergedTasks <- attemptToMergeSyncTasks(tasks)
                 groupId <- ID.make[F, SyncGroupId]
                 sg = SychronizedTaskList(
                     groupId,
@@ -287,75 +288,132 @@ object Scheduler{
         }
 
 
+
+        /**
+         * The general idea behind merging is this:
+         * The goal is to attempt to merge tasks that are similar in depth 
+         * and can fit on the same device while maintaining high fidelity 
+         * Not all tasks will be merged but more than one task can be merged into one
+         * This obv. turns into an exponential problem if we try all possible merge combinations 
+         *
+         * */
+
         private def attemptToMergeSyncTasks(
-            task: List[Task],
-            fidelityThreshold: Long
-        ): F[List[Task]] = 
+            tasks: List[QuantumTask]
+        ): F[List[QuantumTask]] = 
             for{
                 devices <- getAvailableDevices()
                 maxQubits = devices.map(_.qubits).maxOption.getOrElse(0)
                 depthTolerance = 0.10 
-                sorted = tasks.sortBy(_.qubits)
-                groups = {
-                    def similarDepth(a: Task, b: Task): Boolean = {
-                        val depthDiff = Math.abs(a.depth.value - b.depth.value)
-                        val avgDepth = (a.depth.value + b.depth.value).toDouble / 2.0
-                        depthDiff.toDouble / avgDepth <= depthTolerance
-                    }
+                depthBuckets = bucketByDepth(tasks, depthTolerance)
+                groups = depthBuckets.flatMap { bucket =>
+                    assignToFinalBuckets(
+                        bucket = bucket,
+                        capacity = maxQubits, 
+                        maxTasksPerBin = 3 //fix this, obv shouldn't be constant
+                    )
+                }
+                merged <- groups.traverse(g => flattenGroup(g, devices))
+            } yield merged.flatten
 
-                    sorted.foldLeft(List.empty[List[Task]]) { (acc, task) =>
-                        acc match {
-                            case Nil => List(List(task))
-                            case head :: tail =>
-                                if (head.nonEmpty && head.last.qubits.value + task.qubits.value <= maxQubits && similarDepth(head.last, task)) {
-                                    (head :+ task) :: tail
-                                } else {
-                                    List(task) :: acc
-                                }
-                        }
-                    }.map(_.reverse).reverse
+      
+
+        private def bucketByDepth(tasks: List[QuantumTask], depthRelTol: Double): List[List[QuantumTask]] = {
+            final case class Bucket(tasks: List[QuantumTask], meanDepth: Double) {
+                def size: Int = tasks.size
+            }
+
+            def withinMeanBound (mean: Double, d: Int): Boolean = {
+                val md = math.max(mean, 1.0)
+                (math.abs(d.toDouble - mean) / md) <= depthRelTol
+            }
+
+            val sorted = tasks.sortBy(_.depth.value)
+
+            val buckets: List[Bucket] =
+                sorted.foldLeft(List.empty[Bucket]) { (acc, t) =>
+                    acc match {
+                        case Nil =>
+                            Bucket(List(t), t.depth.value.toDouble) :: Nil
+
+                        case b :: rest =>
+                            val d = t.depth.value
+                            if (withinMeanBound(b.meanDepth, d)) {
+                                val newTasks = t :: b.tasks
+                                val newMean =
+                                (b.meanDepth * b.tasks.size.toDouble + d.toDouble) / newTasks.size.toDouble
+                                Bucket(newTasks, newMean) :: rest
+                            } else {
+                                Bucket(List(t), d.toDouble) :: acc
+                            }
+                    }
                 }
 
-                mergedOrOG <- groups.traverse{ g => 
-                    if(g.length >=2){
-                        val mergedQubits = g.map(_.qubits).sum
-                        val mergedDepth  = g.map(_.depth).max
+            buckets.reverse.map(b => b.tasks.reverse)
+        }
 
-                        val mergedCircuit = mergeCircuits(g.map(_.qasm.toCircuit))
-                        val mergedCandidates = devices.filter(_.qubits >= mergedQubits)
-                        
-                        val mergedTask: F[Task] = 
-                            ID.make[F, TaskId].map{tid => 
-                                Task(
-                                    uuid = tid,
-                                    taskType = g.head.taskType,
-                                    qasm = mergedCircuit.toQasm,
-                                    qubits = mergedQubits,
-                                    shots = g.map(_.shots).max,
-                                    depth = mergedDepth,
-                                    parentTasks = Nil, //obv not corret 
-                                    childTasks = g.map(_.uuid),
-                                    createdAt = g.map(_.createdAt).min
-                                )
-                            }
+        private def assignToFinalBuckets(
+            bucket: List[QuantumTask],
+            capacity: Int,
+            maxTasksPerBin: Int
+        ): List[List[QuantumTask]] = {
+            final case class Bin(tasks: List[QuantumTask], used: Int) {
+                def canFit(t: QuantumTask): Boolean =
+                    (used + t.qubits.value <= capacity) && (tasks.size < maxTasksPerBin)
+                def add(t: QuantumTask): Bin = Bin(tasks :+ t, used + t.qubits.value)
+            }
 
-                        mergedTask.flatMap{mt =>
-                            mergedCandidates.traverse{d =>
-                                estimateFidelity(d, mt)    
-                            }.map(_.maxOption.getOrElse(0L)).flatMap{
-                                case bestF if bestF >= fidelityThreshold =>
-                                    List(mt).pure[F]
-                                case _ => 
-                                    g.pure[F]
-                            }
+            val sorted = bucket.sortBy(t => -t.qubits.value)
 
-                        }
-                    }else{
+            val bins = sorted.foldLeft(List.empty[Bin]) { (binsAcc, t) =>
+                val idx = binsAcc.indexWhere(_.canFit(t))
+                if (idx >= 0) {
+                    binsAcc.updated(idx, binsAcc(idx).add(t))
+                } else {
+                    Bin(List(t), t.qubits.value) :: binsAcc
+                }
+            }
+
+            bins.reverse.map(_.tasks)
+        }
+
+        private def flattenGroup(group: List[QuantumTask], devices: List[Device]): F[List[QuantumTask]] =
+            group match {
+                case Nil          => List.empty[QuantumTask].pure[F]
+                case single :: Nil => List(single).pure[F]
+                case g =>
+                    val mergedQubits = g.map(_.qubits.value).sum
+                    val feasibleDevices = devices.filter(_.qubits >= mergedQubits)
+
+                    if (feasibleDevices.isEmpty) {
                         g.pure[F]
+                    } else {
+                        val mergedCircuit: com.sinanspd.qure.circuit.Circuit =
+                            mergeCircuits(g.map(_.circuit)) 
+
+                        ID.make[F, TaskId].flatMap { mergedId =>
+                            val mergedTask =
+                                QuantumTask(
+                                    uuid        = mergedId,
+                                    circuit     = mergedCircuit,
+                                    qubits      = TaskQubits(mergedQubits),
+                                    shots       = TaskShots(g.map(_.shots.value).max),  
+                                    depth       = TaskDepth(g.map(_.depth.value).max),   
+                                    parentTasks = g.flatMap(_.parentTasks).distinct,    
+                                    childTasks  = g.map(_.uuid),                         
+                                    createdAt   = g.map(_.createdAt).min
+                                )
+
+                            feasibleDevices
+                                .traverse(d => estimateFidelity(d, mergedTask)) 
+                                .map(_.maxOption.getOrElse(0L))
+                                .flatMap { bestFidelity =>
+                                    if (bestFidelity >= targetEstimatedFidelity) List(mergedTask).pure[F]
+                                    else g.pure[F]
+                                }
+                            }
                     }
-                }
-            } yield mergedOrOG
-            
+            }            
 
     //   def startScheduling(): F[Unit] =
     //     Stream
@@ -379,18 +437,24 @@ object Scheduler{
     //     } yield ()
 
 
-        private def getAvailableDevices(): F[List[Any]] = ???
+        private def getAvailableDevices(): F[List[Device]] = ???
 
         private def allParentResultsAvailable() : Boolean = ??? 
 
         private def estimateTranspilationTime(circuit: Circuit, targetGateSet: List[Gate]) : F[Long] = ???
 
-        private def requiresCutting(task: NewTaskRequest, devices: List[Any]) : F[Boolean] = ???
+        private def estimateFidelity(device: Device, task: QuantumTask) : F[Long] = ???
+
+        private def estimateQueueTime(device: Device, task: QuantumTask) : F[Long] = ???
+
+        private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Any]) : F[Boolean] = ???
 
         private def enqueueReady(newTasks: List[Task]): F[Unit] =
             readyTasks.update(ts => prioritizationStrategy(newTasks ++ ts))
 
         private def enqueuePending(newTasks: List[Task]): F[Unit] =
             pendingTasks.update(ts => newTasks ++ ts)
+
+        private def mergeCircuits(circuits: List[Circuit]): Circuit = ???
     }
 }

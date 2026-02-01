@@ -63,7 +63,7 @@ object Task{
 
     sealed trait TaskRequest 
 
-    case class SynronizedQuantumTaskRequest(l: List[NewQuantumTaskRequest], t1Budget: Long) extends TaskRequest
+    case class SynronizedQuantumTaskRequest(l: List[NewQuantumTaskRequest], t1Budget: Long, cut: Boolean = false) extends TaskRequest
 
     case class NewClassicalTaskRequest(
        program: Any, //TODO: Fix This 

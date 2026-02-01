@@ -22,7 +22,7 @@ trait Scheduler[F[_]]{
 }
 
 object Scheduler{
-    def make[F[_]: GenUUID: Concurrent: Logger : Temporal](
+  def make[F[_]: GenUUID: Concurrent: Logger : Temporal](
         dataPersistanceService: DataPersistanceService[F],
         prioritizationStrategy: List[Task] => List[Task],
         cuttingStrategy: Circuit => List[Circuit],
@@ -42,8 +42,10 @@ object Scheduler{
         //TODO Merge Cut Task Results 
         //TODO Do we really need to account for classial communication cost? Will it not be more or less constant in this setting? 
         //TODO think about reservations?? 
-        //TODO Synched tasks should be cut as well?? 
         //TODO consider impact of cross talk when scheduling multiple tasks on the same device.
+        //TODO for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
+        //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
+        //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks. 
 
         def submitTask(taskReq: TaskRequest): F[Unit] = taskReq match{
             case str : SynronizedQuantumTaskRequest => submitSynronizedTaskRequest(str)
@@ -113,7 +115,34 @@ object Scheduler{
 
         private def submitSynronizedTaskRequest(str: SynronizedQuantumTaskRequest): F[Unit] = 
             for{
-                tasks <- str.l.traverse{req => 
+                cutTasks <- 
+                    if (str.cut) {
+                        str.l.traverse { req =>
+                        requiresCutting(req, Nil).map { needsToBeCut =>
+                            if (needsToBeCut) {
+                                val cutCircuits       = cuttingStrategy(req.circuit)                  
+                                val optimizedCircuits = cutCircuits.flatMap(additionalOptimizationRuns) 
+
+                                optimizedCircuits.map { c =>
+                                    NewQuantumTaskRequest(
+                                        circuit     = c,
+                                        qubits      = req.qubits,
+                                        shots       = req.shots,
+                                        depth       = req.depth,
+                                        parentTasks = req.parentTasks,
+                                        childTasks  = req.childTasks,
+                                        createdAt   = req.createdAt
+                                    )
+                                }
+                            } else {
+                                List(req) 
+                            }
+                        }
+                        }.map(_.flatten)
+                    } else {
+                        str.l.pure[F]
+                    }
+                tasks <- cutTasks.traverse{req => 
                     ID.make[F, TaskId].map{tid =>
                         QuantumTask(
                             tid,
@@ -213,8 +242,6 @@ object Scheduler{
                   }    
                 }
             }yield ()
-
-        private def startFetchingResults(): F[Unit] =  ??? 
 
         private def buildGreedySynchronizedPlan(
             orderedTasks: List[Task],
@@ -380,7 +407,7 @@ object Scheduler{
                     if (feasibleDevices.isEmpty) {
                         g.pure[F]
                     } else {
-                        val mergedCircuit: com.sinanspd.qure.circuit.Circuit =
+                        val mergedCircuit: Circuit =
                             mergeCircuits(g.map(_.circuit)) 
 
                         ID.make[F, TaskId].flatMap { mergedId =>
@@ -405,7 +432,10 @@ object Scheduler{
                                 }
                             }
                     }
-            }            
+            }    
+
+
+        
 
     //   def startScheduling(): F[Unit] =
     //     Stream
@@ -429,6 +459,8 @@ object Scheduler{
     //     } yield ()
 
 
+        private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = ??? 
+
         private def getAvailableDevices(): F[List[Device]] = ???
 
         private def allParentResultsAvailable() : Boolean = ??? 
@@ -448,5 +480,7 @@ object Scheduler{
             pendingTasks.update(ts => newTasks ++ ts)
 
         private def mergeCircuits(circuits: List[Circuit]): Circuit = ???
+
+        private def startFetchingResults(): F[Unit] =  ??? 
     }
 }

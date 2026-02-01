@@ -33,7 +33,10 @@ object Task{
     case class TaskShots(value: Int)
     case class TaskDepth(value: Int)
 
-    sealed trait Task
+    sealed trait Task{
+        val uuid : TaskId;
+    }
+    
     case class ClassicalTask(
        uuid: TaskId,
        program: Any, //TODO: Fix This 
@@ -70,7 +73,7 @@ object Task{
        parentTasks: List[TaskId],
        childTasks: List[TaskId],
        createdAt: LocalDateTime
-    )
+    ) extends TaskRequest
 
     case class NewQuantumTaskRequest(
         circuit: Circuit,

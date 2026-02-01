@@ -10,9 +10,9 @@ import scala.util.Random
 
 final case class FakeDevice[F[_]: Async](name: String, deviceEstimator: DeviceEstimator[F]) {
 
-  val jobs = Ref[F].of(List.empty[(Task, Int, Int, LocalDateTime)])
+  val jobs = Ref[F].of(List.empty[(QuantumTask, Int, Int, LocalDateTime)])
 
-  def submitJob(t: Task, device: String): F[Unit] = for{
+  def submitJob(t: QuantumTask, device: String): F[Unit] = for{
     j <- jobs
     currentJobs <- j.get
     now = LocalDateTime.now()

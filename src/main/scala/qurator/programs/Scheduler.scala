@@ -14,7 +14,10 @@ import cats.effect.kernel.Ref
 import qurator.domain.ID
 import scala.concurrent.duration._
 import qurator.domain.device.Device
-import java.time.LocalDateTime
+import java.time._
+import scala.math.{abs, exp, log, min}
+import cats.effect.kernel.Clock
+import qurator.domain.DeviceQueueInformation._
 
 
 trait Scheduler[F[_]]{
@@ -47,6 +50,7 @@ object Scheduler{
         //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
         //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
+        //TODO: Estimate preperation time and add to queue time 
 
         def submitTask(taskReq: TaskRequest): F[Unit] = taskReq match{
             case str : SynronizedQuantumTaskRequest => submitSynronizedTaskRequest(str)
@@ -159,7 +163,7 @@ object Scheduler{
                 }
 
                 possiblyMergedTasks <- attemptToMergeSyncTasks(tasks)
-                groupId <- ID.make[F, SyncronizedQuantumTaskId]
+                groupId <- ID.make[F, TaskId]
                 sg = SyncronizedQuantumTaskList(
                     groupId,
                     possiblyMergedTasks,
@@ -461,21 +465,83 @@ object Scheduler{
 
         private def estimateFidelity(device: Device, task: QuantumTask) : F[Long] = ???
 
-        private def estimateQueueTime(device: Device, task: QuantumTask) : F[Long] = ???
-
         private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Any]) : F[Boolean] = ???
-
-        private def enqueueReady(newTasks: List[Task]): F[Unit] =
-            readyTasks.update(ts => prioritizationStrategy(newTasks ++ ts))
-
-        private def enqueuePending(newTasks: List[Task]): F[Unit] =
-            pendingTasks.update(ts => newTasks ++ ts)
 
         private def mergeCircuits(circuits: List[Circuit]): Circuit = ???
 
         private def startFetchingResults(): F[Unit] =  ??? 
 
         private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = ???
+
+        private def estimateQueueTime(device: Device, task: QuantumTask) : F[Long] = {
+            val windowSize = 14L
+            val windowHours = 2L
+            val recencyHalfLifeDays : Double = 3
+            val zoneId: ZoneId = ZoneId.systemDefault()
+            val gaussianKernel = false 
+            val timeKernelSigmaMinutes = 60.0
+
+            def minuteDiff(a: Int, b: Int): Int = {
+                val diff = abs(a - b)
+                min(diff, 1440 - diff)
+            }
+
+            def recencyWeight(sampleInstant: Instant, now: Instant): Double = {
+                val ageMinutes = java.time.Duration.between(sampleInstant, now).toMinutes.toDouble.max(0.0)
+                exp(-log(2.0) * ageMinutes / (recencyHalfLifeDays * 24.0 * 60.0))
+            }
+
+            def timeOfDayWeight(deltaMinutes: Int): Double =
+                if (!gaussianKernel) {
+                    if (deltaMinutes <= (windowHours * 60).toInt) 1.0 else 0.0
+                } else {
+                    val sigma2 = timeKernelSigmaMinutes * timeKernelSigmaMinutes
+                    exp(-(deltaMinutes.toDouble * deltaMinutes.toDouble) / (2.0 * sigma2))
+                }
+
+            def weightedMean(values: List[(Long, Double)]): Option[Long] = {
+                val denom = values.map(_._2).sum
+                if (denom <= 0.0) None
+                else {
+                    val num = values.map { case (v, w) => v.toDouble * w }.sum
+                    Some(math.round(num / denom))
+                }
+            }
+
+            def meanField(f: DeviceQueueInformation => Option[Int], weighted: List[(DeviceQueueInformation, Double)]): Option[Long] = {
+                val pairs = weighted.flatMap { case (x, w) => f(x).map(v => (v.toLong, w)) }
+                weightedMean(pairs)
+            } //not using for now 
+
+
+            for{
+                now <- Clock[F].realTimeInstant
+                nowZdt      = now.atZone(zoneId)
+                cutoffLdt   = nowZdt.minusDays(windowSize).toLocalDateTime
+                historicData <- dataPersistanceService.fetchQueueInformationAfterDate(cutoffLdt, device.platformId)
+                nowMinuteOfDay  = nowZdt.getHour * 60 + nowZdt.getMinute
+                maxDeltaMinutes = (windowHours * 60).toInt
+                weighted  = historicData.flatMap { x =>
+                    val xi = x.createdAt.atZone(zoneId).toInstant
+                    val minuteOfDay = x.createdAt.getHour * 60 + x.createdAt.getMinute
+                    val dt = minuteDiff(minuteOfDay, nowMinuteOfDay)
+
+                    val w = recencyWeight(xi, now) * timeOfDayWeight(dt)
+                    if (w <= 0.0) None else Some((x, w))
+                }
+
+                queueMean =
+                    weightedMean(weighted.map { case (x, w) => (x.queueLength.toLong, w) })
+                    .getOrElse(0L)
+            }yield queueMean
+        }
+
+
+        private def enqueueReady(newTasks: List[Task]): F[Unit] =
+            readyTasks.update(ts => prioritizationStrategy(newTasks ++ ts))
+
+        private def enqueuePending(newTasks: List[Task]): F[Unit] =
+            pendingTasks.update(ts => newTasks ++ ts)
 
         private def fakeClassicalTaskScheduler(ct: ClassicalTask): F[Unit] = {
             val computationTime = 500 + Random.nextInt(1500)

@@ -57,7 +57,7 @@ object Task{
     ) extends Task
 
     case class SyncronizedQuantumTaskList(
-        uuid: SyncronizedQuantumTaskId,
+        uuid: TaskId,
         tasks: List[QuantumTask], 
         t1Budged: Long, 
         createdAt: LocalDateTime

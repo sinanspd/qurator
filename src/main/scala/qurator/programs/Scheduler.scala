@@ -18,6 +18,7 @@ import java.time._
 import scala.math.{abs, exp, log, min}
 import cats.effect.kernel.Clock
 import qurator.domain.DeviceQueueInformation._
+import qurator.modules.HttpClients
 
 
 trait Scheduler[F[_]]{
@@ -27,6 +28,7 @@ trait Scheduler[F[_]]{
 object Scheduler{
   def make[F[_]: GenUUID: Concurrent: Logger : Temporal](
         dataPersistanceService: DataPersistanceService[F],
+        clients: HttpClients[F],
         prioritizationStrategy: List[Task] => List[Task],
         cuttingStrategy: Circuit => List[Circuit],
         targetEstimatedFidelity: Long, 
@@ -43,7 +45,6 @@ object Scheduler{
 
         //TODO Fall back to other devices on failure 
         //TODO Merge Cut Task Results 
-        //TODO Do we really need to account for classial communication cost? Will it not be more or less constant in this setting? 
         //TODO think about reservations?? 
         //TODO consider impact of cross talk when scheduling multiple tasks on the same device.
         //TODO for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
@@ -455,11 +456,7 @@ object Scheduler{
     //       .compile
     //       .drain
 
-        private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = ??? 
-
-        private def getAvailableDevices(): F[List[Device]] = ???
-
-        private def allParentResultsAvailable() : Boolean = ??? 
+        private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = ???  
 
         private def estimateTranspilationTime(circuit: Circuit, targetGateSet: List[Gate]) : F[Long] = ???
 
@@ -472,6 +469,11 @@ object Scheduler{
         private def startFetchingResults(): F[Unit] =  ??? 
 
         private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = ???
+
+
+        private def allParentResultsAvailable() : Boolean = ???
+        
+        private def getAvailableDevices(): F[List[Device]] = ???
 
         private def estimateQueueTime(device: Device, task: QuantumTask) : F[Long] = {
             val windowSize = 14L

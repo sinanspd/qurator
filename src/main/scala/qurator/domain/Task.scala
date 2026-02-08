@@ -18,6 +18,7 @@ import eu.timepit.refined.types.numeric.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
 import io.estatico.newtype.macros.newtype
 import com.sinanspd.qure.circuit.Circuit
+import qurator.domain.device._
 
 object Task{
 
@@ -59,7 +60,7 @@ object Task{
     case class SyncronizedQuantumTaskList(
         uuid: TaskId,
         tasks: List[QuantumTask], 
-        t1Budged: Long, 
+        t1Budget: Long, 
         createdAt: LocalDateTime
     ) extends Task
 
@@ -90,6 +91,17 @@ object Task{
         deviceName: String,
         provider: DeviceQueueInformation.DeviceProvider,
         assignedAt: LocalDateTime
+    )
+
+    case class CandidateDevice(
+        device: Device,
+        fidelity: Long,
+        queueMillis: Long,
+        runMillis: Long
+    )
+
+    case class SynchronizedPlan(
+        assignments: Map[Device, List[QuantumTask]]
     )
 
 

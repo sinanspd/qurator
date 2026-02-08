@@ -43,7 +43,7 @@ object Scheduler{
 
         private val idleDelay: FiniteDuration = 250.millis
 
-        //TODO Fall back to other devices on failure 
+        //TODO Fall back to other devices on failure (maybe after expontential backoff ?)
         //TODO Merge Cut Task Results 
         //TODO think about reservations?? 
         //TODO consider impact of cross talk when scheduling multiple tasks on the same device.
@@ -52,6 +52,9 @@ object Scheduler{
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
         //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
         //TODO: Estimate preperation time and add to queue time 
+        //TODO: Loop back actual job data 
+        //TODO: I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
+
 
         def submitTask(taskReq: TaskRequest): F[Unit] = taskReq match{
             case str : SynronizedQuantumTaskRequest => submitSynronizedTaskRequest(str)
@@ -225,108 +228,106 @@ object Scheduler{
         }
 
 
-        // private def scheduleSynronizedTasks(s: SynchronizedTaskList): F[Unit] =
-        //     for{
-        //         devices <- getAvailableDevices()
-        //         orderedTasks = prioritizationStrategy(s.tasks)
-        //         candidateDevicesByTask <- orderedTasks.traverse{t =>
-        //             val suitableDevices = devices.filter(d => d.qubits >= t.qubits)
-        //             suitableDevices.traverse{d => 
-        //                 (d, estimateFidelity(d,t), estimateQueue(d,t) + estimateTranspilationTime(t.circuit, d.gateSet), estimateRunTime(d,t))
-        //                     .mapN{(d, f, q, run, transp) => 
-        //                         ???
-        //                     }
-        //             }.map{cs => 
-        //                 val possible = cs.filter(_.fidelity >= targetEstimatedFidelity)
-        //                 if (possible.nonEmpty) possible else cs 
-        //             }   
-        //         }
+        private def scheduleSynronizedTasks(s: SyncronizedQuantumTaskList): F[Unit] =
+            for{
+                devices <- getAvailableDevices()
+                orderedTasks = prioritizationStrategy(s.tasks).collect{ case t: QuantumTask => t}
+                candidateDevicesByTask <- orderedTasks.traverse{t =>
+                    val suitableDevices = devices.filter(d => d.qubits >= t.qubits.value)
+                    suitableDevices.traverse{d => 
+                        (estimateFidelity(d,t), estimateQueueTime(d,t), estimateTranspilationTime(t.circuit, d.gateSet), estimateRunTime(d,t))
+                            .mapN{(f, q, t, run) => 
+                               val queueMillis = q + t
+                               CandidateDevice(d, fidelity = f, queueMillis = queueMillis, runMillis = run)
+                            }
+                    }.map{cs => 
+                        val possible = cs.filter(_.fidelity >= targetEstimatedFidelity)
+                        if (possible.nonEmpty) possible else cs 
+                    }.map(t -> _)   
+                }.map(_.toMap)
+                plan <- buildGreedySynchronizedPlan(
+                    orderedTasks,
+                    candidateDevicesByTask,
+                    s.t1Budget
+                )
 
-        //         plan <- buildGreedySynchronizedPlan(
-        //             orderedTasks,
-        //             candidatedByTask,
-        //             t1BudgetMillis
-        //         )
+                _ <- plan.assignments.toList.traverse_{case (device, tasksOnDevice) => 
+                  tasksOnDevice.traverse_{t => 
+                    submitJobWithFallback(device, t, candidateDevicesByTask.getOrElse(t, Nil))  
+                  }    
+                }
+            }yield ()
 
-        //         _ <- plan.assignments.toList.traverse_{case (device, taskOnDevice) => 
-        //           tasksOnDevice.traverse_{t => 
-        //             submitJobWithFallback(device, t, candidatesByTask.getOrElse(t, Nil))  
-        //           }    
-        //         }
-        //     }yield ()
+        private def buildGreedySynchronizedPlan(
+            orderedTasks: List[QuantumTask],
+            candidatesByTask: Map[QuantumTask, List[CandidateDevice]],
+            t1BudgetMillis: Long
+        ): F[SynchronizedPlan] = {
+            final case class Acc(assignments: Map[Device, List[QuantumTask]], runtimeSum: Map[Device, Long])
+            def taskStartFinish(device: Device, cand: CandidateDevice, acc: Acc): (Long, Long) = {
+                val prev = acc.runtimeSum.getOrElse(device, 0L)
+                val start = cand.queueMillis + prev
+                val finish = start + cand.runMillis 
+                (start, finish)
+            }
 
-        // private def buildGreedySynchronizedPlan(
-        //     orderedTasks: List[Task],
-        //     candidatesByTask: Map[Task, List[???]],
-        //     t1BudgetMillis: Long
-        // ): F[SynchronizedPlan] = {
-        //     final case class Acc(assignments: Map[Device, List[Task]], runtimeSum: Map[Device, Long])
-
-        //     def taskStartFinish(device: Device, cand: Candidate, acc: Acc): (Long, Long) = {
-        //         val prev = acc.runtimeSum.getOrElse(device, 0L)
-        //         val start = can.queueMillis + prev
-        //         val finish = start + cand.runMillis 
-        //         (start, finish)
-        //     }
-
-        //     def objective(
-        //         newStarts: List[Long],
-        //         newFinishes: List[Long]
-        //     ): Long = {
-        //         val spreadStart = (newStarts.maxOption.getOrElse(0L)  - newStarts.minOption.getOrElse(0L))
-        //         val spreadFinish = (newFinishes.maxOption.getOrElse(0L) - newFinishes.minOption.getOrElse(0L))
+            def objective(
+                newStarts: List[Long],
+                newFinishes: List[Long]
+            ): Long = {
+                val spreadStart = (newStarts.maxOption.getOrElse(0L)  - newStarts.minOption.getOrElse(0L))
+                val spreadFinish = (newFinishes.maxOption.getOrElse(0L) - newFinishes.minOption.getOrElse(0L))
                 
-        //         // penalty for exceeding T1 
-        //         val t1Penalty = 
-        //             if(t1BudgetMillis > 0L && spreadFinish > t1BudgetMillis) (spreadFinish - t1BudgetMillis) * 10L
-        //             else 0L
+                val t1Penalty = 
+                    if(t1BudgetMillis > 0L && spreadFinish > t1BudgetMillis) (spreadFinish - t1BudgetMillis) * 10L
+                    else 0L
                 
-        //         spreadStart + (spreadFinish / 2L) +t1Penalty
-        //     }
+                spreadStart + (spreadFinish / 2L) + t1Penalty
+            }
 
-        //     def chooseBestDeviceForTask(t: Task, acc: Acc): F[(Device, Candidate)] = {
-        //         val candidates = candidatesByTask.getOrElse(t, Nil)
-        //         if(candidates.isEmpty){
-        //             Logger[F].warn(s"No candidates computed for task=${t.uuid}; forcing enqueueReady") *>
-        //             (new RuntimeException("No candidates for task")).raiseError[F, (Device, Candidate)]
-        //         }else{
-        //             val currentDeviceQueuesWithinGroup: Map[Device, Long] =
-        //                 candidatesByTask.values.flatten.map(c => c.device -> c.queueMillis).toMap
+            def chooseBestDeviceForTask(t: QuantumTask, acc: Acc): F[(Device, CandidateDevice)] = {
+                val candidates = candidatesByTask.getOrElse(t, Nil)
+                if(candidates.isEmpty){
+                    Logger[F].warn(s"No candidates computed for task=${t.uuid}; forcing enqueueReady") *>
+                    (new RuntimeException("No candidates for task")).raiseError[F, (Device, CandidateDevice)]
+                }else{
+                    val currentDeviceQueuesWithinGroup: Map[Device, Long] =
+                        candidatesByTask.values.flatten.map(c => c.device -> c.queueMillis).toMap
                     
-        //             val currentStarts: List[Long] = 
-        //                 acc.assignments.keys.toList.map{d =>
-        //                     currentDeviceQueuesWithinGroup.getOrElse(d, 0L) + 0L
-        //                 }
+                    val currentStarts: List[Long] = 
+                        acc.assignments.keys.toList.map{d =>
+                            currentDeviceQueuesWithinGroup.getOrElse(d, 0L) + 0L
+                        }
 
-        //             val currentFinishes: List[Long] = 
-        //                 acc.assignments.keys.toList.map{d => 
-        //                     currentDeviceQueues.getOrElse(d, 0L) + acc.runtimeSum.getOrElse(d, 0L)    
-        //                 }
+                    val currentFinishes: List[Long] = 
+                        acc.assignments.keys.toList.map{d => 
+                            currentDeviceQueuesWithinGroup.getOrElse(d, 0L) + acc.runtimeSum.getOrElse(d, 0L)    
+                        }
 
-        //             candidates.traverse{cand => 
-        //                 val device = cand.device
-        //                 val (s0, f0) = taskStartFinish(device, cand, acc)
+                    candidates.traverse{cand => 
+                        val device = cand.device
+                        val (s0, f0) = taskStartFinish(device, cand, acc)
 
-        //                 val starts2 = s0 :: currentStarts 
-        //                 val finishes2 = f0 :: currentFinishes
+                        val starts2 = s0 :: currentStarts 
+                        val finishes2 = f0 :: currentFinishes
 
-        //                 val obj = objective(starts2, finishes2)
-        //                 (obj, -cand.fidelity, cand.queueMillis, cand).pure[F]
-        //             }.map{scored => 
-        //                 val best = scored.minBy{case (obj, negFid, q, _) => (obj, negFid, q)}._4
-        //                 (best.device, best)
-        //             }
-        //         }
-        //     }
+                        val obj = objective(starts2, finishes2)
+                        (obj, -cand.fidelity, cand.queueMillis, cand).pure[F]
+                    }.map{scored => 
+                        val best = scored.minBy{case (obj, negFid, q, _) => (obj, negFid, q)}._4
+                        (best.device, best)
+                    }
+                }
+            }
 
-        //     orderedTasks.foldLeftM(Acc(Map.empty, Map.empty)) { (acc, t) => 
-        //         chooseBestDeviceForTask(t, acc).map{case (d, cand) => 
-        //           val updatedAssignments = acc.assignments.updated(d, acc.assignments.getOrElse(d, Nil) :+ t)
-        //           val updatedRuntimeSum = acc.runtimeSum.updated(d, acc.runtimeSum.getOrElse(d, 0L) + cand.runMillis) 
-        //           Acc(updatedAssignments, updatedRuntimeSum)   
-        //         }
-        //     }.map(acc => SynchronizedPlan(acc.assignments))
-        // }
+            orderedTasks.foldLeftM(Acc(Map.empty[Device, List[QuantumTask]], Map.empty[Device, Long])) { (acc, t) => 
+                chooseBestDeviceForTask(t, acc).map{case (d, cand) => 
+                  val updatedAssignments = acc.assignments.updated(d, acc.assignments.getOrElse(d, Nil) :+ t)
+                  val updatedRuntimeSum = acc.runtimeSum.updated(d, acc.runtimeSum.getOrElse(d, 0L) + cand.runMillis) 
+                  Acc(updatedAssignments, updatedRuntimeSum)   
+                }
+            }.map(acc => SynchronizedPlan(acc.assignments))
+        }
 
 
         private def attemptToMergeSyncTasks(
@@ -462,6 +463,8 @@ object Scheduler{
 
         private def estimateFidelity(device: Device, task: QuantumTask) : F[Long] = ???
 
+        private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = ???
+
         private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Any]) : F[Boolean] = ???
 
         private def mergeCircuits(circuits: List[Circuit]): Circuit = ???
@@ -550,5 +553,7 @@ object Scheduler{
             Temporal[F].sleep(computationTime.millis) *> 
             results.update(_ + (ct.uuid -> s"Result of classical task ${ct.uuid.value}"))
         }
+
+        private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
     }
 }

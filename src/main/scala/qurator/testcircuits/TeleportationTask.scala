@@ -1,6 +1,6 @@
 package qurator.testcircuits
 
-import com.sinanspd.qure.circuit.gates._
+import qurator.domain.circuit._
 
 object TeleportationTask{
 

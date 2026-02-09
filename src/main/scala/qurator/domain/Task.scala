@@ -17,7 +17,7 @@ import eu.timepit.refined.types.net.UserPortNumber
 import eu.timepit.refined.types.numeric.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
 import io.estatico.newtype.macros.newtype
-import com.sinanspd.qure.circuit.Circuit
+import qurator.domain.circuit._
 import qurator.domain.device._
 
 object Task{

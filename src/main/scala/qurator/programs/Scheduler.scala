@@ -8,8 +8,7 @@ import qurator.service.DataPersistanceService
 import scala.util.Random
 import qurator.domain.Task._
 import qurator.effects.GenUUID
-import com.sinanspd.qure.circuit.Circuit
-import com.sinanspd.qure.circuit.gates.Gate
+import qurator.domain.circuit._
 import cats.effect.kernel.Ref
 import qurator.domain.ID
 import scala.concurrent.duration._
@@ -51,7 +50,7 @@ object Scheduler{
         //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
         //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
-        //TODO: Estimate preperation time and add to queue time 
+        //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
         //TODO: Loop back actual job data 
         //TODO: I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
 
@@ -189,7 +188,7 @@ object Scheduler{
             def scheduleOnce(task: Task): F[Unit] = task match{
                 case ct: ClassicalTask => fakeClassicalTaskScheduler(ct)
                 case qt: QuantumTask => scheduleOneQuantumTask(qt)
-                case sgt: SyncronizedQuantumTaskList => ???
+                case sgt: SyncronizedQuantumTaskList => scheduleSynronizedTasks(sgt)
             }
 
 
@@ -472,7 +471,6 @@ object Scheduler{
         private def startFetchingResults(): F[Unit] =  ??? 
 
         private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = ???
-
 
         private def allParentResultsAvailable() : Boolean = ???
         

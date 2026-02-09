@@ -1,6 +1,6 @@
 package qurator.domain
 
-import com.sinanspd.qure.circuit.gates.Gate
+import qurator.domain.circuit._
 
 object device{
 

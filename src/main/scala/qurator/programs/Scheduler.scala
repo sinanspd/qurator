@@ -70,10 +70,12 @@ object Scheduler{
                         childTasks = taskReq.childTasks,
                         createdAt = taskReq.createdAt
                 )
-                if(taskReq.parentTasks.isEmpty || allParentResultsAvailable()){
-                    enqueueReady(List(t))
-                }else{
-                    enqueuePending(List(t))
+                allParentResultsAvailable(t).flatMap{ apr =>
+                    if(taskReq.parentTasks.isEmpty || apr){
+                        enqueueReady(List(t))
+                    }else{
+                        enqueuePending(List(t))
+                    }
                 }
             })
 
@@ -466,15 +468,43 @@ object Scheduler{
 
         private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Any]) : F[Boolean] = ???
 
-        private def mergeCircuits(circuits: List[Circuit]): Circuit = ???
-
         private def startFetchingResults(): F[Unit] =  ??? 
 
         private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = ???
-
-        private def allParentResultsAvailable() : Boolean = ???
         
         private def getAvailableDevices(): F[List[Device]] = ???
+
+        private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
+
+        private def allParentResultsAvailable(t: Task) : F[Boolean] = 
+            t match{
+                case ct: ClassicalTask => 
+                    results.get.map{ rs =>  ct.parentTasks.map(pid => rs.get(t.uuid).nonEmpty).foldLeft(true)(_ && _) }
+                case qt: QuantumTask => 
+                    results.get.map{ rs =>  qt.parentTasks.map(pid => rs.get(t.uuid).nonEmpty).foldLeft(true)(_ && _) }
+                case sgt: SyncronizedQuantumTaskList => 
+                     sgt.tasks.traverse(allParentResultsAvailable).map(_.forall(identity))
+            }
+
+
+        private def mergeCircuits(circuits: List[Circuit]): Circuit = circuits.foldLeft(Circuit(List.empty[Gate], 0)){(acc, b) => {
+            val offset = acc.qubits
+            val shiftedGates = b.remainingGates.map{
+                case X(q) => X(q + offset)
+                case H(ctrl) => H(ctrl + offset)
+                case CX(ctrl, target) => CX(ctrl + offset, target + offset)
+                case CCX(ctrl1, ctrl2, target) => CCX(ctrl1 + offset, ctrl2 + offset, target + offset)
+                case CZ(ctrl, target) => CZ(ctrl + offset, target + offset)
+                case U(start, end, power) => U(start + offset, end + offset, power)
+                case CU(ctrl, start, end, power) => CU(ctrl + offset, start + offset, end + offset, power)
+                case Swap(q1, q2) => Swap(q1 + offset, q2 + offset)
+                case CRotate(ctrl, thetaDenom, q) => CRotate(ctrl + offset, thetaDenom, q + offset)
+                case Rotate(thetaDenom, q) => Rotate(thetaDenom, q + offset)
+                case RZ(thetaDenom, q) => RZ(thetaDenom, q + offset)
+                case Measure(q) => Measure(q + offset)
+            }
+            Circuit(acc.remainingGates ++ shiftedGates, acc.qubits + b.qubits) //TODO: Update this to merge gates based on slices 
+        }}
 
         private def estimateQueueTime(device: Device, task: QuantumTask) : F[Long] = {
             val windowSize = 14L
@@ -551,7 +581,5 @@ object Scheduler{
             Temporal[F].sleep(computationTime.millis) *> 
             results.update(_ + (ct.uuid -> s"Result of classical task ${ct.uuid.value}"))
         }
-
-        private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
     }
 }

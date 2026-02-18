@@ -458,23 +458,30 @@ object Scheduler{
     //       .compile
     //       .drain
 
-        private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = ???  
 
-        private def estimateTranspilationTime(circuit: Circuit, targetGateSet: List[Gate]) : F[Long] = ???
-
-        private def estimateFidelity(device: Device, task: QuantumTask) : F[Long] = ???
-
-        private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = ???
-
-        private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Any]) : F[Boolean] = ???
+       
 
         private def startFetchingResults(): F[Unit] =  ??? 
 
         private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = ???
         
         private def getAvailableDevices(): F[List[Device]] = ???
+        
+        private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = ???  
+
+        private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = ???
 
         private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
+
+        private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Any]) : F[Boolean] = ???
+        
+        private def estimateFidelity(device: Device, task: QuantumTask) : F[Long] = ???
+        // F_{CX,mono} = 1 - ((N - n_chip) x delta_infid + (1 - F_{CX,chip})
+        // rho -> (1 - r) rho + r I/d
+        // r_link.  2 x ( 1 - F_link), R_link = 1 - r_link
+        // r_cx = 4/3 x (1 - F_cx), R_cx = 1 - r_cx
+        // Rswap = (r_cx)^3
+        // F_process = 1 - (1 - R_link * R_swap) / 2 
 
         private def allParentResultsAvailable(t: Task) : F[Boolean] = 
             t match{
@@ -569,6 +576,11 @@ object Scheduler{
             }yield queueMean
         }
 
+
+        private def estimateTranspilationTime(circuit: Circuit, targetGateSet: List[Gate]) : F[Long] = 
+            (circuit.remainingGates.length / 1000000L).pure[F] 
+            // This is very dumb and will likely get removed. 
+            // We need to transpile to decide on other factors anyway so accounting for potential transpilation not needed
 
         private def enqueueReady(newTasks: List[Task]): F[Unit] =
             readyTasks.update(ts => prioritizationStrategy(newTasks ++ ts))

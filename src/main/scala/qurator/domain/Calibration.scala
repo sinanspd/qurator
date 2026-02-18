@@ -1,0 +1,185 @@
+package qurator.domain
+
+import qurator.domain.circuit._
+
+object calibration {
+
+    sealed trait DeviceCalibration 
+
+    case class AQTCalibration(
+        t1Seconds: Double, 
+        t2Seconds: Double,
+        readoutFidelity: Double, 
+        readoutDurationSec: Double,
+        oneQGateDurationSec: Double,
+        oneQGateFidelity: Double, 
+        twoQGateDurationSec: Double,
+        twoQGateFidelity: Double
+    ) extends DeviceCalibration
+
+    case class IBMCalibration(
+        qubits: List[Int],
+        edges: List[(Int, Int)],
+        t1Seconds: List[(Int, Double)],
+        t2Seconds: List[(Int, Double)],
+        t1AvgSeconds: Double,
+        t2AvgSeconds: Double,
+        probMeasu0Presp1: Double,
+        probMeasu1Presp0: Double,
+        idError: Double,
+        rxError: Double,
+        pauliXError: Double,
+        czError: Double,
+        rzzError: Double,
+        readoutLengthNs: Long,
+        singleQGateLengthNs: Long,
+        idLengthNs: Long,
+        twoQGateLengthNs: Long,
+        czGateLengthNs: Long,
+        rzzGateLengthNs: Long
+    ) extends DeviceCalibration
+
+    case class IonQCalibration(
+        t1Seconds: Double,
+        t2Seconds: Double,
+        avg1qFidelityPct: Double,
+        avg2qFidelityPct: Double, 
+        avgReadoutFidelity: Double,
+        oneQGateDurationSec: Double,
+        twoQGateDurationSec: Double,
+        readoutDurationSec: Double
+    ) extends DeviceCalibration
+
+    case class IQMCalibration(
+        typicalDetectionFalsePositive: Double,
+        typicalDetectionFalseNegative: Double,
+        typicalVacancyError: Option[Double],     
+        typicalFillingError: Option[Double],       
+        typicalAtomLossProbability: Option[Double],
+        t1SingleSec: Option[Double],
+        t2EchoSingleSec: Option[Double],
+        t2SingleSec: Option[Double]
+    ) extends DeviceCalibration
+
+    case class QuEraCalibration(
+        typicalDetectionFalsePositive: Double,
+        typicalDetectionFalseNegative: Double,
+        typicalVacancyError: Option[Double],     
+        typicalFillingError: Option[Double],       
+        typicalAtomLossProbability: Option[Double],
+        t1SingleSec: Option[Double],
+        t2EchoSingleSec: Option[Double],
+        t2SingleSec: Option[Double]
+    ) extends DeviceCalibration
+
+    case class RigettiCalibration(
+        t1Seconds: Double,
+        t2Seconds: Double,
+        avg1qFidelityPct: Double,
+        readoutFidelityPct: Double,
+        swapFidelityPct: Double,
+        oneQGateDurationNs: Long,
+        twoQGateDurationNs: Long,
+        swapGateDurationNs: Long,
+        readoutDurationNs: Long
+    ) extends DeviceCalibration
+
+    case class CanonicalCalibration(
+        eps1q: Map[(Int, String), Double],
+        eps2q: Map[((Int, Int), String), Double],
+        eps1qAvg: Option[Double],
+        eps2qAvg: Option[Double],
+        readoutFidelity: Map[Int, Double],
+        readoutFidelityAvg: Option[Double],
+        t1: Map[Int, Double],
+        t2: Map[Int, Double],
+        t1Avg: Option[Double],
+        t2Avg: Option[Double],
+        dur1qNs: Map[String, Long],
+        dur2qNs: Map[String, Long],
+        durMeasNs: Option[Long],
+        dur1qAvgNs: Option[Long],
+        dur2qAvgNs: Option[Long],
+        initSurvivalPerQubit: Option[Double] = None
+    ){
+        private def edgeKey(a: Int, b: Int): (Int, Int) = if (a <= b) (a, b) else (b, a)
+
+        def epsFor(op: Gate): Double =
+            op match {
+                case a @ (X(_) | H(_))  =>
+                    val (q, g) = a match { // this is dumb but oh well
+                        case X(q)       => (q, "X")
+                        case H(q)       => (q, "H")
+                    }
+                    eps1q.get((q, g))
+                    .orElse(eps1qAvg)
+                    .getOrElse(0.0) //TODO: Should we have a better default value here? 
+
+                case a @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRotate(_, _, _) | Rotate(_, _) | RZ(_ ,_)) =>
+                    val (a, b, g) = op match{
+                        case CX(a, b) => (a, b, "CX")
+                        case CZ(a, b) => (a, b, "CZ")
+                        case Swap(a , b) => (a, b, "SWAP")
+                        case CRotate(a, _, b) => (a, b, "CRotate")
+                        case Rotate(a ,b) => (a, b, "Rotate")
+                        case RZ(a, b) => (a, b, "RZ")
+                    }
+                    eps2q.get((edgeKey(a, b), g))
+                    .orElse(eps2qAvg)
+                    .getOrElse(0.0)
+
+                case Measure(_) =>
+                    0.0
+                case _ =>
+                    0.0
+            }
+
+            def durationNsFor(op: Gate): Long =
+            op match {
+                case a : X =>
+                    dur1qNs.get("X").orElse(dur1qAvgNs).getOrElse(0L)
+
+                case a : H =>
+                    dur1qNs.get("H").orElse(dur1qAvgNs).getOrElse(0L)
+
+                case a : CX =>
+                     dur2qNs.get("CX").orElse(dur2qAvgNs).getOrElse(0L)
+
+                case a : CZ =>
+                     dur2qNs.get("CZ").orElse(dur2qAvgNs).getOrElse(0L)
+
+                case a : Swap =>
+                     dur2qNs.get("SWAP").orElse(dur2qAvgNs).getOrElse(0L)
+
+                case a : CRotate =>
+                     dur2qNs.get("CRotate").orElse(dur2qAvgNs).getOrElse(0L)
+
+                case a : Rotate =>
+                     dur2qNs.get("Rotate").orElse(dur2qAvgNs).getOrElse(0L)
+
+                case a : RZ =>
+                     dur2qNs.get("RZ").orElse(dur2qAvgNs).getOrElse(0L)
+
+                case a : Measure =>
+                    durMeasNs.getOrElse(0L)
+                case _ =>
+                    0L
+            }
+
+            def readoutFidFor(q: Int): Double =
+                readoutFidelity.get(q).orElse(readoutFidelityAvg).getOrElse(0.0)
+
+            def t2For(q: Int): Option[Double] = t2.get(q).orElse(t2Avg)
+            def t1For(q: Int): Option[Double] = t1.get(q).orElse(t1Avg)
+
+    }
+
+    case class FidelityEstimate(
+        logPOps: Double,
+        logPDecoh: Double,
+        logPTotal: Double,
+        pTotal: Double,
+        perQubitEndTimeSec: Map[Int, Double]
+    ) 
+
+}

@@ -18,7 +18,9 @@ import scala.math.{abs, exp, log, min}
 import cats.effect.kernel.Clock
 import qurator.domain.DeviceQueueInformation._
 import qurator.modules.HttpClients
-
+import qurator.testbed.FakeCompiler
+import qurator.util.FidelityEstimator
+import qurator.domain.calibration._
 
 trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[Unit]
@@ -31,7 +33,8 @@ object Scheduler{
         prioritizationStrategy: List[Task] => List[Task],
         cuttingStrategy: Circuit => List[Circuit],
         targetEstimatedFidelity: Long, 
-        additionalOptimizationRuns: Circuit => List[Circuit]
+        additionalOptimizationRuns: Circuit => List[Circuit],
+        compiler: FakeCompiler[F] //abstract this 
   ): F[Scheduler[F]] =
     for {
       readyTasks     <- Ref.of[F, List[Task]](List.empty)
@@ -218,9 +221,9 @@ object Scheduler{
                     case Nil =>
                             Logger[F].warn(s"No eligible devices for task=${task.uuid}")
                     case ds => ds.traverse{d => 
-                            (estimateFidelity(d, task), estimateQueueTime(d, task), estimateTranspilationTime(task.circuit, d.gateSet)).mapN {
+                            (estimateFidelity(d, task.circuit), estimateQueueTime(d, task), estimateTranspilationTime(task.circuit, d.gateSet)).mapN {
                                 (f, q, t) =>
-                                    val ac = getAssignmentCoefficient(f, q + t)
+                                    val ac = getAssignmentCoefficient(f.logPTotal.toLong, q + t)
                                     (d, ac, f, q)
                             }
                         }
@@ -236,10 +239,10 @@ object Scheduler{
                 candidateDevicesByTask <- orderedTasks.traverse{t =>
                     val suitableDevices = devices.filter(d => d.qubits >= t.qubits.value)
                     suitableDevices.traverse{d => 
-                        (estimateFidelity(d,t), estimateQueueTime(d,t), estimateTranspilationTime(t.circuit, d.gateSet), estimateRunTime(d,t))
+                        (estimateFidelity(d, t.circuit), estimateQueueTime(d,t), estimateTranspilationTime(t.circuit, d.gateSet), estimateRunTime(d,t))
                             .mapN{(f, q, t, run) => 
                                val queueMillis = q + t
-                               CandidateDevice(d, fidelity = f, queueMillis = queueMillis, runMillis = run)
+                               CandidateDevice(d, fidelity = f.logPTotal.toLong, queueMillis = queueMillis, runMillis = run)
                             }
                     }.map{cs => 
                         val possible = cs.filter(_.fidelity >= targetEstimatedFidelity)
@@ -438,8 +441,8 @@ object Scheduler{
                                 )
 
                             feasibleDevices
-                                .traverse(d => estimateFidelity(d, mergedTask)) 
-                                .map(_.maxOption.getOrElse(0L))
+                                .traverse(d => estimateFidelity(d, mergedTask.circuit)) 
+                                .map(_.map(_.logPTotal).maxOption.getOrElse(0.0))
                                 .flatMap { bestFidelity =>
                                     if (bestFidelity >= targetEstimatedFidelity) List(mergedTask).pure[F]
                                     else g.pure[F]
@@ -472,16 +475,23 @@ object Scheduler{
         private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = ???
 
         private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
-
-        private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Any]) : F[Boolean] = ???
         
-        private def estimateFidelity(device: Device, task: QuantumTask) : F[Long] = ???
-        // F_{CX,mono} = 1 - ((N - n_chip) x delta_infid + (1 - F_{CX,chip})
-        // rho -> (1 - r) rho + r I/d
-        // r_link.  2 x ( 1 - F_link), R_link = 1 - r_link
-        // r_cx = 4/3 x (1 - F_cx), R_cx = 1 - r_cx
-        // Rswap = (r_cx)^3
-        // F_process = 1 - (1 - R_link * R_swap) / 2 
+        private def estimateFidelity(device: Device, task: Circuit) : F[FidelityEstimate] = 
+            for{
+                compiled <- compiler.compileCircuitFor(device, task)
+                deviceCal <- fetchDeviceCalibration(device) 
+                cal = FidelityEstimator.normalizeCalibration(deviceCal)
+                est = FidelityEstimator.score(compiled, cal)
+            } yield est
+
+        private def fetchDeviceCalibration(device: Device): F[DeviceCalibration] = device.platform match {
+            case "IBM" => clients.ibm.fetchDeviceCalibration(device.platformId)
+            case "Azure" => clients.azure.fetchDeviceCalibration(device.platformId)
+            case "Braket" => clients.braket.fetchDeviceCalibration(device.platformId)
+        }
+
+        private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Device]) : F[Boolean] = 
+            devices.traverse(d => estimateFidelity(d, task.circuit)).map(lf => lf.filter(_.logPTotal > targetEstimatedFidelity).nonEmpty)
 
         private def allParentResultsAvailable(t: Task) : F[Boolean] = 
             t match{

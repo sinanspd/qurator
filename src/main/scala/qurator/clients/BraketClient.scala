@@ -35,6 +35,7 @@ import org.typelevel.log4cats.Logger
 import qurator.domain.ID
 import qurator.domain.DeviceQueueInformation.DeviceQueueInformationId
 import io.circe.syntax._ 
+import qurator.domain.calibration._
 
 trait BraketClient[F[_]] {
   def fetchDeviceList: F[BraketDeviceListResponse]
@@ -42,6 +43,7 @@ trait BraketClient[F[_]] {
   def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): F[BraketCreateQuantumTaskResponse] 
   // ^ TODO: This needs to be fixed so that the qasm source can be fetched from the request. Need to confirm the Braker IR first 
   def getQuantumTask(taskId: String) : F[BraketQuantumTaskResponse]
+  def fetchDeviceCalibration(deviceArn: String): F[DeviceCalibration]
 }
         
 
@@ -233,6 +235,8 @@ object BraketClient {
             }
         }}
 
+    def fetchDeviceCalibration(deviceArn: String): F[DeviceCalibration] = ??? 
+    
     private def dumpRequest(label: String, req: Request[F]): F[Unit] =
         Logger[F].info(s"===== $label =====\n" + s"${req.method.name} ${req.uri.renderString}") *> 
             Sync[F].delay {

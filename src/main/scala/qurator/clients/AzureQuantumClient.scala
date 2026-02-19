@@ -30,12 +30,14 @@ import qurator.domain.ID
 import qurator.domain.DeviceQueueInformation.DeviceQueueInformationId
 import io.circe.syntax._ 
 import qurator.domain.Azure._
+import qurator.domain.calibration._
 
 trait AzureQuantumClient[F[_]] {
    //def fetchBearerToken: F[String] //This is more secure but requires tremendous setup in Azure. Implement later.
    def fetchDeviceInformation: F[AzureDeviceStatusResponse]
    def submitJob(jobId: String, jobRequest: AzureJobCreateRequest): F[AzureJobResponse]
    def getQuantumTask(jobId: String): F[AzureJobResponse]
+   def fetchDeviceCalibration(deviceId: String): F[DeviceCalibration]
 }
 
 object AzureQuantumClient {
@@ -59,10 +61,10 @@ object AzureQuantumClient {
                     resp.status match {
                         case Status.Ok =>
                         resp.asJsonDecode[AzureDeviceStatusResponse]
-                    //   case st =>
-                    //     Error(
-                    //       Option(st.reason).getOrElse("unknown")
-                    //     ).raiseError[F, BackendsResponseV2]
+                        case st =>
+                             MonadCancelThrow[F].raiseError(
+                                new Exception(s"Failed to fetch device details")
+                            )
                     }
                 }
             }
@@ -86,10 +88,9 @@ object AzureQuantumClient {
                         resp.status match {
                             case Status.Accepted | Status.Ok =>
                                 resp.asJsonDecode[AzureJobResponse]
-                            // case st => 
-                            //     Error(
-                            //         Option(st.reason).getOrElse("unknown")
-                            //     ).raiseError[F, AzureJobResponse]
+                            case _ =>  MonadCancelThrow[F].raiseError(
+                                new Exception(s"Failed")
+                            )
                         }
                     }
                 }
@@ -107,14 +108,15 @@ object AzureQuantumClient {
                 client.run(req).use { resp =>
                     resp.status match {
                         case Status.Ok =>
-                        resp.asJsonDecode[AzureJobResponse]
-                    //   case st =>
-                    //     Error(
-                    //       Option(st.reason).getOrElse("unknown")
-                    //     ).raiseError[F, BackendsResponseV2]
+                            resp.asJsonDecode[AzureJobResponse]
+                        case _ =>  MonadCancelThrow[F].raiseError(
+                                new Exception(s"Failed")
+                            )
                     }
                 }
-            }    
+            } 
+
+        def fetchDeviceCalibration(deviceId: String): F[DeviceCalibration] = ???   
     }   
 }
 

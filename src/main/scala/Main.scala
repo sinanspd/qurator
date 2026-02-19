@@ -1,4 +1,3 @@
-import com.sinanspd.qure.circuit.sampler.BasicSampler
 import cats.effect._
 import cats.effect.std.Supervisor
 import eu.timepit.refined.auto._

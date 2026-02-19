@@ -18,6 +18,6 @@ package object circuit{
     case class RZ(thetaDenom: Int, q: Int) extends Gate
     case class Measure(q: Int) extends Gate
     
-    final case class Circuit(remainingGates: List[Gate], qubits: Int) 
+    final case class Circuit(remainingGates: List[Gate], qubits: Int, name: String = "") 
     final case class QVec(prop: Complex[Double], v: Vector[Boolean], name: String ="")
 }

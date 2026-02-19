@@ -16,7 +16,7 @@ import qurator.domain.IBM._
 import org.typelevel.log4cats.Logger
 import io.circe.generic.auto._
 import cats.effect.Async
-
+import qurator.domain.calibration._
 
 trait IBMClient[F[_]] {
   def fetchBearerToken: F[String]
@@ -24,6 +24,7 @@ trait IBMClient[F[_]] {
   def submitJob(r: SubmitJobRequestV2): F[CreateJobResponseV2]
   def listJobDetails(id: String): F[JobDetailsResponseV2]
   def getJobMetrics(id: String): F[JobMetricsResponse]
+  def fetchDeviceCalibration(deviceArn: String): F[DeviceCalibration]
 }
 
 object IBMClient {
@@ -47,10 +48,9 @@ object IBMClient {
             resp.status match {
               case Status.Ok =>
                 resp.asJsonDecode[IBMBearerToken].map(_.access_token)
-            //   case st =>
-            //     Error(
-            //       Option(st.reason).getOrElse("unknown")
-            //     ).raiseError[F, String]
+              case _ =>  MonadCancelThrow[F].raiseError(
+                                new Exception(s"Failed")
+                            )
             }
           }
         }
@@ -70,10 +70,9 @@ object IBMClient {
               resp.status match {
                 case Status.Ok =>
                   resp.asJsonDecode[BackendsResponseV2]
-              //   case st =>
-              //     Error(
-              //       Option(st.reason).getOrElse("unknown")
-              //     ).raiseError[F, BackendsResponseV2]
+                case _ =>  MonadCancelThrow[F].raiseError(
+                                new Exception(s"Failed")
+                            )
               }
             }
           }
@@ -123,6 +122,9 @@ object IBMClient {
               resp.status match {
                 case Status.Ok =>
                   resp.asJsonDecode[JobDetailsResponseV2]
+                 case _ =>  MonadCancelThrow[F].raiseError(
+                                new Exception(s"Failed")
+                            )
               }
             }
           }
@@ -142,8 +144,13 @@ object IBMClient {
             resp.status match {
               case Status.Ok =>
                 resp.asJsonDecode[JobMetricsResponse]
+               case _ =>  MonadCancelThrow[F].raiseError(
+                                new Exception(s"Failed")
+                            )
             }
           }
         }
       }
+
+    def fetchDeviceCalibration(deviceArn: String): F[DeviceCalibration] = ???
 }}

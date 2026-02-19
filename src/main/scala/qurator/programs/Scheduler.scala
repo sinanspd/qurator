@@ -465,16 +465,17 @@ object Scheduler{
        
 
         private def startFetchingResults(): F[Unit] =  ??? 
-
-        private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = ???
         
         private def getAvailableDevices(): F[List[Device]] = ???
+
+        private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
         
         private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = ???  
 
-        private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = ???
+        private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = ??? //might not be needed
 
-        private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
+        private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = 
+            0.7 * fidelity + 0.9 * queueTime //adjust as needed
         
         private def estimateFidelity(device: Device, task: Circuit) : F[FidelityEstimate] = 
             for{
@@ -483,6 +484,10 @@ object Scheduler{
                 cal = FidelityEstimator.normalizeCalibration(deviceCal)
                 est = FidelityEstimator.score(compiled, cal)
             } yield est
+
+        // Circuit Depth, Avg. CX error over the circuit, Avg CX in the circuit critical path, readout errors on the measured qubits. 
+        //The model is built as a product of linear terms: Fn =
+         //Π(ai + bi ∗ xi), where Fn is the fidelity of job n, xi is the feature and ai and bi are the tuned coefficient ???
 
         private def fetchDeviceCalibration(device: Device): F[DeviceCalibration] = device.platform match {
             case "IBM" => clients.ibm.fetchDeviceCalibration(device.platformId)

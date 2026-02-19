@@ -13,6 +13,9 @@ import derevo.circe.magnolia.{ decoder, encoder }
 import derevo.derive
 import io.estatico.newtype.macros.newtype
 import qurator.domain.DeviceQueueInformation._
+import java.time.LocalDateTime
+import scala.util.Try
+import qurator.domain.device.Device
 
 object Braket{
 
@@ -31,10 +34,13 @@ object Braket{
     case class BraketDevice(
         deviceArn: String,
         deviceName: String,
+        deviceCapabilities: String,
         deviceStatus: String,
         deviceType: String,
         providerName: String
-    )
+    ){
+        def toDevice: Device = ???
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class BraketDeviceDetailsResponse(
@@ -138,4 +144,98 @@ object Braket{
 //    "tags": { 
 //       "string" : "string" 
 //    }
+
+
+    @derive(decoder, encoder, eqv, show)
+    case class DeviceCapabilities(
+        service: DeviceCapabilitiesService
+    )
+
+
+    @derive(decoder, encoder, eqv, show)
+    case class DeviceCapabilitiesService(
+        braketSchemaHeader: BraketSchemaHeader,
+        executionWindows: List[BraketExecutionWindows]
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class BraketSchemaHeader(
+        name: String,
+        version: String
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class BraketExecutionWindows(
+        executionDay: String,
+        windowStartHour: String,
+        windowEndHour: String
+    )
+
+
+    sealed trait BraketTimeParseError extends Product with Serializable
+    object BraketTimeParseError {
+        case object Empty extends BraketTimeParseError
+        final case class BadFormat(input: String) extends BraketTimeParseError
+        final case class NotAnInt(part: String) extends BraketTimeParseError
+        final case class OutOfRange(field: String, value: Int) extends BraketTimeParseError
+    }
+    def parseBraketHourMinute(raw: String): Either[BraketTimeParseError, (Int, Int)] = {
+        val s = Option(raw).map(_.trim).getOrElse("")
+        if (s.isEmpty) return Left(BraketTimeParseError.Empty)
+
+        val parts = s.split(":", -1).toList
+        parts match {
+            case h :: m :: Nil =>
+                for {
+                    hh <- parseInt(h)
+                    mm <- parseInt(m)
+                    _  <- validateRange("hour", hh, 0, 23)
+                    _  <- validateRange("minute", mm, 0, 59)
+                } yield (hh, mm)
+
+            case h :: m :: sec :: Nil =>
+                for {
+                    hh <- parseInt(h)
+                    mm <- parseInt(m)
+                    ss <- parseInt(sec)
+                    _  <- validateRange("hour", hh, 0, 23)
+                    _  <- validateRange("minute", mm, 0, 59)
+                    _  <- validateRange("second", ss, 0, 59) // validated but ignored
+                } yield (hh, mm)
+
+            case _ =>
+                Left(BraketTimeParseError.BadFormat(s))
+        }
+    }
+
+    private def parseInt(part: String): Either[BraketTimeParseError, Int] =
+        Try(part.toInt).toEither.left.map(_ => BraketTimeParseError.NotAnInt(part))
+
+    private def validateRange(field: String, value: Int, lo: Int, hi: Int): Either[BraketTimeParseError, Unit] =
+        if (value >= lo && value <= hi) Right(())
+        else Left(BraketTimeParseError.OutOfRange(field, value))
+
+    def deviceActive(d: BraketDevice) = {
+        val parseDeviceCapabilities = deviceExecutionWindows(d)
+        parseDeviceCapabilities match {
+            case Left(e) => false
+            case Right(w) => 
+                w.foldLeft(false)((a, b) => {
+                    val today = LocalDateTime.now()
+                    val day = today.getDayOfWeek().toString
+                    val weekday = day != "SATURDAY" && day != "SUNDAY"
+                    val hour = today.getHour()
+                    val minute = today.getMinute()
+                    val dayMatches = b.executionDay == "Everyday" || (b.executionDay == "Weekdays" && weekday) ||
+                       (b.executionDay == "Weekends" && !weekday)  || b.executionDay.toUpperCase() == day
+                    val parsedStart = parseBraketHourMinute(b.windowStartHour)
+                    val parsedEnd =  parseBraketHourMinute(b.windowEndHour)
+                    val timeMatches = (parsedStart, parsedEnd) match {
+                        case (Right(s), Right(e)) => (s._1 <= hour && hour <= e._1) && (s._2 <= minute && minute < e._2)
+                        case _ => false
+                    }
+                    timeMatches && dayMatches
+                })
+        }
+    }
 }

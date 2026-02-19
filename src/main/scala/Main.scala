@@ -47,8 +47,8 @@ object Main extends IOApp.Simple {
                     _ <- Logger[IO].info(s"Persisted IBM queue info")
                     braketDevices <- a.fetchDeviceList
                     brakedDeviceIds = braketDevices.devices.map(_.deviceArn)
-                    bc <- a.fetchDeviceDetails(brakedDeviceIds)
-                    _ <- Logger[IO].info(s"Fetched Braket devices: ${bc.map(d => (d.deviceArn, d.deviceQueueInfo))}")
+                    bc <- a.fetchDeviceDetails(List(brakedDeviceIds(0)))
+                    _ <- Logger[IO].info(s"Fetched Braket devices: ${bc.map(d => (d.deviceArn, d.deviceStatus, d.deviceQueueInfo))}")
                     braketDeviceQueueInfo = Braket.toDeviceQueueInformation(bc)
                     _ <- persistanceService.persistDeviceQueueInformation(braketDeviceQueueInfo)
                      _ <- Logger[IO].info(s"Persisted Braket queue info")

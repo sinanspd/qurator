@@ -13,6 +13,7 @@ import derevo.circe.magnolia.{ decoder, encoder }
 import derevo.derive
 import io.estatico.newtype.macros.newtype
 import qurator.domain.DeviceQueueInformation._
+import qurator.domain.device.Device
 
 object Azure{
 
@@ -33,7 +34,9 @@ object Azure{
         currentAvailability: String, //ProviderAvailability, // Available, Degraded, Unavailable
         id: String,
         targets: List[AzureTargetStatus]
-    )
+    ){
+        def toDevice: Device = ???
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class AzureTargetStatus(

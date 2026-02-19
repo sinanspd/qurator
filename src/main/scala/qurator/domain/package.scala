@@ -8,6 +8,9 @@ import io.circe.{ Decoder, DecodingFailure, Encoder }
 import io.circe.generic.extras.semiauto.{ deriveEnumerationDecoder, deriveEnumerationEncoder }
 import io.circe.generic.semiauto._
 import io.circe.generic.auto._
+import io.circe.parser
+import io.circe.Error
+import qurator.domain.Braket._
 
 package object domain {
   
@@ -24,4 +27,12 @@ package object domain {
     deriveEnumerationEncoder[QueueType]
 
   implicit val dataTimeEq: Eq[LocalDateTime] = Eq.fromUniversalEquals
+
+  def decodeExecutionWindows(rawCaps: String): Either[Error, List[BraketExecutionWindows]] =
+    parser.parse(rawCaps).flatMap(_.as[DeviceCapabilities]).map { caps =>
+      caps.service.executionWindows
+    }
+
+  def deviceExecutionWindows(d: BraketDevice): Either[Error, List[BraketExecutionWindows]] =
+    decodeExecutionWindows(d.deviceCapabilities)
 }

@@ -1,0 +1,5482 @@
+[
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Weekdays",
+          "windowStartHour": "12:00:00",
+          "windowEndHour": "03:00:00"
+        }
+      ],
+      "shotsRange": [
+        1,
+        5000
+      ],
+      "deviceCost": {
+        "price": 0.03,
+        "unit": "shot"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "http://d1.awsstatic.com/re19/Braket/IonQ%20Logo.59ea92b40cff5a2c2e90d9d981b864c2f424c5a8.png",
+        "summary": "Universal gate-model QPU based on trapped ions",
+        "externalDocumentationUrl": "https://ionq.com/quantum-systems/aria"
+      },
+      "deviceLocation": "Maryland, USA",
+      "updatedAt": "2025-09-01T00:00:00+00:00"
+    },
+    "action": {
+      "braket.ir.openqasm.program": {
+        "version": [
+          "1"
+        ],
+        "actionType": "braket.ir.openqasm.program",
+        "supportedOperations": [
+          "x",
+          "y",
+          "z",
+          "h",
+          "s",
+          "si",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "rx",
+          "ry",
+          "rz",
+          "cnot",
+          "swap",
+          "xx",
+          "yy",
+          "zz"
+        ],
+        "supportedModifiers": [],
+        "supportedPragmas": [
+          "braket_result_type_sample",
+          "braket_result_type_expectation",
+          "braket_result_type_variance",
+          "braket_result_type_probability",
+          "verbatim"
+        ],
+        "forbiddenPragmas": [
+          "braket_unitary_matrix",
+          "braket_result_type_state_vector",
+          "braket_result_type_density_matrix",
+          "braket_result_type_amplitude",
+          "braket_result_type_adjoint_gradient"
+        ],
+        "maximumQubitArrays": 1,
+        "maximumClassicalArrays": 1,
+        "forbiddenArrayOperations": [
+          "concatenation",
+          "negativeIndex",
+          "range",
+          "rangeWithStep",
+          "slicing",
+          "selection"
+        ],
+        "requiresAllQubitsMeasurement": true,
+        "supportPhysicalQubits": true,
+        "requiresContiguousQubitIndices": false,
+        "supportsPartialVerbatimBox": false,
+        "supportsUnassignedMeasurements": true,
+        "disabledQubitRewiringSupported": false,
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 5000
+          }
+        ]
+      }
+    },
+    "deviceParameters": {
+      "title": "IonqDeviceParameters",
+      "description": "This defines the parameters common to all the IonQ devices.",
+      "type": "object",
+      "properties": {
+        "braketSchemaHeader": {
+          "title": "Braketschemaheader",
+          "default": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          },
+          "const": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          }
+        },
+        "paradigmParameters": {
+          "$ref": "#/definitions/GateModelParameters"
+        },
+        "errorMitigation": {
+          "title": "Errormitigation",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ErrorMitigationScheme"
+          }
+        }
+      },
+      "required": [
+        "paradigmParameters"
+      ],
+      "definitions": {
+        "GateModelParameters": {
+          "title": "GateModelParameters",
+          "description": "Defines parameters common to all gate model devices.",
+          "type": "object",
+          "properties": {
+            "braketSchemaHeader": {
+              "title": "Braketschemaheader",
+              "default": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              },
+              "const": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              }
+            },
+            "qubitCount": {
+              "title": "Qubitcount",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "disableQubitRewiring": {
+              "title": "Disablequbitrewiring",
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "qubitCount"
+          ]
+        },
+        "ErrorMitigationScheme": {
+          "title": "ErrorMitigationScheme",
+          "description": "Base class for an error mitigation scheme.",
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.ionq.ionq_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.gate_model_qpu_paradigm_properties",
+        "version": "1"
+      },
+      "connectivity": {
+        "fullyConnected": true,
+        "connectivityGraph": {}
+      },
+      "qubitCount": 25,
+      "nativeGateSet": [
+        "GPI",
+        "GPI2",
+        "MS"
+      ]
+    },
+    "provider": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.ionq.ionq_provider_properties",
+        "version": "1"
+      },
+      "fidelity": {
+        "1Q": {
+          "mean": 0.7913
+        },
+        "2Q": {
+          "mean": 0.9832
+        },
+        "spam": {
+          "mean": 0.9953
+        }
+      },
+      "timing": {
+        "T1": 100,
+        "T2": 1,
+        "1Q": 0.000135,
+        "2Q": 0.0006,
+        "readout": 0.0003,
+        "reset": 0.00002
+      },
+      "errorMitigation": {
+        "braket.device_schema.error_mitigation.debias.Debias": {
+          "minimumShots": 2500
+        }
+      }
+    }
+  },
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Monday",
+          "windowStartHour": "01:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Tuesday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "12:00:00"
+        },
+        {
+          "executionDay": "Wednesday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "12:00:00"
+        },
+        {
+          "executionDay": "Wednesday",
+          "windowStartHour": "18:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Thursday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "12:00:00"
+        },
+        {
+          "executionDay": "Friday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Saturday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Sunday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        }
+      ],
+      "shotsRange": [
+        1,
+        1000
+      ],
+      "deviceCost": {
+        "price": 0.01,
+        "unit": "shot"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "https://a.b.cdn.console.awsstatic.com/59534b58c709fc239521ef866db9ea3f1aba73ad3ebcf60c23914ad8c5c5c878/a6cfc6fca26cf1c2e1c6.png",
+        "summary": "Analog quantum processor based on neutral atom arrays",
+        "externalDocumentationUrl": "https://www.quera.com/aquila"
+      },
+      "deviceLocation": "Boston, USA",
+      "updatedAt": "2026-02-16T12:00:00+00:00"
+    },
+    "action": {
+      "braket.ir.ahs.program": {
+        "version": [
+          "1"
+        ],
+        "actionType": "braket.ir.ahs.program"
+      }
+    },
+    "deviceParameters": {},
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.quera.quera_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.quera.quera_ahs_paradigm_properties",
+        "version": "1"
+      },
+      "qubitCount": 256,
+      "lattice": {
+        "area": {
+          "width": 0.000075,
+          "height": 0.000076
+        },
+        "geometry": {
+          "spacingRadialMin": 0.000004,
+          "spacingVerticalMin": 0.000004,
+          "positionResolution": 1e-8,
+          "numberSitesMax": 256
+        }
+      },
+      "rydberg": {
+        "c6Coefficient": 5.42e-24,
+        "rydbergGlobal": {
+          "rabiFrequencyRange": [
+            0,
+            15800000
+          ],
+          "rabiFrequencyResolution": 400,
+          "rabiFrequencySlewRateMax": 400000000000000,
+          "detuningRange": [
+            -125000000,
+            125000000
+          ],
+          "detuningResolution": 0.2,
+          "detuningSlewRateMax": 6000000000000000,
+          "phaseRange": [
+            -99,
+            99
+          ],
+          "phaseResolution": 5e-7,
+          "timeResolution": 1e-9,
+          "timeDeltaMin": 5e-8,
+          "timeMin": 0,
+          "timeMax": 0.00002
+        }
+      },
+      "performance": {
+        "lattice": {
+          "positionErrorAbs": 2.25e-7,
+          "sitePositionError": 1e-7,
+          "atomPositionError": 2e-7,
+          "fillingErrorTypical": 0.008,
+          "fillingErrorWorst": 0.05,
+          "vacancyErrorTypical": 0.001,
+          "vacancyErrorWorst": 0.005,
+          "atomLossProbabilityTypical": 0.005,
+          "atomLossProbabilityWorst": 0.01,
+          "atomCaptureProbabilityTypical": 0.001,
+          "atomCaptureProbabilityWorst": 0.002,
+          "atomDetectionErrorFalsePositiveTypical": 0.001,
+          "atomDetectionErrorFalsePositiveWorst": 0.005,
+          "atomDetectionErrorFalseNegativeTypical": 0.001,
+          "atomDetectionErrorFalseNegativeWorst": 0.005
+        },
+        "rydberg": {
+          "rydbergGlobal": {
+            "rabiFrequencyErrorRel": 0.03,
+            "rabiFrequencyGlobalErrorRel": 0.02,
+            "rabiFrequencyInhomogeneityRel": 0.02,
+            "groundDetectionError": 0.05,
+            "rydbergDetectionError": 0.1,
+            "groundPrepError": 0.01,
+            "rydbergPrepErrorBest": 0.05,
+            "rydbergPrepErrorWorst": 0.07,
+            "T1Single": 0.000075,
+            "T1Ensemble": 0.000075,
+            "T2StarSingle": 0.000005,
+            "T2StarEnsemble": 0.00000475,
+            "T2EchoSingle": 0.000008,
+            "T2EchoEnsemble": 0.000007,
+            "T2RabiSingle": 0.000008,
+            "T2RabiEnsemble": 0.000007,
+            "T2BlockadedRabiSingle": 0.000008,
+            "T2BlockadedRabiEnsemble": 0.000007,
+            "detuningError": 1000000,
+            "detuningInhomogeneity": 1000000,
+            "rabiAmplitudeRampCorrection": [
+              {
+                "rampTime": 5e-8,
+                "rabiCorrection": 0.92
+              },
+              {
+                "rampTime": 7.5e-8,
+                "rabiCorrection": 0.97
+              },
+              {
+                "rampTime": 1e-7,
+                "rabiCorrection": 1
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Weekdays",
+          "windowStartHour": "12:00:00",
+          "windowEndHour": "03:00:00"
+        }
+      ],
+      "shotsRange": [
+        1,
+        10000
+      ],
+      "deviceCost": {
+        "price": 0.01,
+        "unit": "shot"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "http://d1.awsstatic.com/re19/Braket/IonQ%20Logo.59ea92b40cff5a2c2e90d9d981b864c2f424c5a8.png",
+        "summary": "Universal gate-model QPU based on trapped ions",
+        "externalDocumentationUrl": "https://ionq.com/quantum-systems/harmony"
+      },
+      "deviceLocation": "Maryland, USA",
+      "updatedAt": "2024-08-14T11:00:05+00:00"
+    },
+    "action": {
+      "braket.ir.jaqcd.program": {
+        "version": [
+          "1"
+        ],
+        "actionType": "braket.ir.jaqcd.program",
+        "supportedOperations": [
+          "x",
+          "y",
+          "z",
+          "rx",
+          "ry",
+          "rz",
+          "h",
+          "cnot",
+          "s",
+          "si",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "xx",
+          "yy",
+          "zz",
+          "swap"
+        ],
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 10000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 10000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 10000
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 10000
+          }
+        ],
+        "disabledQubitRewiringSupported": false
+      },
+      "braket.ir.openqasm.program": {
+        "version": [
+          "1"
+        ],
+        "actionType": "braket.ir.openqasm.program",
+        "supportedOperations": [
+          "x",
+          "y",
+          "z",
+          "rx",
+          "ry",
+          "rz",
+          "h",
+          "cnot",
+          "s",
+          "si",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "xx",
+          "yy",
+          "zz",
+          "swap"
+        ],
+        "supportedModifiers": [],
+        "supportedPragmas": [
+          "braket_result_type_sample",
+          "braket_result_type_expectation",
+          "braket_result_type_variance",
+          "braket_result_type_probability",
+          "verbatim"
+        ],
+        "forbiddenPragmas": [
+          "braket_unitary_matrix",
+          "braket_result_type_state_vector",
+          "braket_result_type_density_matrix",
+          "braket_result_type_amplitude",
+          "braket_result_type_adjoint_gradient"
+        ],
+        "maximumQubitArrays": 1,
+        "maximumClassicalArrays": 1,
+        "forbiddenArrayOperations": [
+          "concatenation",
+          "negativeIndex",
+          "range",
+          "rangeWithStep",
+          "slicing",
+          "selection"
+        ],
+        "requiresAllQubitsMeasurement": true,
+        "supportPhysicalQubits": true,
+        "requiresContiguousQubitIndices": false,
+        "supportsPartialVerbatimBox": false,
+        "supportsUnassignedMeasurements": true,
+        "disabledQubitRewiringSupported": false,
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 10000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 10000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 10000
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 10000
+          }
+        ]
+      }
+    },
+    "deviceParameters": {
+      "title": "IonqDeviceParameters",
+      "description": "This defines the parameters common to all the IonQ devices.",
+      "type": "object",
+      "properties": {
+        "braketSchemaHeader": {
+          "title": "Braketschemaheader",
+          "default": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          },
+          "const": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          }
+        },
+        "paradigmParameters": {
+          "$ref": "#/definitions/GateModelParameters"
+        }
+      },
+      "required": [
+        "paradigmParameters"
+      ],
+      "definitions": {
+        "GateModelParameters": {
+          "title": "GateModelParameters",
+          "description": "Defines parameters common to all gate model devices.",
+          "type": "object",
+          "properties": {
+            "braketSchemaHeader": {
+              "title": "Braketschemaheader",
+              "default": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              },
+              "const": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              }
+            },
+            "qubitCount": {
+              "title": "Qubitcount",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "disableQubitRewiring": {
+              "title": "Disablequbitrewiring",
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "qubitCount"
+          ]
+        }
+      }
+    },
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.ionq.ionq_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.gate_model_qpu_paradigm_properties",
+        "version": "1"
+      },
+      "connectivity": {
+        "fullyConnected": true,
+        "connectivityGraph": {}
+      },
+      "qubitCount": 11,
+      "nativeGateSet": [
+        "GPI",
+        "GPI2",
+        "MS"
+      ]
+    },
+    "provider": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.ionq.ionq_provider_properties",
+        "version": "1"
+      },
+      "fidelity": {
+        "1Q": {
+          "mean": 0.9971
+        },
+        "2Q": {
+          "mean": 0.9464
+        },
+        "spam": {
+          "mean": 0.9932
+        }
+      },
+      "timing": {
+        "T1": 10000,
+        "T2": 0.2,
+        "1Q": 0.00001,
+        "2Q": 0.0002,
+        "readout": 0.00013,
+        "reset": 0.00002
+      },
+      "errorMitigation": null
+    }
+  },
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Everyday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        }
+      ],
+      "shotsRange": [
+        1,
+        1000
+      ],
+      "deviceCost": {
+        "price": 0.275,
+        "unit": "minute"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "https://d1.awsstatic.com/about-aws/whats-new/lpm-assets/services/SiteMerch_Qx_Editorial-reInvent.d5a91c3e3fa666a2c33b8a912c21d1cb4ef270fb.png",
+        "summary": "Amazon Braket tensor network simulator",
+        "externalDocumentationUrl": "https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices.html#choose-a-simulator"
+      },
+      "updatedAt": "2022-06-22T10:18:00"
+    },
+    "action": {
+      "braket.ir.jaqcd.program": {
+        "version": [
+          "1.0",
+          "1.1"
+        ],
+        "actionType": "braket.ir.jaqcd.program",
+        "supportedOperations": [
+          "cnot",
+          "cphaseshift",
+          "cphaseshift00",
+          "cphaseshift01",
+          "cphaseshift10",
+          "cy",
+          "cz",
+          "ecr",
+          "h",
+          "i",
+          "iswap",
+          "pswap",
+          "phaseshift",
+          "rx",
+          "ry",
+          "rz",
+          "s",
+          "si",
+          "swap",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "x",
+          "xx",
+          "xy",
+          "y",
+          "yy",
+          "z",
+          "zz"
+        ],
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 1000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 1000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 1000
+          }
+        ]
+      },
+      "braket.ir.openqasm.program": {
+        "version": [
+          "1.0"
+        ],
+        "actionType": "braket.ir.openqasm.program",
+        "supportedOperations": [
+          "cnot",
+          "cphaseshift",
+          "cphaseshift00",
+          "cphaseshift01",
+          "cphaseshift10",
+          "cy",
+          "cz",
+          "ecr",
+          "h",
+          "i",
+          "iswap",
+          "pswap",
+          "phaseshift",
+          "rx",
+          "ry",
+          "rz",
+          "s",
+          "si",
+          "swap",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "x",
+          "xx",
+          "xy",
+          "y",
+          "yy",
+          "z",
+          "zz"
+        ],
+        "supportedPragmas": [
+          "braket_basis_rotation",
+          "braket_result_type_sample",
+          "braket_result_type_expectation",
+          "braket_result_type_variance"
+        ],
+        "forbiddenPragmas": [
+          "braket_result_type_state_vector",
+          "braket_result_type_density_matrix",
+          "braket_noise_amplitude_damping",
+          "braket_noise_bit_flip",
+          "braket_noise_depolarizing",
+          "braket_noise_kraus",
+          "braket_noise_pauli_channel",
+          "braket_noise_generalized_amplitude_damping",
+          "braket_noise_phase_flip",
+          "braket_noise_phase_damping",
+          "braket_noise_two_qubit_dephasing",
+          "braket_noise_two_qubit_depolarizing",
+          "braket_unitary_matrix",
+          "braket_result_type_adjoint_gradient"
+        ],
+        "maximumQubitArrays": 1,
+        "maximumClassicalArrays": 1,
+        "forbiddenArrayOperations": [
+          "concatenation",
+          "negativeIndex",
+          "range",
+          "rangeWithStep",
+          "slicing",
+          "selection"
+        ],
+        "requiresAllQubitsMeasurement": true,
+        "supportPhysicalQubits": false,
+        "requiresContiguousQubitIndices": true,
+        "supportsPartialVerbatimBox": true,
+        "supportsUnassignedMeasurements": true,
+        "disabledQubitRewiringSupported": false,
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 1000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 1000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 1000
+          }
+        ]
+      }
+    },
+    "deviceParameters": {
+      "title": "GateModelSimulatorDeviceParameters",
+      "description": "This defines the parameters common to all the gatemodel devices.\n\nAttributes:\n    paradigmParameters: Parameters that are common to gatemodel paradigm\n\nExamples:\n    >>> import json\n    >>> input_json = {\n    ...    \"braketSchemaHeader\": {\n    ...        \"name\": \"braket.device_schema.simulators.gate_model_simulator_device_parameters\",\n    ...        \"version\": \"1\",\n    ...    },\n    ...    \"paradigmParameters\": {\"braketSchemaHeader\": {\n    ...        \"name\": \"braket.device_schema.gate_model_parameters\",\n    ...        \"version\": \"1\",\n    ...    },\"qubitCount\": 1},\n    ... }\n    >>> GateModelSimulatorDeviceParameters.parse_raw_schema(json.dumps(input_json))",
+      "type": "object",
+      "properties": {
+        "braketSchemaHeader": {
+          "title": "Braketschemaheader",
+          "const": {
+            "name": "braket.device_schema.simulators.gate_model_simulator_device_parameters",
+            "version": "1"
+          }
+        },
+        "paradigmParameters": {
+          "$ref": "#/definitions/GateModelParameters"
+        }
+      },
+      "required": [
+        "paradigmParameters"
+      ],
+      "definitions": {
+        "GateModelParameters": {
+          "title": "GateModelParameters",
+          "description": "This defines the parameters common to all the gatemodel devices.\n\nAttributes:\n    qubitCount: number of qubits for a device\n\nExamples:\n    >>> import json\n    >>> input_json = {\n    ...    \"braketSchemaHeader\": {\n    ...        \"name\": \"braket.device_schema.gate_model_parameters\",\n    ...        \"version\": \"1\",\n    ...    },\n    ...    \"qubitCount\": 1\n    ... }\n    >>> GateModelParameters.parse_raw_schema(json.dumps(input_json))",
+          "type": "object",
+          "properties": {
+            "braketSchemaHeader": {
+              "title": "Braketschemaheader",
+              "const": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              }
+            },
+            "qubitCount": {
+              "title": "Qubitcount",
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "qubitCount"
+          ]
+        }
+      }
+    },
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.simulators.gate_model_simulator_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.simulators.gate_model_simulator_paradigm_properties",
+        "version": "1"
+      },
+      "qubitCount": 50
+    }
+  },
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Weekdays",
+          "windowStartHour": "12:00:00",
+          "windowEndHour": "03:00:00"
+        }
+      ],
+      "shotsRange": [
+        1,
+        5000
+      ],
+      "deviceCost": {
+        "price": 0.03,
+        "unit": "shot"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "http://d1.awsstatic.com/re19/Braket/IonQ%20Logo.59ea92b40cff5a2c2e90d9d981b864c2f424c5a8.png",
+        "summary": "Universal gate-model QPU based on trapped ions",
+        "externalDocumentationUrl": "https://ionq.com/quantum-systems/aria"
+      },
+      "deviceLocation": "Maryland, USA",
+      "updatedAt": "2024-08-24T00:33:02+00:00"
+    },
+    "action": {
+      "braket.ir.openqasm.program": {
+        "version": [
+          "1"
+        ],
+        "actionType": "braket.ir.openqasm.program",
+        "supportedOperations": [
+          "x",
+          "y",
+          "z",
+          "rx",
+          "ry",
+          "rz",
+          "h",
+          "cnot",
+          "s",
+          "si",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "xx",
+          "yy",
+          "zz",
+          "swap"
+        ],
+        "supportedModifiers": [],
+        "supportedPragmas": [
+          "braket_result_type_sample",
+          "braket_result_type_expectation",
+          "braket_result_type_variance",
+          "braket_result_type_probability",
+          "verbatim"
+        ],
+        "forbiddenPragmas": [
+          "braket_unitary_matrix",
+          "braket_result_type_state_vector",
+          "braket_result_type_density_matrix",
+          "braket_result_type_amplitude",
+          "braket_result_type_adjoint_gradient"
+        ],
+        "maximumQubitArrays": 1,
+        "maximumClassicalArrays": 1,
+        "forbiddenArrayOperations": [
+          "concatenation",
+          "negativeIndex",
+          "range",
+          "rangeWithStep",
+          "slicing",
+          "selection"
+        ],
+        "requiresAllQubitsMeasurement": true,
+        "supportPhysicalQubits": true,
+        "requiresContiguousQubitIndices": false,
+        "supportsPartialVerbatimBox": false,
+        "supportsUnassignedMeasurements": true,
+        "disabledQubitRewiringSupported": false,
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 5000
+          }
+        ]
+      }
+    },
+    "deviceParameters": {
+      "title": "IonqDeviceParameters",
+      "description": "This defines the parameters common to all the IonQ devices.",
+      "type": "object",
+      "properties": {
+        "braketSchemaHeader": {
+          "title": "Braketschemaheader",
+          "default": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          },
+          "const": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          }
+        },
+        "paradigmParameters": {
+          "$ref": "#/definitions/GateModelParameters"
+        },
+        "errorMitigation": {
+          "title": "Errormitigation",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ErrorMitigationScheme"
+          }
+        }
+      },
+      "required": [
+        "paradigmParameters"
+      ],
+      "definitions": {
+        "GateModelParameters": {
+          "title": "GateModelParameters",
+          "description": "Defines parameters common to all gate model devices.",
+          "type": "object",
+          "properties": {
+            "braketSchemaHeader": {
+              "title": "Braketschemaheader",
+              "default": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              },
+              "const": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              }
+            },
+            "qubitCount": {
+              "title": "Qubitcount",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "disableQubitRewiring": {
+              "title": "Disablequbitrewiring",
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "qubitCount"
+          ]
+        },
+        "ErrorMitigationScheme": {
+          "title": "ErrorMitigationScheme",
+          "description": "Base class for an error mitigation scheme.",
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.ionq.ionq_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.gate_model_qpu_paradigm_properties",
+        "version": "1"
+      },
+      "connectivity": {
+        "fullyConnected": true,
+        "connectivityGraph": {}
+      },
+      "qubitCount": 25,
+      "nativeGateSet": [
+        "GPI",
+        "GPI2",
+        "MS"
+      ]
+    },
+    "provider": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.ionq.ionq_provider_properties",
+        "version": "1"
+      },
+      "fidelity": {
+        "1Q": {
+          "mean": 0.9995
+        },
+        "2Q": {
+          "mean": 0.9735
+        },
+        "spam": {
+          "mean": 0.9933
+        }
+      },
+      "timing": {
+        "T1": 10,
+        "T2": 1.5,
+        "1Q": 0.000135,
+        "2Q": 0.0006,
+        "readout": 0.00005,
+        "reset": 0.000015
+      },
+      "errorMitigation": {
+        "braket.device_schema.error_mitigation.debias.Debias": {
+          "minimumShots": 2500
+        }
+      }
+    }
+  },
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Everyday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        }
+      ],
+      "shotsRange": [
+        0,
+        100000
+      ],
+      "deviceCost": {
+        "price": 0.075,
+        "unit": "minute"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "https://d1.awsstatic.com/about-aws/whats-new/lpm-assets/services/SiteMerch_Qx_Editorial-reInvent.d5a91c3e3fa666a2c33b8a912c21d1cb4ef270fb.png",
+        "summary": "Amazon Braket state vector simulator",
+        "externalDocumentationUrl": "https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices.html#choose-a-simulator"
+      },
+      "updatedAt": "2022-06-22T10:18:00"
+    },
+    "action": {
+      "braket.ir.jaqcd.program": {
+        "version": [
+          "1.0",
+          "1.1"
+        ],
+        "actionType": "braket.ir.jaqcd.program",
+        "supportedOperations": [
+          "ccnot",
+          "cnot",
+          "cphaseshift",
+          "cphaseshift00",
+          "cphaseshift01",
+          "cphaseshift10",
+          "cswap",
+          "cy",
+          "cz",
+          "ecr",
+          "h",
+          "i",
+          "iswap",
+          "pswap",
+          "phaseshift",
+          "rx",
+          "ry",
+          "rz",
+          "s",
+          "si",
+          "swap",
+          "t",
+          "ti",
+          "unitary",
+          "v",
+          "vi",
+          "x",
+          "xx",
+          "xy",
+          "y",
+          "yy",
+          "z",
+          "zz"
+        ],
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 1,
+            "maxShots": 100000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 0,
+            "maxShots": 100000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 0,
+            "maxShots": 100000
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 100000
+          },
+          {
+            "name": "Amplitude",
+            "minShots": 0,
+            "maxShots": 0
+          }
+        ]
+      },
+      "braket.ir.openqasm.program": {
+        "version": [
+          "1.0"
+        ],
+        "actionType": "braket.ir.openqasm.program",
+        "supportedOperations": [
+          "ccnot",
+          "cnot",
+          "cphaseshift",
+          "cphaseshift00",
+          "cphaseshift01",
+          "cphaseshift10",
+          "cswap",
+          "cy",
+          "cz",
+          "ecr",
+          "h",
+          "i",
+          "iswap",
+          "pswap",
+          "phaseshift",
+          "rx",
+          "ry",
+          "rz",
+          "s",
+          "si",
+          "swap",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "x",
+          "xx",
+          "xy",
+          "y",
+          "yy",
+          "z",
+          "zz",
+          "gpi",
+          "gpi2",
+          "ms"
+        ],
+        "supportedPragmas": [
+          "braket_unitary_matrix",
+          "braket_basis_rotation",
+          "braket_result_type_sample",
+          "braket_result_type_expectation",
+          "braket_result_type_variance",
+          "braket_result_type_probability",
+          "braket_result_type_amplitude",
+          "braket_result_type_adjoint_gradient"
+        ],
+        "forbiddenPragmas": [
+          "braket_result_type_state_vector",
+          "braket_result_type_density_matrix",
+          "braket_noise_amplitude_damping",
+          "braket_noise_bit_flip",
+          "braket_noise_depolarizing",
+          "braket_noise_kraus",
+          "braket_noise_pauli_channel",
+          "braket_noise_generalized_amplitude_damping",
+          "braket_noise_phase_flip",
+          "braket_noise_phase_damping",
+          "braket_noise_two_qubit_dephasing",
+          "braket_noise_two_qubit_depolarizing"
+        ],
+        "maximumQubitArrays": 1,
+        "maximumClassicalArrays": 1,
+        "forbiddenArrayOperations": [
+          "concatenation",
+          "negativeIndex",
+          "range",
+          "rangeWithStep",
+          "slicing",
+          "selection"
+        ],
+        "requiresAllQubitsMeasurement": true,
+        "supportPhysicalQubits": false,
+        "requiresContiguousQubitIndices": true,
+        "supportsPartialVerbatimBox": true,
+        "supportsUnassignedMeasurements": true,
+        "disabledQubitRewiringSupported": false,
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 1,
+            "maxShots": 100000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 0,
+            "maxShots": 100000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 0,
+            "maxShots": 100000
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 100000
+          },
+          {
+            "name": "Amplitude",
+            "minShots": 0,
+            "maxShots": 0
+          },
+          {
+            "name": "AdjointGradient",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 0,
+            "maxShots": 0
+          }
+        ]
+      }
+    },
+    "deviceParameters": {
+      "title": "GateModelSimulatorDeviceParameters",
+      "description": "This defines the parameters common to all the gatemodel devices.\n\nAttributes:\n    paradigmParameters: Parameters that are common to gatemodel paradigm\n\nExamples:\n    >>> import json\n    >>> input_json = {\n    ...    \"braketSchemaHeader\": {\n    ...        \"name\": \"braket.device_schema.simulators.gate_model_simulator_device_parameters\",\n    ...        \"version\": \"1\",\n    ...    },\n    ...    \"paradigmParameters\": {\"braketSchemaHeader\": {\n    ...        \"name\": \"braket.device_schema.gate_model_parameters\",\n    ...        \"version\": \"1\",\n    ...    },\"qubitCount\": 1},\n    ... }\n    >>> GateModelSimulatorDeviceParameters.parse_raw_schema(json.dumps(input_json))",
+      "type": "object",
+      "properties": {
+        "braketSchemaHeader": {
+          "title": "Braketschemaheader",
+          "const": {
+            "name": "braket.device_schema.simulators.gate_model_simulator_device_parameters",
+            "version": "1"
+          }
+        },
+        "paradigmParameters": {
+          "$ref": "#/definitions/GateModelParameters"
+        }
+      },
+      "required": [
+        "paradigmParameters"
+      ],
+      "definitions": {
+        "GateModelParameters": {
+          "title": "GateModelParameters",
+          "description": "This defines the parameters common to all the gatemodel devices.\n\nAttributes:\n    qubitCount: number of qubits for a device\n\nExamples:\n    >>> import json\n    >>> input_json = {\n    ...    \"braketSchemaHeader\": {\n    ...        \"name\": \"braket.device_schema.gate_model_parameters\",\n    ...        \"version\": \"1\",\n    ...    },\n    ...    \"qubitCount\": 1\n    ... }\n    >>> GateModelParameters.parse_raw_schema(json.dumps(input_json))",
+          "type": "object",
+          "properties": {
+            "braketSchemaHeader": {
+              "title": "Braketschemaheader",
+              "const": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              }
+            },
+            "qubitCount": {
+              "title": "Qubitcount",
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "qubitCount"
+          ]
+        }
+      }
+    },
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.simulators.gate_model_simulator_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.simulators.gate_model_simulator_paradigm_properties",
+        "version": "1"
+      },
+      "qubitCount": 34
+    }
+  },
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Weekdays",
+          "windowStartHour": "15:00:00",
+          "windowEndHour": "17:00:00"
+        }
+      ],
+      "shotsRange": [
+        1,
+        1000000
+      ],
+      "deviceCost": {
+        "price": 0.0002,
+        "unit": "shot"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "https://d1.awsstatic.com/re19/Braket/xanadu.48c14affd35d042cd2ad42be220bf1dcdeed2f7f.png",
+        "summary": "Gaussian Boson Sampling on a programmable photonic processor",
+        "externalDocumentationUrl": "https://xanadu.ai/products/borealis"
+      },
+      "deviceLocation": "Ontario, Canada",
+      "updatedAt": "2023-06-02T14:51:41.695639+00:00"
+    },
+    "action": {
+      "braket.ir.blackbird.program": {
+        "version": [
+          "1"
+        ],
+        "actionType": "braket.ir.blackbird.program",
+        "supportedOperations": [
+          "s",
+          "r0",
+          "r1",
+          "r2",
+          "bs0",
+          "bs1",
+          "bs2",
+          "loop0_phase",
+          "loop1_phase",
+          "loop2_phase"
+        ],
+        "supportedResultTypes": []
+      }
+    },
+    "deviceParameters": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.xanadu.xanadu_device_parameters",
+        "version": "1"
+      }
+    },
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.xanadu.xanadu_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.continuous_variable_qpu_paradigm_properties",
+        "version": "1"
+      },
+      "modes": {
+        "spatial": 1,
+        "concurrent": 44,
+        "temporal_max": 331
+      },
+      "layout": "name template_borealis\nversion 1.0\ntarget borealis (shots=1)\ntype tdm (temporal_modes=331, copies=1)\n\nfloat array p0[1, 331] =\n    {s}\nfloat array p1[1, 331] =\n    {r0}\nfloat array p2[1, 331] =\n    {bs0}\nfloat array p3[1, 331] =\n    {loop0_phase}\nfloat array p4[1, 331] =\n    {r1}\nfloat array p5[1, 331] =\n    {bs1}\nfloat array p6[1, 331] =\n    {loop1_phase}\nfloat array p7[1, 331] =\n    {r2}\nfloat array p8[1, 331] =\n    {bs2}\nfloat array p9[1, 331] =\n    {loop2_phase}\n\nSgate({s}, 0.0) | 43\nRgate({r0}) | 43\nBSgate({bs0}, 1.5707963267948966) | [42, 43]\nRgate({loop0_phase}) | 43\nRgate({r1}) | 42\nBSgate({bs1}, 1.5707963267948966) | [36, 42]\nRgate({loop1_phase}) | 42\nRgate({r2}) | 36\nBSgate({bs2}, 1.5707963267948966) | [0, 36]\nRgate({loop2_phase}) | 36\nMeasureFock() | 0",
+      "compiler": [
+        "borealis"
+      ],
+      "supportedLanguages": [
+        "blackbird:1.0"
+      ],
+      "compilerDefault": "borealis",
+      "nativeGateSet": [
+        "s",
+        "r0",
+        "r1",
+        "r2",
+        "bs0",
+        "bs1",
+        "bs2",
+        "loop0_phase",
+        "loop1_phase",
+        "loop2_phase"
+      ],
+      "gateParameters": {
+        "s": [
+          [
+            0,
+            2
+          ]
+        ],
+        "r0": [
+          [
+            -1.5707963267948966,
+            1.5707963267948966
+          ]
+        ],
+        "r1": [
+          [
+            -1.5707963267948966,
+            1.5707963267948966
+          ]
+        ],
+        "r2": [
+          [
+            -1.5707963267948966,
+            1.5707963267948966
+          ]
+        ],
+        "bs0": [
+          [
+            0,
+            1.5707963267948966
+          ]
+        ],
+        "bs1": [
+          [
+            0,
+            1.5707963267948966
+          ]
+        ],
+        "bs2": [
+          [
+            0,
+            1.5707963267948966
+          ]
+        ],
+        "loop0_phase": [
+          [
+            -3.141592653589793,
+            3.141592653589793
+          ]
+        ],
+        "loop1_phase": [
+          [
+            -3.141592653589793,
+            3.141592653589793
+          ]
+        ],
+        "loop2_phase": [
+          [
+            -3.141592653589793,
+            3.141592653589793
+          ]
+        ]
+      },
+      "target": "borealis"
+    },
+    "provider": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.xanadu.xanadu_provider_properties",
+        "version": "1"
+      },
+      "loopPhases": [
+        -1.648,
+        0.57,
+        2.355
+      ],
+      "schmidtNumber": 1.158,
+      "commonEfficiency": 0.351,
+      "squeezingParametersMean": {
+        "low": 0.677,
+        "high": 1.182,
+        "medium": 1.006
+      },
+      "relativeChannelEfficiencies": [
+        0.924,
+        0.939,
+        0.919,
+        1,
+        0.972,
+        0.929,
+        0.901,
+        0.968,
+        0.956,
+        0.968,
+        0.977,
+        0.997,
+        0.962,
+        0.977,
+        0.957,
+        0.898
+      ],
+      "loopEfficiencies": [
+        0.884,
+        0.883,
+        0.796
+      ]
+    }
+  },
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Everyday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        }
+      ],
+      "shotsRange": [
+        0,
+        100000
+      ],
+      "deviceCost": {
+        "price": 0.075,
+        "unit": "minute"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "https://d1.awsstatic.com/about-aws/whats-new/lpm-assets/services/SiteMerch_Qx_Editorial-reInvent.d5a91c3e3fa666a2c33b8a912c21d1cb4ef270fb.png",
+        "summary": "Amazon Braket density matrix simulator",
+        "externalDocumentationUrl": "https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices.html#choose-a-simulator"
+      },
+      "updatedAt": "2022-06-22T10:18:00"
+    },
+    "action": {
+      "braket.ir.jaqcd.program": {
+        "version": [
+          "1.0",
+          "1.1"
+        ],
+        "actionType": "braket.ir.jaqcd.program",
+        "supportedOperations": [
+          "amplitude_damping",
+          "bit_flip",
+          "ccnot",
+          "cnot",
+          "cphaseshift",
+          "cphaseshift00",
+          "cphaseshift01",
+          "cphaseshift10",
+          "cswap",
+          "cy",
+          "cz",
+          "depolarizing",
+          "ecr",
+          "pauli_channel",
+          "generalized_amplitude_damping",
+          "h",
+          "i",
+          "iswap",
+          "kraus",
+          "phase_flip",
+          "phase_damping",
+          "phaseshift",
+          "pswap",
+          "rx",
+          "ry",
+          "rz",
+          "s",
+          "si",
+          "swap",
+          "t",
+          "ti",
+          "two_qubit_dephasing",
+          "two_qubit_depolarizing",
+          "unitary",
+          "v",
+          "vi",
+          "x",
+          "xx",
+          "xy",
+          "y",
+          "yy",
+          "z",
+          "zz"
+        ],
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 1,
+            "maxShots": 100000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 0,
+            "maxShots": 100000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 0,
+            "maxShots": 100000
+          },
+          {
+            "name": "DensityMatrix",
+            "minShots": 0,
+            "maxShots": 0
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 100000
+          }
+        ]
+      },
+      "braket.ir.openqasm.program": {
+        "version": [
+          "1.0"
+        ],
+        "actionType": "braket.ir.openqasm.program",
+        "supportedOperations": [
+          "ccnot",
+          "cnot",
+          "cphaseshift",
+          "cphaseshift00",
+          "cphaseshift01",
+          "cphaseshift10",
+          "cswap",
+          "cy",
+          "cz",
+          "ecr",
+          "h",
+          "i",
+          "iswap",
+          "phaseshift",
+          "pswap",
+          "rx",
+          "ry",
+          "rz",
+          "s",
+          "si",
+          "swap",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "x",
+          "xx",
+          "xy",
+          "y",
+          "yy",
+          "z",
+          "zz",
+          "gpi",
+          "gpi2",
+          "ms"
+        ],
+        "supportedPragmas": [
+          "braket_noise_bit_flip",
+          "braket_noise_depolarizing",
+          "braket_noise_kraus",
+          "braket_noise_pauli_channel",
+          "braket_noise_generalized_amplitude_damping",
+          "braket_noise_amplitude_damping",
+          "braket_noise_phase_flip",
+          "braket_noise_phase_damping",
+          "braket_noise_two_qubit_dephasing",
+          "braket_noise_two_qubit_depolarizing",
+          "braket_unitary_matrix",
+          "braket_result_type_sample",
+          "braket_result_type_expectation",
+          "braket_result_type_variance",
+          "braket_result_type_probability",
+          "braket_result_type_density_matrix"
+        ],
+        "forbiddenPragmas": [
+          "braket_result_type_state_vector",
+          "braket_result_type_adjoint_gradient"
+        ],
+        "maximumQubitArrays": 1,
+        "maximumClassicalArrays": 1,
+        "forbiddenArrayOperations": [
+          "concatenation",
+          "negativeIndex",
+          "range",
+          "rangeWithStep",
+          "slicing",
+          "selection"
+        ],
+        "requiresAllQubitsMeasurement": true,
+        "supportPhysicalQubits": false,
+        "requiresContiguousQubitIndices": true,
+        "supportsPartialVerbatimBox": true,
+        "supportsUnassignedMeasurements": true,
+        "disabledQubitRewiringSupported": false,
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 1,
+            "maxShots": 100000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 0,
+            "maxShots": 100000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i",
+              "hermitian"
+            ],
+            "minShots": 0,
+            "maxShots": 100000
+          },
+          {
+            "name": "DensityMatrix",
+            "minShots": 0,
+            "maxShots": 0
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 100000
+          }
+        ]
+      }
+    },
+    "deviceParameters": {
+      "title": "GateModelSimulatorDeviceParameters",
+      "description": "This defines the parameters common to all the gatemodel devices.\n\nAttributes:\n    paradigmParameters: Parameters that are common to gatemodel paradigm\n\nExamples:\n    >>> import json\n    >>> input_json = {\n    ...    \"braketSchemaHeader\": {\n    ...        \"name\": \"braket.device_schema.simulators.gate_model_simulator_device_parameters\",\n    ...        \"version\": \"1\",\n    ...    },\n    ...    \"paradigmParameters\": {\"braketSchemaHeader\": {\n    ...        \"name\": \"braket.device_schema.gate_model_parameters\",\n    ...        \"version\": \"1\",\n    ...    },\"qubitCount\": 1},\n    ... }\n    >>> GateModelSimulatorDeviceParameters.parse_raw_schema(json.dumps(input_json))",
+      "type": "object",
+      "properties": {
+        "braketSchemaHeader": {
+          "title": "Braketschemaheader",
+          "const": {
+            "name": "braket.device_schema.simulators.gate_model_simulator_device_parameters",
+            "version": "1"
+          }
+        },
+        "paradigmParameters": {
+          "$ref": "#/definitions/GateModelParameters"
+        }
+      },
+      "required": [
+        "paradigmParameters"
+      ],
+      "definitions": {
+        "GateModelParameters": {
+          "title": "GateModelParameters",
+          "description": "This defines the parameters common to all the gatemodel devices.\n\nAttributes:\n    qubitCount: number of qubits for a device\n\nExamples:\n    >>> import json\n    >>> input_json = {\n    ...    \"braketSchemaHeader\": {\n    ...        \"name\": \"braket.device_schema.gate_model_parameters\",\n    ...        \"version\": \"1\",\n    ...    },\n    ...    \"qubitCount\": 1\n    ... }\n    >>> GateModelParameters.parse_raw_schema(json.dumps(input_json))",
+          "type": "object",
+          "properties": {
+            "braketSchemaHeader": {
+              "title": "Braketschemaheader",
+              "const": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              }
+            },
+            "qubitCount": {
+              "title": "Qubitcount",
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "qubitCount"
+          ]
+        }
+      }
+    },
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.simulators.gate_model_simulator_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.simulators.gate_model_simulator_paradigm_properties",
+        "version": "1"
+      },
+      "qubitCount": 17
+    }
+  },
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Sunday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "17:59:59"
+        },
+        {
+          "executionDay": "Sunday",
+          "windowStartHour": "18:30:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Monday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "17:59:59"
+        },
+        {
+          "executionDay": "Monday",
+          "windowStartHour": "18:30:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Tuesday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "17:59:59"
+        },
+        {
+          "executionDay": "Tuesday",
+          "windowStartHour": "18:30:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Wednesday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "17:44:59"
+        },
+        {
+          "executionDay": "Wednesday",
+          "windowStartHour": "23:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Thursday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "17:59:59"
+        },
+        {
+          "executionDay": "Thursday",
+          "windowStartHour": "18:30:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Friday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "17:59:59"
+        },
+        {
+          "executionDay": "Friday",
+          "windowStartHour": "18:30:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Saturday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "17:59:59"
+        },
+        {
+          "executionDay": "Saturday",
+          "windowStartHour": "18:30:00",
+          "windowEndHour": "23:59:59"
+        }
+      ],
+      "shotsRange": [
+        100,
+        5000
+      ],
+      "deviceCost": {
+        "price": 0.08,
+        "unit": "shot"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "http://d1.awsstatic.com/re19/Braket/IonQ%20Logo.59ea92b40cff5a2c2e90d9d981b864c2f424c5a8.png",
+        "summary": "Universal gate-model QPU based on trapped ions",
+        "externalDocumentationUrl": "https://ionq.com/quantum-systems/forte"
+      },
+      "deviceLocation": "Maryland, USA",
+      "updatedAt": "2026-02-18T00:00:00+00:00"
+    },
+    "action": {
+      "braket.ir.openqasm.program": {
+        "version": [
+          "1"
+        ],
+        "actionType": "braket.ir.openqasm.program",
+        "supportedOperations": [
+          "x",
+          "y",
+          "z",
+          "h",
+          "s",
+          "si",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "rx",
+          "ry",
+          "rz",
+          "cnot",
+          "swap",
+          "xx",
+          "yy"
+        ],
+        "supportedModifiers": [],
+        "supportedPragmas": [
+          "braket_result_type_sample",
+          "braket_result_type_expectation",
+          "braket_result_type_variance",
+          "braket_result_type_probability",
+          "verbatim"
+        ],
+        "forbiddenPragmas": [
+          "braket_unitary_matrix",
+          "braket_result_type_state_vector",
+          "braket_result_type_density_matrix",
+          "braket_result_type_amplitude",
+          "braket_result_type_adjoint_gradient"
+        ],
+        "maximumQubitArrays": 1,
+        "maximumClassicalArrays": 1,
+        "forbiddenArrayOperations": [
+          "concatenation",
+          "negativeIndex",
+          "range",
+          "rangeWithStep",
+          "slicing",
+          "selection"
+        ],
+        "requiresAllQubitsMeasurement": false,
+        "supportPhysicalQubits": true,
+        "requiresContiguousQubitIndices": false,
+        "supportsPartialVerbatimBox": false,
+        "supportsUnassignedMeasurements": true,
+        "disabledQubitRewiringSupported": false,
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 5000
+          }
+        ]
+      }
+    },
+    "deviceParameters": {
+      "title": "IonqDeviceParameters",
+      "description": "This defines the parameters common to all the IonQ devices.",
+      "type": "object",
+      "properties": {
+        "braketSchemaHeader": {
+          "title": "Braketschemaheader",
+          "default": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          },
+          "const": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          }
+        },
+        "paradigmParameters": {
+          "$ref": "#/definitions/GateModelParameters"
+        },
+        "errorMitigation": {
+          "title": "Errormitigation",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ErrorMitigationScheme"
+          }
+        }
+      },
+      "required": [
+        "paradigmParameters"
+      ],
+      "definitions": {
+        "GateModelParameters": {
+          "title": "GateModelParameters",
+          "description": "Defines parameters common to all gate model devices.",
+          "type": "object",
+          "properties": {
+            "braketSchemaHeader": {
+              "title": "Braketschemaheader",
+              "default": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              },
+              "const": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              }
+            },
+            "qubitCount": {
+              "title": "Qubitcount",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "disableQubitRewiring": {
+              "title": "Disablequbitrewiring",
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "qubitCount"
+          ]
+        },
+        "ErrorMitigationScheme": {
+          "title": "ErrorMitigationScheme",
+          "description": "Base class for an error mitigation scheme.",
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.ionq.ionq_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.gate_model_qpu_paradigm_properties",
+        "version": "1"
+      },
+      "connectivity": {
+        "fullyConnected": true,
+        "connectivityGraph": {
+          "0": [
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "1": [
+            "0",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "2": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "3": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "4": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "5": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "6": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "7",
+            "8",
+            "9"
+          ],
+          "7": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "8",
+            "9"
+          ],
+          "8": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "9"
+          ],
+          "9": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8"
+          ],
+          "10": [
+            "0",
+            "1",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "11": [
+            "0",
+            "1",
+            "10",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "12": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "13": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "14": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "15": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "16": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "17": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "18": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "19": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "20": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "21": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "22": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "23": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "24": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "25": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "26": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "27": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "28": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "29": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "30": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "31": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "32": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "33": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "34": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "35": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ]
+        }
+      },
+      "qubitCount": 36,
+      "nativeGateSet": [
+        "GPI",
+        "GPI2",
+        "ZZ"
+      ]
+    },
+    "provider": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.ionq.ionq_provider_properties",
+        "version": "1"
+      },
+      "fidelity": {
+        "1Q": {
+          "mean": 0.9998
+        },
+        "2Q": {
+          "mean": 0.9725
+        },
+        "spam": {
+          "mean": 0.9966
+        }
+      },
+      "timing": {
+        "T1": 100,
+        "T2": 1,
+        "1Q": 0.00013,
+        "2Q": 0.00097,
+        "readout": 0.00015,
+        "reset": 0.00005
+      },
+      "errorMitigation": {
+        "braket.device_schema.error_mitigation.debias.Debias": {
+          "minimumShots": 2500
+        }
+      }
+    },
+    "standardized": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.standardized_gate_model_qpu_device_properties",
+        "version": "3"
+      },
+      "T1": {
+        "value": 100,
+        "unit": "s"
+      },
+      "T2": {
+        "value": 1,
+        "unit": "s"
+      },
+      "readoutFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING",
+            "description": "Average readout fidelity is estimated with one-qubit randomized benchmarking."
+          },
+          "fidelity": 0.9966,
+          "unit": "fraction"
+        }
+      ],
+      "readoutDuration": {
+        "value": 0.00015,
+        "unit": "s"
+      },
+      "singleQubitGateDuration": {
+        "value": 0.00013,
+        "unit": "s"
+      },
+      "twoQubitGateFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING",
+            "description": "Average gate fidelities for a maximally entangling two-qubit native gate. It is regularly measured by IonQ on the device using Direct Randomized Benchmarking"
+          },
+          "fidelity": 0.9725,
+          "standardError": 0,
+          "unit": "fraction"
+        }
+      ],
+      "twoQubitGateDuration": {
+        "value": 0.00097,
+        "unit": "s"
+      },
+      "activeResetDuration": {
+        "value": 0.00005,
+        "unit": "s"
+      },
+      "updatedAt": "2026-02-18T00:00:00+00:00"
+    }
+  },
+  {
+    "service": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.device_service_properties",
+        "version": "1"
+      },
+      "executionWindows": [
+        {
+          "executionDay": "Sunday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Monday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Tuesday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Wednesday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Thursday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "10:59:59"
+        },
+        {
+          "executionDay": "Thursday",
+          "windowStartHour": "17:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Friday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        },
+        {
+          "executionDay": "Saturday",
+          "windowStartHour": "00:00:00",
+          "windowEndHour": "23:59:59"
+        }
+      ],
+      "shotsRange": [
+        100,
+        5000
+      ],
+      "deviceCost": {
+        "price": 0.08,
+        "unit": "shot"
+      },
+      "deviceDocumentation": {
+        "imageUrl": "http://d1.awsstatic.com/re19/Braket/IonQ%20Logo.59ea92b40cff5a2c2e90d9d981b864c2f424c5a8.png",
+        "summary": "Universal gate-model QPU based on trapped ions",
+        "externalDocumentationUrl": "https://ionq.com/quantum-systems/forte-enterprise"
+      },
+      "deviceLocation": "Basel, Switzerland",
+      "updatedAt": "2026-02-16T00:00:00+00:00"
+    },
+    "action": {
+      "braket.ir.openqasm.program": {
+        "version": [
+          "1"
+        ],
+        "actionType": "braket.ir.openqasm.program",
+        "supportedOperations": [
+          "x",
+          "y",
+          "z",
+          "h",
+          "s",
+          "si",
+          "t",
+          "ti",
+          "v",
+          "vi",
+          "rx",
+          "ry",
+          "rz",
+          "cnot",
+          "swap",
+          "xx",
+          "yy"
+        ],
+        "supportedModifiers": [],
+        "supportedPragmas": [
+          "braket_result_type_sample",
+          "braket_result_type_expectation",
+          "braket_result_type_variance",
+          "braket_result_type_probability",
+          "verbatim"
+        ],
+        "forbiddenPragmas": [
+          "braket_unitary_matrix",
+          "braket_result_type_state_vector",
+          "braket_result_type_density_matrix",
+          "braket_result_type_amplitude",
+          "braket_result_type_adjoint_gradient"
+        ],
+        "maximumQubitArrays": 1,
+        "maximumClassicalArrays": 1,
+        "forbiddenArrayOperations": [
+          "concatenation",
+          "negativeIndex",
+          "range",
+          "rangeWithStep",
+          "slicing",
+          "selection"
+        ],
+        "requiresAllQubitsMeasurement": false,
+        "supportPhysicalQubits": true,
+        "requiresContiguousQubitIndices": false,
+        "supportsPartialVerbatimBox": false,
+        "supportsUnassignedMeasurements": true,
+        "disabledQubitRewiringSupported": false,
+        "supportedResultTypes": [
+          {
+            "name": "Sample",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Expectation",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Variance",
+            "observables": [
+              "x",
+              "y",
+              "z",
+              "h",
+              "i"
+            ],
+            "minShots": 1,
+            "maxShots": 5000
+          },
+          {
+            "name": "Probability",
+            "minShots": 1,
+            "maxShots": 5000
+          }
+        ]
+      }
+    },
+    "deviceParameters": {
+      "title": "IonqDeviceParameters",
+      "description": "This defines the parameters common to all the IonQ devices.",
+      "type": "object",
+      "properties": {
+        "braketSchemaHeader": {
+          "title": "Braketschemaheader",
+          "default": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          },
+          "const": {
+            "name": "braket.device_schema.ionq.ionq_device_parameters",
+            "version": "1"
+          }
+        },
+        "paradigmParameters": {
+          "$ref": "#/definitions/GateModelParameters"
+        },
+        "errorMitigation": {
+          "title": "Errormitigation",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ErrorMitigationScheme"
+          }
+        }
+      },
+      "required": [
+        "paradigmParameters"
+      ],
+      "definitions": {
+        "GateModelParameters": {
+          "title": "GateModelParameters",
+          "description": "Defines parameters common to all gate model devices.",
+          "type": "object",
+          "properties": {
+            "braketSchemaHeader": {
+              "title": "Braketschemaheader",
+              "default": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              },
+              "const": {
+                "name": "braket.device_schema.gate_model_parameters",
+                "version": "1"
+              }
+            },
+            "qubitCount": {
+              "title": "Qubitcount",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "disableQubitRewiring": {
+              "title": "Disablequbitrewiring",
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "qubitCount"
+          ]
+        },
+        "ErrorMitigationScheme": {
+          "title": "ErrorMitigationScheme",
+          "description": "Base class for an error mitigation scheme.",
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.ionq.ionq_device_capabilities",
+      "version": "1"
+    },
+    "paradigm": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.gate_model_qpu_paradigm_properties",
+        "version": "1"
+      },
+      "connectivity": {
+        "fullyConnected": true,
+        "connectivityGraph": {
+          "0": [
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "1": [
+            "0",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "2": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "3": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "4": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "5": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "6": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "7",
+            "8",
+            "9"
+          ],
+          "7": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "8",
+            "9"
+          ],
+          "8": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "9"
+          ],
+          "9": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8"
+          ],
+          "10": [
+            "0",
+            "1",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "11": [
+            "0",
+            "1",
+            "10",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "12": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "13": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "14": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "15": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "16": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "17": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "18": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "19": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "20": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "21": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "22": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "23": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "24": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "25": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "26": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "27": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "28": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "29": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "30": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "31": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "32",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "32": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "33",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "33": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "34",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "34": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "35",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "35": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ]
+        }
+      },
+      "qubitCount": 36,
+      "nativeGateSet": [
+        "GPI",
+        "GPI2",
+        "ZZ"
+      ]
+    },
+    "provider": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.ionq.ionq_provider_properties",
+        "version": "1"
+      },
+      "fidelity": {
+        "1Q": {
+          "mean": 0.9998
+        },
+        "2Q": {
+          "mean": 0.978
+        },
+        "spam": {
+          "mean": 0.9969
+        }
+      },
+      "timing": {
+        "T1": 188,
+        "T2": 0.95,
+        "1Q": 0.000063,
+        "2Q": 0.00065,
+        "readout": 0.00025,
+        "reset": 0.00015
+      },
+      "errorMitigation": {
+        "braket.device_schema.error_mitigation.debias.Debias": {
+          "minimumShots": 2500
+        }
+      }
+    },
+    "standardized": {
+      "braketSchemaHeader": {
+        "name": "braket.device_schema.standardized_gate_model_qpu_device_properties",
+        "version": "3"
+      },
+      "T1": {
+        "value": 188,
+        "unit": "s"
+      },
+      "T2": {
+        "value": 0.95,
+        "unit": "s"
+      },
+      "readoutFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING",
+            "description": "Average readout fidelity is estimated with one-qubit randomized benchmarking."
+          },
+          "fidelity": 0.9969,
+          "unit": "fraction"
+        }
+      ],
+      "readoutDuration": {
+        "value": 0.00025,
+        "unit": "s"
+      },
+      "singleQubitGateDuration": {
+        "value": 0.000063,
+        "unit": "s"
+      },
+      "twoQubitGateFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING",
+            "description": "Average gate fidelities for a maximally entangling two-qubit native gate. It is regularly measured by IonQ on the device using Direct Randomized Benchmarking"
+          },
+          "fidelity": 0.978,
+          "standardError": 0,
+          "unit": "fraction"
+        }
+      ],
+      "twoQubitGateDuration": {
+        "value": 0.00065,
+        "unit": "s"
+      },
+      "activeResetDuration": {
+        "value": 0.00015,
+        "unit": "s"
+      },
+      "updatedAt": "2026-02-16T00:00:00+00:00"
+    }
+  }
+]

@@ -13,7 +13,7 @@ import derevo.circe.magnolia.{ decoder, encoder }
 import derevo.derive
 import io.estatico.newtype.macros.newtype
 import qurator.domain.DeviceQueueInformation._
-
+import qurator.domain.device.Device
 
 object IBM{
 
@@ -48,7 +48,9 @@ object IBM{
         queue_length: Int,
         performance_metrics: Option[IBMBackendDevicePerformanceMetrics],
         wait_time_seconds: Option[IBMBackendDeviceWaitTimeSeconds]
-    )
+    ){
+        def toDevice: Device = ???
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class IBMBackendDeviceStatus(

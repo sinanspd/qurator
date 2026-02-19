@@ -21,6 +21,7 @@ import qurator.modules.HttpClients
 import qurator.testbed.FakeCompiler
 import qurator.util.FidelityEstimator
 import qurator.domain.calibration._
+import qurator.domain.Braket._
 
 trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[Unit]
@@ -451,9 +452,6 @@ object Scheduler{
                     }
             }    
 
-
-        
-
     //   def startScheduling(): F[Unit] =
     //     Stream
     //       .repeatEval(scheduleNextTask())
@@ -462,17 +460,23 @@ object Scheduler{
     //       .drain
 
 
-       
-
-        private def startFetchingResults(): F[Unit] =  ??? 
-        
-        private def getAvailableDevices(): F[List[Device]] = ???
+        private def startFetchingResults(): F[Unit] =  ???
 
         private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
         
         private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = ???  
 
         private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = ??? //might not be needed
+
+        private def getAvailableDevices(): F[List[Device]] = 
+            for {
+                ibmDevices <- clients.ibm.fetchDeviceInformation
+                availableIbmDevices = ibmDevices.devices.filter(d => d.status.name == "online").map(_.toDevice)
+                braketDevices <- clients.braket.fetchDeviceList
+                availableBraketDevices = braketDevices.devices.filter(d => d.deviceStatus == "ONLINE" && deviceActive(d)).map(_.toDevice)
+                azureDevices <- clients.azure.fetchDeviceInformation
+                availableAzureDevices = azureDevices.value.filter(d => d.currentAvailability == "Available").map(_.toDevice)
+            } yield availableIbmDevices ++ availableBraketDevices ++ availableAzureDevices
 
         private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = 
             0.7 * fidelity + 0.9 * queueTime //adjust as needed

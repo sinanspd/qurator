@@ -1,0 +1,252 @@
+{
+  "service": {
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.device_service_properties",
+      "version": "1"
+    },
+    "executionWindows": [
+      {
+        "executionDay": "Weekdays",
+        "windowStartHour": "12:00:00",
+        "windowEndHour": "03:00:00"
+      }
+    ],
+    "shotsRange": [
+      1,
+      5000
+    ],
+    "deviceCost": {
+      "price": 0.03,
+      "unit": "shot"
+    },
+    "deviceDocumentation": {
+      "imageUrl": "http://d1.awsstatic.com/re19/Braket/IonQ%20Logo.59ea92b40cff5a2c2e90d9d981b864c2f424c5a8.png",
+      "summary": "Universal gate-model QPU based on trapped ions",
+      "externalDocumentationUrl": "https://ionq.com/quantum-systems/aria"
+    },
+    "deviceLocation": "Maryland, USA",
+    "updatedAt": "2025-09-01T00:00:00+00:00"
+  },
+  "action": {
+    "braket.ir.openqasm.program": {
+      "version": [
+        "1"
+      ],
+      "actionType": "braket.ir.openqasm.program",
+      "supportedOperations": [
+        "x",
+        "y",
+        "z",
+        "h",
+        "s",
+        "si",
+        "t",
+        "ti",
+        "v",
+        "vi",
+        "rx",
+        "ry",
+        "rz",
+        "cnot",
+        "swap",
+        "xx",
+        "yy",
+        "zz"
+      ],
+      "supportedModifiers": [],
+      "supportedPragmas": [
+        "braket_result_type_sample",
+        "braket_result_type_expectation",
+        "braket_result_type_variance",
+        "braket_result_type_probability",
+        "verbatim"
+      ],
+      "forbiddenPragmas": [
+        "braket_unitary_matrix",
+        "braket_result_type_state_vector",
+        "braket_result_type_density_matrix",
+        "braket_result_type_amplitude",
+        "braket_result_type_adjoint_gradient"
+      ],
+      "maximumQubitArrays": 1,
+      "maximumClassicalArrays": 1,
+      "forbiddenArrayOperations": [
+        "concatenation",
+        "negativeIndex",
+        "range",
+        "rangeWithStep",
+        "slicing",
+        "selection"
+      ],
+      "requiresAllQubitsMeasurement": true,
+      "supportPhysicalQubits": true,
+      "requiresContiguousQubitIndices": false,
+      "supportsPartialVerbatimBox": false,
+      "supportsUnassignedMeasurements": true,
+      "disabledQubitRewiringSupported": false,
+      "supportedResultTypes": [
+        {
+          "name": "Sample",
+          "observables": [
+            "x",
+            "y",
+            "z",
+            "h",
+            "i"
+          ],
+          "minShots": 1,
+          "maxShots": 5000
+        },
+        {
+          "name": "Expectation",
+          "observables": [
+            "x",
+            "y",
+            "z",
+            "h",
+            "i"
+          ],
+          "minShots": 1,
+          "maxShots": 5000
+        },
+        {
+          "name": "Variance",
+          "observables": [
+            "x",
+            "y",
+            "z",
+            "h",
+            "i"
+          ],
+          "minShots": 1,
+          "maxShots": 5000
+        },
+        {
+          "name": "Probability",
+          "minShots": 1,
+          "maxShots": 5000
+        }
+      ]
+    }
+  },
+  "deviceParameters": {
+    "title": "IonqDeviceParameters",
+    "description": "This defines the parameters common to all the IonQ devices.",
+    "type": "object",
+    "properties": {
+      "braketSchemaHeader": {
+        "title": "Braketschemaheader",
+        "default": {
+          "name": "braket.device_schema.ionq.ionq_device_parameters",
+          "version": "1"
+        },
+        "const": {
+          "name": "braket.device_schema.ionq.ionq_device_parameters",
+          "version": "1"
+        }
+      },
+      "paradigmParameters": {
+        "$ref": "#/definitions/GateModelParameters"
+      },
+      "errorMitigation": {
+        "title": "Errormitigation",
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/ErrorMitigationScheme"
+        }
+      }
+    },
+    "required": [
+      "paradigmParameters"
+    ],
+    "definitions": {
+      "GateModelParameters": {
+        "title": "GateModelParameters",
+        "description": "Defines parameters common to all gate model devices.",
+        "type": "object",
+        "properties": {
+          "braketSchemaHeader": {
+            "title": "Braketschemaheader",
+            "default": {
+              "name": "braket.device_schema.gate_model_parameters",
+              "version": "1"
+            },
+            "const": {
+              "name": "braket.device_schema.gate_model_parameters",
+              "version": "1"
+            }
+          },
+          "qubitCount": {
+            "title": "Qubitcount",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "disableQubitRewiring": {
+            "title": "Disablequbitrewiring",
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "qubitCount"
+        ]
+      },
+      "ErrorMitigationScheme": {
+        "title": "ErrorMitigationScheme",
+        "description": "Base class for an error mitigation scheme.",
+        "type": "object",
+        "properties": {}
+      }
+    }
+  },
+  "braketSchemaHeader": {
+    "name": "braket.device_schema.ionq.ionq_device_capabilities",
+    "version": "1"
+  },
+  "paradigm": {
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.gate_model_qpu_paradigm_properties",
+      "version": "1"
+    },
+    "connectivity": {
+      "fullyConnected": true,
+      "connectivityGraph": {}
+    },
+    "qubitCount": 25,
+    "nativeGateSet": [
+      "GPI",
+      "GPI2",
+      "MS"
+    ]
+  },
+  "provider": {
+    "braketSchemaHeader": {
+      "name": "braket.device_schema.ionq.ionq_provider_properties",
+      "version": "1"
+    },
+    "fidelity": {
+      "1Q": {
+        "mean": 0.7913
+      },
+      "2Q": {
+        "mean": 0.9832
+      },
+      "spam": {
+        "mean": 0.9953
+      }
+    },
+    "timing": {
+      "T1": 100,
+      "T2": 1,
+      "1Q": 0.000135,
+      "2Q": 0.0006,
+      "readout": 0.0003,
+      "reset": 0.00002
+    },
+    "errorMitigation": {
+      "braket.device_schema.error_mitigation.debias.Debias": {
+        "minimumShots": 2500
+      }
+    }
+  }
+}

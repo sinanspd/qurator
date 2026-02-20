@@ -510,7 +510,7 @@ object Scheduler{
                     val action = Retry[F]
                         .retry(retryPolicy)(clients.ibm.submitJob(task.toIBM) *> Logger[F].info("Submitted Task to IBM"))
                         // .adaptError {
-                        //     case e => ()
+                        //     case e => () //TODO: fallback to another device here 
                         // }
                     bgAction(action)
                 case "Braket" => 

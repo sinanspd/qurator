@@ -22,6 +22,11 @@ import qurator.testbed.FakeCompiler
 import qurator.util.FidelityEstimator
 import qurator.domain.calibration._
 import qurator.domain.Braket._
+import qurator.effects.Background
+import qurator.util.Retry
+import retry.RetryPolicies._
+import retry.RetryPolicy
+
 import fs2.Stream
 
 trait Scheduler[F[_]]{
@@ -29,7 +34,7 @@ trait Scheduler[F[_]]{
 }
 
 object Scheduler{
-  def make[F[_]: GenUUID: Concurrent: Logger : Temporal](
+  def make[F[_]: GenUUID: Concurrent: Logger : Temporal : Background](
         dataPersistanceService: DataPersistanceService[F],
         clients: HttpClients[F],
         prioritizationStrategy: List[Task] => List[Task],
@@ -58,6 +63,7 @@ object Scheduler{
         //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
         //TODO: Loop back actual job data 
         //TODO: I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
+        //TODO: We need to move some of the logic to supervisor so that the scheduler keeps running on error 
 
 
         def submitTask(taskReq: TaskRequest): F[Unit] = taskReq match{
@@ -464,7 +470,7 @@ object Scheduler{
         private def fetchAllInProgressJobResults(): F[Unit] = 
             submittedTasks.get.flatMap(sts => {
                 sts.traverse_(st => fetchResultsFromCorrespondingProvider(st._1, st._2, st._3))
-            })
+            }) *> ??? // promote pending to ready 
         
         //TODO: On Failure of job this needs to reschedule 
         private def fetchResultsFromCorrespondingProvider(provider: String, providerId: String, taskId: TaskId): F[Unit] = provider match{
@@ -483,11 +489,46 @@ object Scheduler{
                     results.get.flatMap(rm => results.set(rm + (taskId ->  "1"))) // dummy results for now 
                 case _ => ()
             })
-
-            
         } 
 
-        private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
+        //TODO: Once we unify the client traits, all this pattern matching will go away 
+        private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = {
+            def bgAction(fa: F[Unit]): F[Unit] =
+                fa.onError {
+                    case _ =>
+                    Logger[F].error(
+                        s"Failed to submit job"
+                    ) *>
+                        Background[F].schedule(bgAction(fa), 1.hour)
+                }
+
+            val retryPolicy: RetryPolicy[F] =
+                limitRetries[F](10) |+| exponentialBackoff[F](10.milliseconds)
+
+            device.platform match {
+                case "IBM" => 
+                    val action = Retry[F]
+                        .retry(retryPolicy)(clients.ibm.submitJob(task.toIBM) *> Logger[F].info("Submitted Task to IBM"))
+                        // .adaptError {
+                        //     case e => ()
+                        // }
+                    bgAction(action)
+                case "Braket" => 
+                    val action = Retry[F]
+                        .retry(retryPolicy)(clients.braket.submitBraketOpenQasmTask(task.toBraket, task.circuit.toQasm) *> Logger[F].info("Submitted Task to IBM"))
+                        // .adaptError {
+                        //     case e => ()
+                        // }
+                    bgAction(action)
+                case "Azure" => 
+                    val action = Retry[F]
+                        .retry(retryPolicy)(clients.azure.submitJob(task.uuid.value.toString, task.toAzure) *> Logger[F].info("Submitted Task to IBM"))
+                        // .adaptError {
+                        //     case e => ()
+                        // }
+                    bgAction(action)
+            }
+        }
         
         private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = ???  
 
@@ -516,7 +557,7 @@ object Scheduler{
 
         // Circuit Depth, Avg. CX error over the circuit, Avg CX in the circuit critical path, readout errors on the measured qubits. 
         //The model is built as a product of linear terms: Fn =
-         //Π(ai + bi ∗ xi), where Fn is the fidelity of job n, xi is the feature and ai and bi are the tuned coefficient ???
+         //Π(ai + bi ∗ xi), where Fn is the fidelity of job n, xi is the feature and ai and bi are the tuned coefficient ??
 
         private def fetchDeviceCalibration(device: Device): F[DeviceCalibration] = device.platform match {
             case "IBM" => clients.ibm.fetchDeviceCalibration(device.platformId)

@@ -20,4 +20,9 @@ package object circuit{
     
     final case class Circuit(remainingGates: List[Gate], qubits: Int, name: String = "") 
     final case class QVec(prop: Complex[Double], v: Vector[Boolean], name: String ="")
+
+
+    implicit class Circuit2Qasm(c: Circuit){
+        def toQasm : String = ???
+    }
 }

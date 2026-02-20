@@ -19,6 +19,10 @@ import eu.timepit.refined.types.string.NonEmptyString
 import io.estatico.newtype.macros.newtype
 import qurator.domain.circuit._
 import qurator.domain.device._
+import qurator.domain.IBM.SubmitJobRequestV2
+import qurator.domain.Braket.BraketCreateQuantumTaskRequest
+import qurator.domain.Azure.AzureJobCreateRequest
+
 
 object Task{
 
@@ -103,6 +107,13 @@ object Task{
     case class SynchronizedPlan(
         assignments: Map[Device, List[QuantumTask]]
     )
+
+
+    implicit class TaskTransformations(t: Task) { 
+        def toIBM : SubmitJobRequestV2 = ???
+        def toBraket : BraketCreateQuantumTaskRequest = ???
+        def toAzure : AzureJobCreateRequest = ???
+    }
 
 
 }

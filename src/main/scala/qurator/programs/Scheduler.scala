@@ -22,6 +22,7 @@ import qurator.testbed.FakeCompiler
 import qurator.util.FidelityEstimator
 import qurator.domain.calibration._
 import qurator.domain.Braket._
+import fs2.Stream
 
 trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[Unit]
@@ -40,7 +41,7 @@ object Scheduler{
     for {
       readyTasks     <- Ref.of[F, List[Task]](List.empty)
       pendingTasks   <- Ref.of[F, List[Task]](List.empty)
-      submittedTasks <- Ref.of[F, List[(String, String)]](List.empty) 
+      submittedTasks <- Ref.of[F, List[(String, String, TaskId)]](List.empty) 
       results        <- Ref.of[F, Map[TaskId, String]](Map.empty)        
     } yield new Scheduler[F] {
 
@@ -452,15 +453,39 @@ object Scheduler{
                     }
             }    
 
-    //   def startScheduling(): F[Unit] =
-    //     Stream
-    //       .repeatEval(scheduleNextTask())
-    //       .metered(scala.concurrent.duration.FiniteDuration(100, "ms"))
-    //       .compile
-    //       .drain
 
+        private def startFetchingResults(): F[Unit] =  
+            Stream
+                .repeatEval(fetchAllInProgressJobResults)
+                .metered(scala.concurrent.duration.FiniteDuration(100, "ms")) 
+                .compile
+                .drain
+        
+        private def fetchAllInProgressJobResults(): F[Unit] = 
+            submittedTasks.get.flatMap(sts => {
+                sts.traverse_(st => fetchResultsFromCorrespondingProvider(st._1, st._2, st._3))
+            })
+        
+        //TODO: On Failure of job this needs to reschedule 
+        private def fetchResultsFromCorrespondingProvider(provider: String, providerId: String, taskId: TaskId): F[Unit] = provider match{
+            case "IBM" => clients.ibm.listJobDetails(providerId).map(r => r.status match {
+                case "Completed" => 
+                    results.get.flatMap(rm => results.set(rm + (taskId ->  "1"))) // dummy results for now 
+                case _ => () 
+            })
+            case "Braket" => clients.braket.getQuantumTask(providerId).map(r => r.status match {
+                case "COMPLETED" => 
+                     results.get.flatMap(rm => results.set(rm + (taskId ->  "1"))) // dummy results for now 
+                case _ => () 
+            })
+            case "Azure" => clients.azure.getQuantumTask(providerId).map(r => r.status match {
+                case "Succeeded" => 
+                    results.get.flatMap(rm => results.set(rm + (taskId ->  "1"))) // dummy results for now 
+                case _ => ()
+            })
 
-        private def startFetchingResults(): F[Unit] =  ???
+            
+        } 
 
         private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = ???
         

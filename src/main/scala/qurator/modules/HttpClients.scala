@@ -14,8 +14,7 @@ import fs2.hashing.Hashing
 object HttpClients {
   def make[F[_]: JsonDecoder: MonadCancelThrow: Logger: Async : Hashing](
       cfg: AppConfig,
-      client: Client[F],
-      redis: RedisCommands[F, String, String]
+      client: Client[F]
   ): HttpClients[F] =
     new HttpClients[F] {
         def ibm: IBMClient[F] = IBMClient.make[F](cfg.ibmCredentials, client)

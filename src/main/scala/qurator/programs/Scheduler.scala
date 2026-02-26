@@ -39,7 +39,7 @@ object Scheduler{
         clients: HttpClients[F],
         prioritizationStrategy: List[Task] => List[Task],
         cuttingStrategy: Circuit => List[Circuit],
-        targetEstimatedFidelity: Long, 
+        targetEstimatedFidelity: Double, 
         additionalOptimizationRuns: Circuit => List[Circuit],
         compiler: FakeCompiler[F] //abstract this 
   ): F[Scheduler[F]] =
@@ -54,13 +54,15 @@ object Scheduler{
 
         //TODO Fall back to other devices on failure (maybe after expontential backoff ?)
         //TODO Merge Cut Task Results 
-        //TODO think about reservations?? 
         //TODO consider impact of cross talk when scheduling multiple tasks on the same device.
         //TODO for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
         //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
-        //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
         //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+
+        /////////////////////////////////////////////// LATER ////////////////////////////////////////////
+        //TODO think about reservations?? 
+        //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
         //TODO: Loop back actual job data 
         //TODO: I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
         //TODO: We need to move some of the logic to supervisor so that the scheduler keeps running on error 

@@ -134,6 +134,7 @@ lazy val root = project
      "io.circe" %% "circe-generic-extras" % "0.14.3",
      "com.magine" %% "http4s-aws" % "6.2.1",
      //"com.sinanspd" %% "qure" % "0.1.20-SNAPSHOT"
+     "org.typelevel" %% "weaver-cats" % "0.11.3" % Test
     )
   )
 

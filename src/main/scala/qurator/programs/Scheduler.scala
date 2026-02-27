@@ -31,6 +31,7 @@ import fs2.Stream
 
 trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[Unit]
+    def estimateQueueTime(device: Device, task: QuantumTask) : F[Long]
 }
 
 object Scheduler{
@@ -600,7 +601,7 @@ object Scheduler{
             Circuit(acc.remainingGates ++ shiftedGates, acc.qubits + b.qubits) //TODO: Update this to merge gates based on slices 
         }}
 
-        private def estimateQueueTime(device: Device, task: QuantumTask) : F[Long] = {
+        def estimateQueueTime(device: Device, task: QuantumTask) : F[Long] = {
             val windowSize = 14L
             val windowHours = 2L
             val recencyHalfLifeDays : Double = 3

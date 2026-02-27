@@ -57,6 +57,7 @@ object DeviceQueueInformation{
     case object IQMDevice extends DeviceProvider
     case object Quantinuum extends DeviceProvider
     case object Pasqal extends DeviceProvider
+    case object AQTDevice extends DeviceProvider
 
     sealed trait QueueType 
     case object PriorityQueue extends QueueType

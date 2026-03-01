@@ -143,17 +143,19 @@ object FidelityEstimator{
             val availNs = scala.collection.mutable.Map.empty[Int, Long].withDefaultValue(0L)
 
             ops.foreach {
-                case a @ (X(_) | H(_) | Measure(_)) =>
+                case a @ (X(_) | H(_) | Measure(_) | Rotate(_, _) | RZ(_ ,_)) =>
                     val q = a match { // this is dumb but oh well
                         case X(q)       => q
                         case H(q)       => q
                         case Measure(q) => q
+                        case Rotate(_, q) => q
+                        case RZ(_, q) => q
                     }
                     val dur = cal.durationNsFor(a)
                     val start = availNs(q)
                     val end = start + dur
                     availNs.update(q, end)
-                case op @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRotate(_, _, _) | Rotate(_, _) | RZ(_ ,_)) =>
+                case op @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRotate(_, _, _)) =>
                     val (a, b) = op match{
                         case CX(a, b) => (a, b)
                         case CZ(a, b) => (a, b)
@@ -179,15 +181,17 @@ object FidelityEstimator{
 
             val logPOps = compiled.remainingGates.foldLeft(0.0) { (acc, op) =>
                 op match {
-                    case a @ (X(_) | H(_))  =>
+                    case a @ (X(_) | H(_) | Rotate(_, _) | RZ(_ ,_))  =>
                         val (q, g) = a match { 
                             case X(q)       => (q, "X")
                             case H(q)       => (q, "H")
+                            case Rotate(_, q) => (q, "Rotate")
+                            case RZ(_, q) => (q, "RZ")
                         }
                         val eps = cal.epsFor(op)
                         acc + log1p(-eps)
 
-                    case a @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRotate(_, _, _) | Rotate(_, _) | RZ(_ ,_)) =>
+                    case a @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRotate(_, _, _) ) =>
                         val (a, b, g) = op match{
                             case CX(a, b) => (a, b, "CX")
                             case CZ(a, b) => (a, b, "CZ")

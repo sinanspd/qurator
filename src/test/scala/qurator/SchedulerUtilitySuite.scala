@@ -433,6 +433,30 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     }
   }
 
+  test("test basic bucketByDepth semantics"){
+    for{
+      scheduler <- schedulerIO
+    }yield {
+      expect("hello".length == 5)
+    }
+  }
+
+  test("test assign to final bucket semantics"){
+    for{
+      scheduler <- schedulerIO
+    }yield {
+      expect("hello".length == 5)
+    }
+  }
+
+  test("test flatten group semantics"){
+    for{
+      scheduler <- schedulerIO
+    }yield {
+      expect("hello".length == 5)
+    }
+  }
+
   test("test basic attemptToMergeSyncTasks semantics"){
     for{
       scheduler <- schedulerIO

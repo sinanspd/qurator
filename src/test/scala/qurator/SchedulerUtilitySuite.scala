@@ -39,6 +39,11 @@ import qurator.effects.GenUUID
 import qurator.domain.ID
 import qurator.domain.device._
 import qurator.domain.Task._
+import qurator.clients._
+import qurator.domain.IBM._
+import qurator.domain.calibration._
+import org.http4s.client._
+import org.http4s._ 
 
 object SchedulerUtilitySuite extends SimpleIOSuite {
 
@@ -126,14 +131,14 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     def getQueueMaxAfterDateForDevice(date: LocalDateTime, device: String): IO[Option[DeviceQueueInformation]] = ???
   }
 
-
   def routes(mkResponse: IO[Response[IO]]) =
     HttpRoutes
       .of[IO] {
-        case GET -> Root / "test" => mkResponse
+        case req @ GET -> Root / "api" / "v1" / "jobs" / id
+            if req.uri.authority.exists(_.host.value == "quantum.cloud.ibm.com") =>
+          mkResponse
       }
       .orNotFound
-
 
   val testClient = HttpClients.make[IO](
     cfg = AppConfig(
@@ -170,6 +175,9 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
      compiler = new FakeCompiler[IO](List()),
      clients = testClient
   )
+
+  private def ids(n: Int): IO[List[TaskId]] =
+    List.fill(n)(()).traverse(_ => ID.make[IO, TaskId])
 
   test("test the test, test queue data generator"){
     val date = LocalDateTime.now()
@@ -215,22 +223,183 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     }
   }
 
+  test("classical task with no parents is ready") {
+    for {
+      taskId <- ID.make[IO, TaskId]
+      task = ClassicalTask(
+        uuid = taskId,
+        program = "do something",
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
 
-  test("test basic mergeCircuit semantics"){
-    for{
-      scheduler <- schedulerIO
-    }yield {
-      expect("hello".length == 5)
-    }
+      actual = Scheduler.allParentResultsAvailable(
+        results = Map.empty,
+        t = task
+      )
+    } yield expect(actual)
   }
 
-  test("test basic allParentResultsAvailable semantics"){
-    for{
-      scheduler <- schedulerIO
-    }yield {
-      expect("hello".length == 5)
-    }
+  test("classical task is not ready when one parent is missing") {
+    for {
+      List(taskId, p1, p2) <- ids(3)
+      task = ClassicalTask(
+        uuid = taskId,
+        program = "do something",
+        parentTasks = List(p1, p2),
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      actual = Scheduler.allParentResultsAvailable(
+        results = Map(p1 -> "done"),
+        t = task
+      )
+    } yield expect(!actual)
   }
+
+  test("classical task is ready when all parent results exist") {
+    for {
+      List(taskId, p1, p2) <- ids(3)
+      task =  ClassicalTask(
+        uuid = taskId,
+        program = "do something",
+        parentTasks = List(p1, p2),
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      actual = Scheduler.allParentResultsAvailable(
+        results = Map(
+          p1 -> "done-1",
+          p2 -> "done-2"
+        ),
+        t = task
+      )
+    } yield expect(actual)
+  }
+
+  test("quantum task with no parents is ready") {
+    for {
+      taskId <- ID.make[IO, TaskId]
+      task = QuantumTask(
+        uuid = taskId,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      actual = Scheduler.allParentResultsAvailable(
+        results = Map.empty,
+        t = task
+      )
+    } yield expect(actual)
+  }
+
+  test("quantum task is not ready when a parent is missing") {
+    for {
+      List(taskId, p1, p2) <- ids(3)
+      task = QuantumTask(
+        uuid = taskId,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List(p1, p2),
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      actual = Scheduler.allParentResultsAvailable(
+        results = Map(p2 -> "done"),
+        t = task
+      )
+    } yield expect(!actual)
+  }
+
+  test("quantum task is ready when all parent results exist") {
+    for {
+      List(taskId, p1, p2, p3) <- ids(4)
+      task = QuantumTask(
+        uuid = taskId,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List(p1, p2),
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      actual = Scheduler.allParentResultsAvailable(
+        results = Map(
+          p1 -> "done-1",
+          p2 -> "done-2",
+          p3 -> "done-3"
+        ),
+        t = task
+      )
+    } yield expect(actual)
+  }
+
+
+  test("synchronized group is ready only when every child is ready") {
+    for {
+      List(sid, q1Id, q2Id, p1, p2, p3) <- ids(6)
+
+      q1 = QuantumTask(
+        uuid = q1Id,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List(p1, p2),
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      q2 = QuantumTask(
+        uuid = q2Id,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List(p3),
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      group = SyncronizedQuantumTaskList(
+        uuid = sid,
+        tasks = List(q1, q2),
+        t1Budget = 1000000L,
+        createdAt = LocalDateTime.now()
+      )
+
+      notReady = Scheduler.allParentResultsAvailable(
+        results = Map(
+          p1 -> "done-1",
+          p2 -> "done-2"
+        ),
+        t = group
+      )
+
+      ready = Scheduler.allParentResultsAvailable(
+        results = Map(
+          p1 -> "done-1",
+          p2 -> "done-2",
+          p3 -> "done-3"
+        ),
+        t = group
+      )
+    } yield expect.all(
+      !notReady,
+      ready
+    )
+  }
+
 
   test("test basic requiresCutting semantics"){
     for{

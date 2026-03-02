@@ -99,7 +99,7 @@ object Task{
 
     case class CandidateDevice(
         device: Device,
-        fidelity: Long,
+        fidelity: Double,
         queueMillis: Long,
         runMillis: Long
     )

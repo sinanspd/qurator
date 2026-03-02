@@ -44,7 +44,10 @@ import qurator.domain.IBM._
 import qurator.domain.calibration._
 import org.http4s.client._
 import org.http4s._ 
+import qurator.domain.device._
+import scala.annotation.nowarn
 
+@nowarn
 object SchedulerUtilitySuite extends SimpleIOSuite {
 
   implicit val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
@@ -243,7 +246,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
 
   test("classical task is not ready when one parent is missing") {
     for {
-      List(taskId, p1, p2) <- ids(3)
+      List(taskId, p1, p2) <- ids(3) 
       task = ClassicalTask(
         uuid = taskId,
         program = "do something",
@@ -779,7 +782,1092 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     }
   }
 
-  test("test assign to final bucket semantics"){
+  private def mkDevice(qubits: Int, platformId: String): Device =
+    Device(
+      platform = "IBM",
+      platformId = platformId,
+      qubits = qubits,
+      t1 = 0f,
+      t2 = 0f,
+      gateSet = List.empty
+    )
+
+  private def binQubits(bins: List[List[QuantumTask]]): List[List[Int]] =
+    bins.map(_.map(_.qubits.value))
+
+  private def allBinSumsLeq(bins: List[List[QuantumTask]], capacity: Int): Boolean =
+    bins.forall(bin => bin.map(_.qubits.value).sum <= capacity)
+
+  test("assignToFinalBuckets returns a single singleton bin for one task") {
+    for {
+      List(id1) <- ids(1)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1),
+        capacity = 10,
+        maxTasksPerBin = 3
+      )
+    } yield {
+      expect(binQubits(out) == List(List(5)))
+    }
+  }
+
+  test("assignToFinalBuckets sorts by descending qubit count before packing") {
+    for {
+      List(id1, id2, id3, id4) <- ids(4)
+
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(3),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(4),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(6),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t4 = QuantumTask(
+        uuid = id4,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(7),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1, t2, t3, t4),
+        capacity = 10,
+        maxTasksPerBin = 3
+      )
+    } yield {
+      expect(binQubits(out) == List(List(7, 3), List(6, 4)))
+    }
+  }
+
+  test("assignToFinalBuckets allows an exact fit up to capacity") {
+    for {
+      List(id1, id2) <- ids(2)
+
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(7),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(3),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1, t2),
+        capacity = 10,
+        maxTasksPerBin = 3
+      )
+    } yield {
+      expect(binQubits(out) == List(List(7, 3)))
+    }
+  }
+
+  test("assignToFinalBuckets never exceeds capacity when each task individually fits") {
+    for {
+      List(id1, id2, id3, id4) <- ids(4)
+
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(4),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(3),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      t4 = QuantumTask(
+        uuid = id4,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1, t2, t3, t4),
+        capacity = 7,
+        maxTasksPerBin = 3
+      )
+    } yield {
+      expect(binQubits(out) == List(List(5, 2), List(4, 3))) and
+      expect(allBinSumsLeq(out, 7))
+    }
+  }
+
+  test("assignToFinalBuckets respects maxTasksPerBin even when capacity allows more") {
+    for {
+      List(id1, id2, id3, id4) <- ids(4)
+
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t4 = QuantumTask(
+        uuid = id4,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1, t2, t3, t4),
+        capacity = 10,
+        maxTasksPerBin = 2
+      )
+    } yield {
+      expect(binQubits(out) == List(List(2, 2), List(2, 2)))
+    }
+  }
+
+  test("assignToFinalBuckets with maxTasksPerBin = 1 puts every task in its own bin") {
+    for {
+      List(id1, id2, id3) <- ids(3)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(1),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1, t2, t3),
+        capacity = 20,
+        maxTasksPerBin = 1
+      )
+    } yield {
+      expect(binQubits(out) == List(List(5), List(5), List(1)))
+    }
+  }
+
+  test("assignToFinalBuckets uses first-fit among existing bins") {
+    for {
+      List(id1, id2, id3, id4) <- ids(4)
+
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(4),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(4),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(4),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t4 = QuantumTask(
+        uuid = id4,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1, t2, t3, t4),
+        capacity = 10,
+        maxTasksPerBin = 10
+      )
+    } yield {
+      expect(binQubits(out) == List(List(4, 4), List(4, 2)))
+    }
+  }
+
+  test("assignToFinalBuckets keeps an oversized task in its own bin rather than rejecting it") {
+    for {
+      List(id1, id2, id3) <- ids(3)
+
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(12),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(3),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(3),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+    
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1, t2, t3),
+        capacity = 10,
+        maxTasksPerBin = 3
+      )
+    } yield {
+      expect(binQubits(out) == List(List(12), List(3, 3)))
+    }
+  }
+
+  test("assignToFinalBuckets with capacity 0 yields one bin per positive-size task") {
+    for {
+      List(id1, id2, id3) <- ids(3)
+
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(3),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1, t2, t3),
+        capacity = 0,
+        maxTasksPerBin = 3
+      )
+    } yield {
+      expect(binQubits(out) == List(List(3), List(2), List(2)))
+    }
+  }
+
+  test("assignToFinalBuckets preserves deterministic bin order in the final output") {
+    for {
+      List(id1, id2, id3, id4, id5) <- ids(5)
+
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(8),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t4 = QuantumTask(
+        uuid = id4,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t5 = QuantumTask(
+        uuid = id5,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(2),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.assignToFinalBuckets(
+        bucket = List(t1, t2, t3, t4, t5),
+        capacity = 10,
+        maxTasksPerBin = 3
+      )
+    } yield {
+      expect(binQubits(out) == List(List(8, 2), List(5, 5), List(2)))
+    }
+  }
+
+   private def mkCandidate(
+    device: Device,
+    queueMillis: Long,
+    runMillis: Long,
+    fidelity: Double
+  ): CandidateDevice =
+    CandidateDevice(
+      device = device,
+      queueMillis = queueMillis,
+      runMillis = runMillis,
+      fidelity = fidelity
+    )
+
+  private def planView(plan: SynchronizedPlan): Map[String, List[Int]] =
+    plan.assignments.map { case (device, tasks) =>
+      device.platformId -> tasks.map(_.depth.value)
+    }
+
+  test("buildGreedySynchronizedPlan fails when a task has no candidates") { // possibly need to avoid this case all together
+    for {
+      List(id1) <- ids(1)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+        
+      attempt <- Scheduler
+        .buildGreedySynchronizedPlan[IO](
+          orderedTasks = List(t1),
+          candidatesByTask = Map.empty,
+          t1BudgetMillis = 0L
+        )
+        .attempt
+    } yield {
+      expect(attempt.isLeft) and
+      expect(attempt.swap.exists(_.getMessage == "No candidates for task"))
+    }
+  }
+
+  test("for the first task, objective ties and the higher-fidelity candidate wins even with a worse queue") {
+    for {
+      List(id1) <- ids(1)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      a = Device(
+        platform = "IBM",
+        platformId = "A",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      b = Device(
+        platform = "IBM",
+        platformId = "B",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+
+      candidates = Map(
+        t1 -> List(
+          mkCandidate(a, queueMillis = 0L,    runMillis = 1L, fidelity = 0.80),
+          mkCandidate(b, queueMillis = 1000L, runMillis = 1L, fidelity = 0.95)
+        )
+      )
+
+      plan <- Scheduler.buildGreedySynchronizedPlan[IO](
+        orderedTasks = List(t1),
+        candidatesByTask = candidates,
+        t1BudgetMillis = 0L
+      )
+    } yield {
+      expect(planView(plan) == Map("B" -> List(10)))
+    }
+  }
+
+
+  test("for the first task, if objective and fidelity tie, lower queueMillis wins") {
+    for {
+      List(id1) <- ids(1)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      
+
+      a = Device(
+        platform = "IBM",
+        platformId = "A",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      b = Device(
+        platform = "IBM",
+        platformId = "B",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+
+      candidates = Map(
+        t1 -> List(
+          mkCandidate(a, queueMillis = 0L,   runMillis = 1L, fidelity = 0.90),
+          mkCandidate(b, queueMillis = 100L, runMillis = 1L, fidelity = 0.90)
+        )
+      )
+
+      plan <- Scheduler.buildGreedySynchronizedPlan[IO](
+        orderedTasks = List(t1),
+        candidatesByTask = candidates,
+        t1BudgetMillis = 0L
+      )
+    } yield {
+      expect(planView(plan) == Map("A" -> List(10)))
+    }
+  }
+
+  test("for later tasks, lower objective beats higher fidelity") {
+    for {
+      List(id1, id2) <- ids(2)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(20),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      a = Device(
+        platform = "IBM",
+        platformId = "A",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      b = Device(
+        platform = "IBM",
+        platformId = "B",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+
+      // t1 is forced onto A: queue 100, run 50 => A has finish 150.
+      // For t2:
+      //   A => start 150, finish 200
+      //        current starts [100], finishes [150]
+      //        spreadStart = 50, spreadFinish = 50, objective = 75
+      //   B => start 100, finish 150
+      //        spreadStart = 0, spreadFinish = 0, objective = 0
+      // So B should win despite much worse fidelity.
+      candidates = Map(
+        t1 -> List(
+          mkCandidate(a, queueMillis = 100L, runMillis = 50L, fidelity = 0.90)
+        ),
+        t2 -> List(
+          mkCandidate(a, queueMillis = 100L, runMillis = 50L, fidelity = 0.99),
+          mkCandidate(b, queueMillis = 100L, runMillis = 50L, fidelity = 0.10)
+        )
+      )
+
+      plan <- Scheduler.buildGreedySynchronizedPlan[IO](
+        orderedTasks = List(t1, t2),
+        candidatesByTask = candidates,
+        t1BudgetMillis = 0L
+      )
+    } yield {
+      expect(planView(plan) == Map(
+        "A" -> List(10),
+        "B" -> List(20)
+      ))
+    }
+  }
+
+  test("when objectives tie for a later task, higher fidelity wins") {
+    for {
+      List(id1, id2) <- ids(2)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(20),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      a = Device(
+        platform = "IBM",
+        platformId = "A",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      b = Device(
+        platform = "IBM",
+        platformId = "B",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      c = Device(
+        platform = "IBM",
+        platformId = "C",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+
+      candidates = Map(
+        t1 -> List(
+          mkCandidate(a, queueMillis = 100L, runMillis = 50L, fidelity = 0.90)
+        ),
+        t2 -> List(
+          mkCandidate(b, queueMillis = 100L, runMillis = 50L, fidelity = 0.80),
+          mkCandidate(c, queueMillis = 100L, runMillis = 50L, fidelity = 0.95)
+        )
+      )
+
+      plan <- Scheduler.buildGreedySynchronizedPlan[IO](
+        orderedTasks = List(t1, t2),
+        candidatesByTask = candidates,
+        t1BudgetMillis = 0L
+      )
+    } yield {
+      expect(clue(planView(plan)) == Map(
+        "A" -> List(10),
+        "C" -> List(20)
+      ))
+    }
+  }
+
+
+   test("when objective and fidelity tie for a later task, lower queueMillis wins") {
+    for {
+      List(id1, id2) <- ids(2)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(20),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      a = Device(
+        platform = "IBM",
+        platformId = "A",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      b = Device(
+        platform = "IBM",
+        platformId = "B",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      c = Device(
+        platform = "IBM",
+        platformId = "C",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+
+      // After t1 on A: current start 100, finish 150
+      // Candidate B: start 90, finish 150 => spreadStart 10, spreadFinish 0 => objective 10
+      // Candidate C: start 110, finish 150 => spreadStart 10, spreadFinish 0 => objective 10
+      // Same fidelity, so lower queueMillis (90) should win.
+      candidates = Map(
+        t1 -> List(
+          mkCandidate(a, queueMillis = 100L, runMillis = 50L, fidelity = 0.90)
+        ),
+        t2 -> List(
+          mkCandidate(b, queueMillis = 90L,  runMillis = 60L, fidelity = 0.90),
+          mkCandidate(c, queueMillis = 110L, runMillis = 40L, fidelity = 0.90)
+        )
+      )
+
+      plan <- Scheduler.buildGreedySynchronizedPlan[IO](
+        orderedTasks = List(t1, t2),
+        candidatesByTask = candidates,
+        t1BudgetMillis = 0L
+      )
+    } yield {
+      expect(planView(plan) == Map(
+        "A" -> List(10),
+        "B" -> List(20)
+      ))
+    }
+  }
+
+  test("with no T1 budget, the lower raw objective wins") {
+    for {
+      List(id1, id2) <- ids(2)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(20),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      a = Device(
+        platform = "IBM",
+        platformId = "A",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      b = Device(
+        platform = "IBM",
+        platformId = "B",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      c = Device(
+        platform = "IBM",
+        platformId = "C",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+
+      // t1 forced onto A at start 0 finish 100
+      // For t2:
+      //   B => start 0, finish 120
+      //        spreadStart 0, spreadFinish 20, objective 10
+      //   C => start 30, finish 110
+      //        spreadStart 30, spreadFinish 10, objective 35
+      // With budget disabled (0L), B should win.
+      candidates = Map(
+        t1 -> List(
+          mkCandidate(a, queueMillis = 0L, runMillis = 100L, fidelity = 0.90)
+        ),
+        t2 -> List(
+          mkCandidate(b, queueMillis = 0L,  runMillis = 120L, fidelity = 0.90),
+          mkCandidate(c, queueMillis = 30L, runMillis = 80L,  fidelity = 0.10)
+        )
+      )
+
+      plan <- Scheduler.buildGreedySynchronizedPlan[IO](
+        orderedTasks = List(t1, t2),
+        candidatesByTask = candidates,
+        t1BudgetMillis = 0L
+      )
+    } yield {
+      expect(planView(plan) == Map(
+        "A" -> List(10),
+        "B" -> List(20)
+      ))
+    }
+  }
+
+  test("T1 budget penalty can change the chosen device") {
+    for {
+      List(id1, id2) <- ids(2)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(20),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      a = Device(
+        platform = "IBM",
+        platformId = "A",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      b = Device(
+        platform = "IBM",
+        platformId = "B",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+      c = Device(
+        platform = "IBM",
+        platformId = "C",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+
+      // Same setup as previous test, but now budget = 10.
+      //
+      // B: spreadFinish = 20 > 10
+      //    penalty = (20 - 10) * 10 = 100
+      //    total objective = 10 + 100 = 110
+      //
+      // C: spreadFinish = 10 <= 10
+      //    no penalty
+      //    total objective = 35
+      //
+      // So C should win even though it has much worse fidelity.
+      candidates = Map(
+        t1 -> List(
+          mkCandidate(a, queueMillis = 0L, runMillis = 100L, fidelity = 0.90)
+        ),
+        t2 -> List(
+          mkCandidate(b, queueMillis = 0L,  runMillis = 120L, fidelity = 0.90),
+          mkCandidate(c, queueMillis = 30L, runMillis = 80L,  fidelity = 0.10)
+        )
+      )
+
+      plan <- Scheduler.buildGreedySynchronizedPlan[IO](
+        orderedTasks = List(t1, t2),
+        candidatesByTask = candidates,
+        t1BudgetMillis = 10L
+      )
+    } yield {
+      expect(planView(plan) == Map(
+        "A" -> List(10),
+        "C" -> List(20)
+      ))
+    }
+  }
+
+  test("tasks assigned to the same device are kept in input order") {
+    for {
+      List(id1, id2, id3) <- ids(3)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(20),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(30),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+
+      a = Device(
+        platform = "IBM",
+        platformId = "A",
+        qubits = 20,
+        t1 = 0f,
+        t2 = 0f,
+        gateSet = List.empty
+      )
+
+      candidates = Map(
+        t1 -> List(mkCandidate(a, queueMillis = 0L, runMillis = 10L, fidelity = 0.90)),
+        t2 -> List(mkCandidate(a, queueMillis = 0L, runMillis = 10L, fidelity = 0.90)),
+        t3 -> List(mkCandidate(a, queueMillis = 0L, runMillis = 10L, fidelity = 0.90))
+      )
+
+      plan <- Scheduler.buildGreedySynchronizedPlan[IO](
+        orderedTasks = List(t1, t2, t3),
+        candidatesByTask = candidates,
+        t1BudgetMillis = 0L
+      )
+    } yield {
+      expect(planView(plan) == Map("A" -> List(10, 20, 30)))
+    }
+  }
+
+
+  test("test flatten group semantics *"){
     for{
       scheduler <- schedulerIO
     }yield {
@@ -787,28 +1875,11 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     }
   }
 
-  test("test flatten group semantics"){
+  test("test basic attemptToMergeSyncTasks semantics * "){
     for{
       scheduler <- schedulerIO
     }yield {
       expect("hello".length == 5)
     }
-  }
-
-  test("test basic attemptToMergeSyncTasks semantics"){
-    for{
-      scheduler <- schedulerIO
-    }yield {
-      expect("hello".length == 5)
-    }
-  }
-
-  test("test basic buildGreedySynchronizedPlan semantics"){
-    for{
-      scheduler <- schedulerIO
-    }yield {
-      expect("hello".length == 5)
-    }
-  }
-  
+  }  
 }

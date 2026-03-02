@@ -353,7 +353,7 @@ object Scheduler{
                 devices <- getAvailableDevices()
                 maxQubits = devices.map(_.qubits).maxOption.getOrElse(0)
                 depthTolerance = 0.10 
-                depthBuckets = bucketByDepth(tasks, depthTolerance)
+                depthBuckets = Scheduler.bucketByDepth(tasks, depthTolerance)
                 groups = depthBuckets.flatMap { bucket =>
                     assignToFinalBuckets(
                         bucket = bucket,
@@ -364,41 +364,6 @@ object Scheduler{
                 merged <- groups.traverse(g => flattenGroup(g, devices))
             } yield merged.flatten
 
-      
-
-        private def bucketByDepth(tasks: List[QuantumTask], depthRelTol: Double): List[List[QuantumTask]] = { // TST
-            final case class Bucket(tasks: List[QuantumTask], meanDepth: Double) {
-                def size: Int = tasks.size
-            }
-
-            def withinMeanBound (mean: Double, d: Int): Boolean = {
-                val md = math.max(mean, 1.0)
-                (math.abs(d.toDouble - mean) / md) <= depthRelTol
-            }
-
-            val sorted = tasks.sortBy(_.depth.value)
-
-            val buckets: List[Bucket] =
-                sorted.foldLeft(List.empty[Bucket]) { (acc, t) =>
-                    acc match {
-                        case Nil =>
-                            Bucket(List(t), t.depth.value.toDouble) :: Nil
-
-                        case b :: rest =>
-                            val d = t.depth.value
-                            if (withinMeanBound(b.meanDepth, d)) {
-                                val newTasks = t :: b.tasks
-                                val newMean =
-                                (b.meanDepth * b.tasks.size.toDouble + d.toDouble) / newTasks.size.toDouble
-                                Bucket(newTasks, newMean) :: rest
-                            } else {
-                                Bucket(List(t), d.toDouble) :: acc
-                            }
-                    }
-                }
-
-            buckets.reverse.map(b => b.tasks.reverse)
-        }
 
         private def assignToFinalBuckets( 
             bucket: List[QuantumTask],
@@ -471,7 +436,7 @@ object Scheduler{
                 .compile
                 .drain
         
-        private def fetchAllInProgressJobResults(): F[Unit] = // TST
+        private def fetchAllInProgressJobResults(): F[Unit] = 
             submittedTasks.get.flatMap(sts => {
                 sts.traverse_(st => fetchResultsFromCorrespondingProvider(st._1, st._2, st._3))
             }) *> ??? // promote pending to ready 
@@ -551,7 +516,7 @@ object Scheduler{
         private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = 
             0.7 * fidelity + 0.9 * queueTime //adjust as needed
         
-        private def estimateFidelity(device: Device, task: Circuit) : F[FidelityEstimate] =  // TST
+        private def estimateFidelity(device: Device, task: Circuit) : F[FidelityEstimate] =  
             for{
                 compiled <- compiler.compileCircuitFor(device, task)
                 deviceCal <- fetchDeviceCalibration(device) 
@@ -569,7 +534,7 @@ object Scheduler{
             case "Braket" => clients.braket.fetchDeviceCalibration(device.platformId)
         }
 
-        private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Device]) : F[Boolean] = // TST
+        private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Device]) : F[Boolean] = 
             devices.traverse(d => estimateFidelity(d, task.circuit)).map(lf => lf.filter(_.logPTotal > targetEstimatedFidelity).nonEmpty)
 
         ////////////////////////////////////////////////////////////
@@ -692,5 +657,41 @@ object Scheduler{
 
             case sgt: SyncronizedQuantumTaskList =>
                 sgt.tasks.forall(child => allParentResultsAvailable(results, child))
+        }
+
+    
+        //single pass, greedy 
+        private[qurator] def bucketByDepth(tasks: List[QuantumTask], depthRelTol: Double): List[List[QuantumTask]] = { // TST
+            final case class Bucket(tasks: List[QuantumTask], meanDepth: Double) {
+                def size: Int = tasks.size
+            }
+
+            def withinMeanBound (mean: Double, d: Int): Boolean = {
+                val md = math.max(mean, 1.0)
+                (math.abs(d.toDouble - mean) / md) <= depthRelTol
+            }
+
+            val sorted = tasks.sortBy(_.depth.value)
+
+            val buckets: List[Bucket] =
+                sorted.foldLeft(List.empty[Bucket]) { (acc, t) =>
+                    acc match {
+                        case Nil =>
+                            Bucket(List(t), t.depth.value.toDouble) :: Nil
+
+                        case b :: rest =>
+                            val d = t.depth.value
+                            if (withinMeanBound(b.meanDepth, d)) {
+                                val newTasks = t :: b.tasks
+                                val newMean =
+                                (b.meanDepth * b.tasks.size.toDouble + d.toDouble) / newTasks.size.toDouble
+                                Bucket(newTasks, newMean) :: rest
+                            } else {
+                                Bucket(List(t), d.toDouble) :: acc
+                            }
+                    }
+                }
+
+            buckets.reverse.map(b => b.tasks.reverse)
         }
 }

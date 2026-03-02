@@ -400,44 +400,382 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     )
   }
 
+  private def depths(buckets: List[List[QuantumTask]]): List[List[Int]] =
+    buckets.map(_.map(_.depth.value))
 
-  test("test basic requiresCutting semantics"){
+  test("bucketByDepth returns a single singleton bucket for one task") {
     for{
-      scheduler <- schedulerIO
+      id <- ID.make[IO, TaskId]
+      t = QuantumTask(
+        uuid = id,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(7),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.bucketByDepth(List(t), depthRelTol = 0.1)
+    } yield {
+       expect(depths(out) == List(List(7)))
+    } 
+  }
+
+  test("bucketByDepth sorts input by depth before bucketing") {
+    for{
+      List(id1, id2, id3) <- ids(3)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(3),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(1),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(2),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.bucketByDepth(List(t3, t1, t2), depthRelTol = 10.0)
     }yield {
-      expect("hello".length == 5)
+      expect(depths(out) == List(List(1, 2, 3)))          
     }
   }
 
-  test("test basic estimateFidelity semantics"){
+
+  test("bucketByDepth places all tasks in one bucket when all are within tolerance") {
     for{
-      scheduler <- schedulerIO
+      List(id1, id2, id3) <- ids(3)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(11), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(12), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.bucketByDepth(List(t1, t2, t3), depthRelTol = 0.2)
     }yield {
-      expect("hello".length == 5)
+      expect(depths(out) == List(List(10, 11, 12)))
     }
   }
 
-  test("test basic getAvailableDevices semantics"){
+  test("bucketByDepth splits tasks into multiple buckets when gaps exceed tolerance") {
     for{
-      scheduler <- schedulerIO
-    }yield {
-      expect("hello".length == 5)
+      List(id1, id2, id3, id4, id5) <- ids(5)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(11), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(20), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t4 = QuantumTask(
+        uuid = id4,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(21), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t5 = QuantumTask(
+        uuid = id5,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(40), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.bucketByDepth(List(t1, t2, t3, t4, t5), depthRelTol = 0.05)
+    } yield {
+      expect(depths(out) == List(List(10), List(11), List(20, 21), List(40)))
     }
   }
 
-  test("test basic fetchAllInProgressJobResults semantics"){
+  test("bucketByDepth includes a task exactly on the tolerance boundary") {
+    // mean = 10, candidate = 12, relative diff = 2 / 10 = 0.2
     for{
-      scheduler <- schedulerIO
-    }yield {
-      expect("hello".length == 5)
+      List(id1, id2) <- ids(2)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(800),
+        depth = TaskDepth(12), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.bucketByDepth(List(t1, t2), depthRelTol = 0.2)
+    } yield {
+       expect(depths(out) == List(List(10, 12)))
     }
   }
 
-  test("test basic bucketByDepth semantics"){
+  test("bucketByDepth excludes a task just outside the tolerance boundary") {
+    // mean = 10, candidate = 13, relative diff = 3 / 10 = 0.3
     for{
-      scheduler <- schedulerIO
-    }yield {
-      expect("hello".length == 5)
+      List(id1, id2) <- ids(2)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(800),
+        depth = TaskDepth(13), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.bucketByDepth(List(t1, t2), depthRelTol = 0.2)
+    } yield { expect(depths(out) == List(List(10), List(13)))}
+  }
+
+  test("bucketByDepth uses running mean of the current bucket") {
+    // - tol = 0.20:
+    // - 10 starts bucket
+    // - 11 joins (|11 - 10| / 10 = 0.10)
+    //   new mean = 10.5
+    // - 12 joins because it is checked against 10.5:
+    //   |12 - 10.5| / 10.5 = ~0.142857 <= 0.20
+    for{
+      List(id1, id2, id3) <- ids(3)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(800),
+        depth = TaskDepth(11), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(800),
+        depth = TaskDepth(12), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.bucketByDepth(List(t1, t2, t3), depthRelTol = 0.20)
+    } yield { expect(depths(out) == List(List(10, 11, 12))) }
+  }
+
+  test("bucketByDepth preserves ascending order within each bucket and across buckets") {
+    for{
+      List(id1, id2, id3, id4, id5) <- ids(5)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(21),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(10), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(40), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t4 = QuantumTask(
+        uuid = id4,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(11), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t5 = QuantumTask(
+        uuid = id5,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(20), 
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+       )
+      out = Scheduler.bucketByDepth(List(t1, t2, t3, t4, t5), depthRelTol = 0.1)
+    } yield {
+      expect(depths(out) == List(List(10, 11), List(20, 21), List(40)))
+    }
+  }
+
+  test("bucketByDepth with zero tolerance groups only equal depths") {
+    for{
+      List(id1, id2, id3, id4, id5) <- ids(5)
+      t1 = QuantumTask(
+        uuid = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(5),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t2 = QuantumTask(
+        uuid = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(5),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t3 = QuantumTask(
+        uuid = id3,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(6),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t4 = QuantumTask(
+        uuid = id4,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(6),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      t5 = QuantumTask(
+        uuid = id5,
+        circuit = Circuit(List.empty, 5),
+        qubits = TaskQubits(5),
+        shots = TaskShots(1000),
+        depth = TaskDepth(7),
+        parentTasks = List.empty,
+        childTasks = List.empty,
+        createdAt = LocalDateTime.now()
+      )
+      out = Scheduler.bucketByDepth(List(t1, t2, t3, t4, t5), depthRelTol = 0.0)
+    } yield {
+      expect(depths(out) == List(List(5, 5), List(6, 6), List(7)))
     }
   }
 

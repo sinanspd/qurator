@@ -49,7 +49,15 @@ object IBM{
         performance_metrics: Option[IBMBackendDevicePerformanceMetrics],
         wait_time_seconds: Option[IBMBackendDeviceWaitTimeSeconds]
     ){
-        def toDevice: Device = ???
+        def toDevice: Device = 
+            Device(
+                platformId = name,
+                platform = "IBM",
+                qubits= qubits.getOrElse(0),
+                t1 = 0,
+                t2 = 0,
+                gateSet = List.empty // TODO, need fixing
+            )
     }
 
     @derive(decoder, encoder, eqv, show)

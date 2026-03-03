@@ -46,6 +46,9 @@ import org.http4s.client._
 import org.http4s._ 
 import qurator.domain.device._
 import scala.annotation.nowarn
+import qurator.domain.Braket._
+import qurator.domain.Azure._
+import qurator.testbed.FakeCompiler
 
 @nowarn
 object SchedulerUtilitySuite extends SimpleIOSuite {
@@ -1866,20 +1869,994 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     }
   }
 
+  private final case class Calls(
+    compileOrder: List[String] = Nil,
+    fetchOrder: List[String] = Nil
+  )
 
-  test("test flatten group semantics *"){
-    for{
-      scheduler <- schedulerIO
-    }yield {
-      expect("hello".length == 5)
+  private def mkClients(
+    state: Ref[IO, FetchState],
+    ibmByDeviceId: Map[String, IO[DeviceCalibration]]
+  ): HttpClients[IO] = {
+    val ibm = new IBMClient[IO] {
+      def fetchBearerToken: IO[String] = ???
+      def fetchDeviceInformation: IO[BackendsResponseV2] = ???
+      def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] = ??? 
+      def listJobDetails(id: String): IO[JobDetailsResponseV2] = ???
+      def getJobMetrics(id: String): IO[JobMetricsResponse] = ???
+      def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
+        state.update(s => s.copy(fetchOrder = s.fetchOrder :+ platformId)) *>
+          ibmByDeviceId.getOrElse(
+            platformId,
+            IO.raiseError(new RuntimeException(s"unexpected calibration fetch for $platformId"))
+          )
+    }
+
+    val azure = new AzureQuantumClient[IO] {
+      def fetchDeviceInformation: IO[AzureDeviceStatusResponse] = ???
+      def submitJob(jobId: String, jobRequest: AzureJobCreateRequest): IO[AzureJobResponse] = ???
+      def getQuantumTask(jobId: String): IO[AzureJobResponse] = ???
+      def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
+        IO.raiseError(new RuntimeException(s"unexpected Azure calibration fetch for $platformId"))
+    }
+
+    val braket = new BraketClient[IO] {
+      def fetchDeviceList: IO[BraketDeviceListResponse] = ???
+      def fetchDeviceDetails(ids: List[String]): IO[List[BraketDeviceDetailsResponse]] = ???
+      def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): IO[BraketCreateQuantumTaskResponse] = ??? 
+      def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = ???
+      def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
+        IO.raiseError(new RuntimeException(s"unexpected Braket calibration fetch for $platformId"))
+    }
+
+    HttpClients.fromParts[IO](ibm, braket, azure)
+  }
+
+  private val t0 = LocalDateTime.of(2026, 1, 1, 10, 0, 0)
+  private val t1 = LocalDateTime.of(2026, 1, 1, 11, 0, 0)
+
+  private def mkTask( //probably should use this in the previous tests 
+    id: TaskId,
+    circuit: Circuit,
+    qubits: Int,
+    shots: Int,
+    depth: Int,
+    parentTasks: List[TaskId],
+    createdAt: LocalDateTime
+  ): QuantumTask =
+    QuantumTask(
+      uuid = id,
+      circuit = circuit,
+      qubits = TaskQubits(qubits),
+      shots = TaskShots(shots),
+      depth = TaskDepth(depth),
+      parentTasks = parentTasks,
+      childTasks = List.empty,
+      createdAt = createdAt
+    )
+
+
+  private def mkDevice(id: String, qubits: Int): Device =
+    Device(
+      platform = "IBM",
+      platformId = id,
+      qubits = qubits,
+      t1 = 0f,
+      t2 = 0f,
+      gateSet = List.empty
+    )
+  
+  private def mkIonQCalibration(avg1qFidelityPct: Double): IonQCalibration =
+    IonQCalibration(
+      avg1qFidelityPct = avg1qFidelityPct,
+      avg2qFidelityPct = 100.0,
+      avgReadoutFidelity = 1.0,
+      t1Seconds = 1.0,
+      t2Seconds = 1.0,
+      oneQGateDurationSec = 1e-6,
+      twoQGateDurationSec = 1e-6,
+      readoutDurationSec = 1e-6
+    )
+
+   private val passthroughCompiler: FakeCompiler[IO] =
+    FakeCompiler[IO](compiled = Nil)
+
+  private final case class FetchState(fetchOrder: List[String] = Nil)
+  
+  test("flattenGroup returns the single task unchanged and does not call any client") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1) <- ids(1)
+
+      task = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = 5,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t0
+      )
+
+      clients = mkClients(state, Map.empty)
+
+      out <- Scheduler.flattenGroup[IO](
+        group = List(task),
+        devices = List(mkDevice("A", 20)),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = 0.0
+      )
+
+      seen <- state.get
+    } yield {
+      expect(out == List(task)) and
+      expect(seen.fetchOrder.isEmpty)
     }
   }
 
-  test("test basic attemptToMergeSyncTasks semantics * "){
-    for{
-      scheduler <- schedulerIO
-    }yield {
-      expect("hello".length == 5)
+  test("flattenGroup returns the original group unchanged when no device is feasible") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2, p1, p2) <- ids(4)
+
+      tA = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 6),
+        qubits = 6,
+        shots = 1000,
+        depth = 10,
+        parentTasks = List(p1),
+        createdAt = t0
+      )
+      tB = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 7),
+        qubits = 7,
+        shots = 2000,
+        depth = 20,
+        parentTasks = List(p2),
+        createdAt = t1
+      )
+
+      clients = mkClients(state, Map.empty)
+
+      out <- Scheduler.flattenGroup[IO](
+        group = List(tA, tB),
+        devices = List(
+          mkDevice("small-1", 10),
+          mkDevice("small-2", 12)
+        ), // merged qubits = 13
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = 0.0
+      )
+
+      seen <- state.get
+    } yield {
+      expect(out == List(tA, tB)) and
+      expect(seen.fetchOrder.isEmpty)
     }
-  }  
+  }
+
+  test("flattenGroup merges into a single task when the best estimated log fidelity meets the threshold") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2, p1, p2, p3) <- ids(5)
+
+      tA = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 3),
+        qubits = 3,
+        shots = 1000,
+        depth = 10,
+        parentTasks = List(p1, p2),
+        createdAt = t1
+      )
+      tB = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 5000,
+        depth = 25,
+        parentTasks = List(p2, p3),
+        createdAt = t0
+      )
+
+      device = mkDevice("good", 10)
+
+      clients = mkClients(
+        state,
+        Map("good" -> IO.pure(mkIonQCalibration(avg1qFidelityPct = 100.0)))
+      )
+
+      out <- Scheduler.flattenGroup[IO](
+        group = List(tA, tB),
+        devices = List(device),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = 0.0
+      )
+
+      seen <- state.get
+    } yield {
+      val merged = out.head
+
+      expect(out.size == 1) and
+      expect(merged.qubits.value == 7) and
+      expect(merged.shots.value == 5000) and
+      expect(merged.depth.value == 25) and
+      expect(merged.parentTasks == List(p1, p2, p3)) and
+      expect(merged.childTasks == List(id1, id2)) and
+      expect(merged.createdAt == t0) and
+      expect(seen.fetchOrder == List("good"))
+    }
+  }
+
+  test("flattenGroup returns the original group when the best estimated log fidelity is below the threshold") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2) <- ids(2)
+
+      tA = mkTask(
+        id = id1,
+        circuit = Circuit(List(X(0)), 3),
+        qubits = 3,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t0
+      )
+      tB = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t1
+      )
+
+      device = mkDevice("bad", 10)
+
+      clients = mkClients(
+        state,
+        Map("bad" -> IO.pure(mkIonQCalibration(avg1qFidelityPct = 50.0)))
+      )
+
+      out <- Scheduler.flattenGroup[IO](
+        group = List(tA, tB),
+        devices = List(device),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = 0.0
+      )
+
+      seen <- state.get
+    } yield {
+      expect(out == List(tA, tB)) and
+      expect(seen.fetchOrder == List("bad"))
+    }
+  }
+
+  test("flattenGroup evaluates all feasible devices and uses the maximum logPTotal across them") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2) <- ids(2)
+
+      tA = mkTask(
+        id = id1,
+        circuit = Circuit(List(X(0)), 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t0
+      )
+      tB = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 6),
+        qubits = 6,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t1
+      )
+
+      tooSmall = mkDevice("too-small", 9) // not feasible
+      bad = mkDevice("bad", 10)           // feasible
+      good = mkDevice("good", 12)         // feasible
+
+      clients = mkClients(
+        state,
+        Map(
+          "bad" -> IO.pure(mkIonQCalibration(avg1qFidelityPct = 50.0)),   // negative logPTotal
+          "good" -> IO.pure(mkIonQCalibration(avg1qFidelityPct = 100.0))  // best possible
+        )
+      )
+      out <- Scheduler.flattenGroup[IO](
+        group = List(tA, tB),
+        devices = List(tooSmall, bad, good),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -0.1
+      )
+
+      seen <- state.get
+    } yield {
+      expect(out.size == 1) and
+      expect(out.head.childTasks == List(id1, id2)) and
+      expect(seen.fetchOrder == List("bad", "good"))
+    }
+  }
+
+  test("flattenGroup only evaluates feasible devices") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2) <- ids(2)
+
+      tA = mkTask(
+        id = id1,
+        circuit = Circuit(List(X(0)), 5),
+        qubits = 5,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t0
+      )
+      tB = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 5),
+        qubits = 5,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t1
+      )
+
+      tooSmall = mkDevice("too-small", 8)
+      feasibleA = mkDevice("A", 10)
+      feasibleB = mkDevice("B", 15)
+
+      clients = mkClients(
+        state,
+        Map(
+          "A" -> IO.pure(mkIonQCalibration(avg1qFidelityPct = 100.0)),
+          "B" -> IO.pure(mkIonQCalibration(avg1qFidelityPct = 100.0))
+        )
+      )
+
+      _ <- Scheduler.flattenGroup[IO](
+        group = List(tA, tB),
+        devices = List(tooSmall, feasibleA, feasibleB),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1.0
+      )
+
+      seen <- state.get
+    } yield {
+      expect(seen.fetchOrder == List("A", "B"))
+    }
+  }
+
+  test("flattenGroup propagates calibration fetch failure and stops before later feasible devices") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2) <- ids(2)
+
+      tA = mkTask(
+        id = id1,
+        circuit = Circuit(List(X(0)), 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t0
+      )
+      tB = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t1
+      )
+
+      first = mkDevice("first", 10)
+      second = mkDevice("second", 10)
+
+      boom = new RuntimeException("fetch failed")
+
+      clients = mkClients(
+        state,
+        Map(
+          "first" -> IO.raiseError(boom),
+          "second" -> IO.pure(mkIonQCalibration(avg1qFidelityPct = 100.0))
+        )
+      )
+
+      attempt <- Scheduler.flattenGroup[IO](
+        group = List(tA, tB),
+        devices = List(first, second),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1.0
+      ).attempt
+
+      seen <- state.get
+    } yield {
+      expect(attempt.swap.exists(_.getMessage == "fetch failed")) and
+      expect(seen.fetchOrder == List("first"))
+    }
+  }
+
+  private def mkClients2(
+    state: Ref[IO, FetchState],
+    ibmDevicesF: IO[BackendsResponseV2], //noticed I need this too late. Too lazy to patch up the tests now so using a new constructor
+    ibmCalibrations: Map[String, IO[DeviceCalibration]]
+  ): HttpClients[IO] = {
+
+    val ibm = new IBMClient[IO] {
+      def fetchDeviceInformation(): IO[BackendsResponseV2] =
+        ibmDevicesF
+
+      def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
+        state.update(s => s.copy(fetchOrder = s.fetchOrder :+ platformId)) *>
+          ibmCalibrations.getOrElse(
+            platformId,
+            IO.raiseError(new RuntimeException(s"unexpected calibration fetch for $platformId"))
+          )
+
+      def fetchBearerToken: IO[String] = ???
+      def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] = ??? 
+      def listJobDetails(id: String): IO[JobDetailsResponseV2] = ???
+      def getJobMetrics(id: String): IO[JobMetricsResponse] = ???
+    }
+
+    val braket = new BraketClient[IO] {
+      def fetchDeviceDetails(ids: List[String]): IO[List[BraketDeviceDetailsResponse]] = ???
+      def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): IO[BraketCreateQuantumTaskResponse] = ??? 
+      def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = ???
+      def fetchDeviceList(): IO[BraketDeviceListResponse] =
+        IO.pure(BraketDeviceListResponse(
+          devices = List.empty,
+          nextToken = None
+        ))
+
+      def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
+        IO.raiseError(new RuntimeException(s"unexpected Braket calibration fetch for $platformId"))
+
+    }
+
+    val azure = new AzureQuantumClient[IO] {
+      def fetchDeviceInformation: IO[AzureDeviceStatusResponse] = IO.pure(AzureDeviceStatusResponse(
+        value = List.empty
+      ))
+      def submitJob(jobId: String, jobRequest: AzureJobCreateRequest): IO[AzureJobResponse] = ???
+      def getQuantumTask(jobId: String): IO[AzureJobResponse] = ???
+      def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
+        IO.raiseError(new RuntimeException(s"unexpected Azure calibration fetch for $platformId"))
+    }
+
+    HttpClients.fromParts[IO](ibm, braket, azure)
+  }
+
+
+  private def mkIBMDevice(id: String, qubits: Int): IBMBackendDevice =
+    IBMBackendDevice(
+      name = id,
+      status = IBMBackendDeviceStatus(name = "online", reason = None),
+      qubits = Some(qubits),
+      queue_length = 0,
+      is_simulator = None, 
+      clops = None,
+      processor_type = None,
+      performance_metrics = None,
+      wait_time_seconds = None,
+    )
+
+  test("attemptToMergeSyncTasks returns a single task unchanged") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1) <- ids(1)
+
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 5),
+        qubits = 5,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = t0
+      )
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List(mkIBMDevice("big", 20)))),
+        ibmCalibrations = Map("big" -> IO.pure(mkIonQCalibration(100.0)))
+      )
+
+      out <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1e9
+      )
+
+      seen <- state.get
+    } yield {
+      expect(out == List(t1)) and
+      expect(seen.fetchOrder.isEmpty)
+    }
+  }
+
+  private val ts0 = LocalDateTime.of(2026, 1, 1, 10, 0, 0)
+  private val ts1 = LocalDateTime.of(2026, 1, 1, 11, 0, 0)
+  test("attemptToMergeSyncTasks returns tasks unchanged when no devices are available") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2) <- ids(2)
+
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 3),
+        qubits = 3,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t2 = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 30,
+        parentTasks = Nil,
+        createdAt = ts1
+      )
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List.empty)),
+        ibmCalibrations = Map.empty
+      )
+
+      out <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1, t2),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1e9
+      )
+
+      seen <- state.get
+    } yield {
+      expect(out == List(t1, t2)) and
+      expect(seen.fetchOrder.isEmpty)
+    }
+  }
+
+  test("attemptToMergeSyncTasks merges a two-task group when threshold is low enough") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2, p1, p2, p3) <- ids(5)
+
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = List(p1, p2),
+        createdAt = ts1
+      )
+      t2 = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 3),
+        qubits = 3,
+        shots = 5000,
+        depth = 10,
+        parentTasks = List(p2, p3),
+        createdAt = ts0
+      )
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List(mkIBMDevice("big", 10)))),
+        ibmCalibrations = Map("big" -> IO.pure(mkIonQCalibration(100.0)))
+      )
+
+      out <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1, t2),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1e9
+      )
+
+      seen <- state.get
+    } yield {
+      val merged = out.head
+
+      expect(out.size == 1) and
+      expect(merged.qubits.value == 7) and
+      expect(merged.shots.value == 5000) and
+      expect(merged.depth.value == 10) and
+      expect(merged.parentTasks.toSet == Set(p1, p2, p3)) and
+      expect(merged.childTasks == List(id1, id2)) and
+      expect(merged.createdAt == ts0) and
+      expect(seen.fetchOrder == List("big"))
+    }
+  }
+
+
+  test("attemptToMergeSyncTasks keeps the original group when threshold is above achievable log fidelity") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2) <- ids(2)
+
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 6),
+        qubits = 6,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t2 = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts1
+      )
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List(mkIBMDevice("big", 10)))),
+        ibmCalibrations = Map("big" -> IO.pure(mkIonQCalibration(100.0)))
+      )
+
+      out <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1, t2),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = 0.1
+      )
+
+      seen <- state.get
+    } yield {
+      expect(out == List(t1, t2)) and
+      expect(seen.fetchOrder == List("big"))
+    }
+  }
+
+  test("attemptToMergeSyncTasks respects depth bucketing before merging") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2, id3) <- ids(3)
+
+      // 10 and 11 are within 10% tolerance, 30 should split into another bucket.
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t2 = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 3),
+        qubits = 3,
+        shots = 1000,
+        depth = 11,
+        parentTasks = Nil,
+        createdAt = ts1
+      )
+      t3 = mkTask(
+        id = id3,
+        circuit = Circuit(List.empty, 2),
+        qubits = 2,
+        shots = 1000,
+        depth = 30,
+        parentTasks = Nil,
+        createdAt = ts1
+      )
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List(mkIBMDevice("big", 20)))),
+        ibmCalibrations = Map("big" -> IO.pure(mkIonQCalibration(100.0)))
+      )
+
+      out <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1, t2, t3),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1e9
+      )
+
+      merged = out.find(_.childTasks.nonEmpty).get
+      singleton = out.find(_.childTasks.isEmpty).get
+    } yield {
+      expect(out.size == 2) and
+      expect(merged.childTasks.toSet == Set(id1, id2)) and
+      expect(singleton == t3)
+    }
+  }
+
+  test("attemptToMergeSyncTasks respects capacity when splitting into final bins") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2, id3) <- ids(3)
+
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 6),
+        qubits = 6,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t2 = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t3 = mkTask(
+        id = id3,
+        circuit = Circuit(List.empty, 3),
+        qubits = 3,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts1
+      )
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List(mkIBMDevice("cap-10", 10)))),
+        ibmCalibrations = Map("cap-10" -> IO.pure(mkIonQCalibration(100.0)))
+      )
+
+      out <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1, t2, t3),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1e9
+      )
+
+      merged = out.find(_.childTasks.nonEmpty).get
+      singleton = out.find(_.childTasks.isEmpty).get
+    } yield {
+      expect(out.size == 2) and
+      expect(merged.qubits.value == 10) and
+      expect(merged.childTasks == List(id1, id2)) and
+      expect(singleton == t3)
+    }
+  }
+
+  test("attemptToMergeSyncTasks respects maxTasksPerBin = 3") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2, id3, id4) <- ids(4)
+
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t2 = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 3),
+        qubits = 3,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t3 = mkTask(
+        id = id3,
+        circuit = Circuit(List.empty, 2),
+        qubits = 2,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t4 = mkTask(
+        id = id4,
+        circuit = Circuit(List.empty, 1),
+        qubits = 1,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts1
+      )
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List(mkIBMDevice("big", 20)))),
+        ibmCalibrations = Map("big" -> IO.pure(mkIonQCalibration(100.0)))
+      )
+
+      out <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1, t2, t3, t4),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1e9
+      )
+
+      merged = out.find(_.childTasks.nonEmpty).get
+      singleton = out.find(_.childTasks.isEmpty).get
+    } yield {
+      expect(out.size == 2) and
+      expect(merged.childTasks == List(id1, id2, id3)) and
+      expect(singleton == t4)
+    }
+  }
+
+  test("attemptToMergeSyncTasks uses the maximum available device qubit count as capacity") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2) <- ids(2)
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 6),
+        qubits = 6,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t2 = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts1
+      )
+
+      small = mkIBMDevice("small", 5)
+      big = mkIBMDevice("big", 10)
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List(small, big))),
+        ibmCalibrations = Map(
+          "small" -> IO.pure(mkIonQCalibration(100.0)),
+          "big" -> IO.pure(mkIonQCalibration(100.0))
+        )
+      )
+
+      out <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1, t2),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1e9
+      )
+
+      seen <- state.get
+    } yield {
+      expect(out.size == 1) and
+      expect(out.head.childTasks == List(id1, id2)) and
+      expect(seen.fetchOrder == List("big"))
+    }
+  }
+
+  test("attemptToMergeSyncTasks uses the best feasible device log fidelity across devices") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2) <- ids(2)
+
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List(X(0)), 3),
+        qubits = 3,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t2 = mkTask(
+        id = id2,
+        circuit = Circuit(List(X(0)), 3),
+        qubits = 3,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts1
+      )
+
+      bad = mkIBMDevice("bad", 10)
+      good = mkIBMDevice("good", 10)
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List(bad, good))),
+        ibmCalibrations = Map(
+          "bad" -> IO.pure(mkIonQCalibration(50.0)),
+          "good" -> IO.pure(mkIonQCalibration(100.0))
+        )
+      )
+
+      out <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1, t2),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -0.1
+      )
+
+      seen <- state.get
+    } yield {
+      expect(out.size == 1) and
+      expect(out.head.childTasks == List(id1, id2)) and
+      expect(seen.fetchOrder == List("bad", "good"))
+    }
+  }
+
+  test("attemptToMergeSyncTasks propagates calibration fetch failure from the first merged group") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(id1, id2) <- ids(2)
+
+      t1 = mkTask(
+        id = id1,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts0
+      )
+      t2 = mkTask(
+        id = id2,
+        circuit = Circuit(List.empty, 4),
+        qubits = 4,
+        shots = 1000,
+        depth = 10,
+        parentTasks = Nil,
+        createdAt = ts1
+      )
+
+      boom = new RuntimeException("fetch failed")
+
+      clients = mkClients2(
+        state = state,
+        ibmDevicesF = IO.pure(BackendsResponseV2(List(mkIBMDevice("big", 10)))),
+        ibmCalibrations = Map(
+          "big" -> IO.raiseError(boom)
+        )
+      )
+
+      attempt <- Scheduler.attemptToMergeSyncTasks[IO](
+        tasks = List(t1, t2),
+        clients = clients,
+        compiler = passthroughCompiler,
+        targetEstimatedFidelity = -1e9
+      ).attempt
+
+      seen <- state.get
+    } yield {
+      expect(attempt.swap.exists(_.getMessage == "fetch failed")) and
+      expect(seen.fetchOrder == List("big"))
+    }
+  }
 }

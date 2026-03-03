@@ -499,7 +499,7 @@ object Scheduler{
             clients: HttpClients[F],
             compiler: FakeCompiler[F],
             targetEstimatedFidelity: Double
-        ): F[List[QuantumTask]] =  // TST
+        ): F[List[QuantumTask]] = 
             for{
                 devices <- getAvailableDevices[F](clients)
                 maxQubits = devices.map(_.qubits).maxOption.getOrElse(0)
@@ -557,7 +557,7 @@ object Scheduler{
             clients: HttpClients[F],
             compiler: FakeCompiler[F],
             targetEstimatedFidelity: Double
-        ): F[List[QuantumTask]] = // TST
+        ): F[List[QuantumTask]] = 
             group match {
                 case Nil          => List.empty[QuantumTask].pure[F]
                 case single :: Nil => List(single).pure[F]

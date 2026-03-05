@@ -55,20 +55,21 @@ object Scheduler{
 
        
         //TODO Merge Cut Task Results 
-        //TODO consider impact of cross talk when scheduling multiple tasks on the same device.
         //TODO for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
-        //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
+        //TODO consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
         //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
         //TODO: Do we even need to estimate the queue? 
+        //TODO: Loop back actual job data 
 
-        /////////////////////////////////////////////// LATER ////////////////////////////////////////////
+        /////////////////////////////////////////////// NOT ADDRESSING NOW ////////////////////////////////////////////
+        //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
         //TODO Fall back to other devices on failure (maybe after expontential backoff ?)
         //TODO think about reservations?? 
         //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
-        //TODO: Loop back actual job data 
         //TODO: I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
         //TODO: We need to move some of the logic to supervisor so that the scheduler keeps running on error 
+        //TODO: Stronger topology mapping 
 
 
         def submitTask(taskReq: TaskRequest): F[Unit] = taskReq match{

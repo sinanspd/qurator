@@ -30,8 +30,9 @@ import cats.Monad
 import fs2.Stream
 
 trait Scheduler[F[_]]{
-    def submitTask(taskReq: TaskRequest): F[Unit]
+    def submitTask(taskReq: TaskRequest): F[List[TaskId]]
     def estimateQueueTime(device: Device, task: QuantumTask) : F[Long]
+    def getSubmittedTasks(): F[List[(String, String, TaskId)]]
 }
 
 object Scheduler{
@@ -61,6 +62,7 @@ object Scheduler{
         //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
         //TODO: Do we even need to estimate the queue? 
         //TODO: Loop back actual job data 
+        //TODO: revisit Nick's comments 
 
         /////////////////////////////////////////////// NOT ADDRESSING NOW ////////////////////////////////////////////
         //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
@@ -72,13 +74,13 @@ object Scheduler{
         //TODO: Stronger topology mapping 
 
 
-        def submitTask(taskReq: TaskRequest): F[Unit] = taskReq match{
+        def submitTask(taskReq: TaskRequest): F[List[TaskId]] = taskReq match{
             case str : SynronizedQuantumTaskRequest => submitSynronizedTaskRequest(str)
             case ntr : NewQuantumTaskRequest => submitNewTaskRequest(ntr)
             case ctr : NewClassicalTaskRequest => submitClassicalTaskRequest(ctr)
         }
 
-        private def submitClassicalTaskRequest(taskReq: NewClassicalTaskRequest): F[Unit] = 
+        private def submitClassicalTaskRequest(taskReq: NewClassicalTaskRequest): F[List[TaskId]] = 
             ID.make[F, TaskId].flatMap(taskId => {
                 val t = ClassicalTask( 
                         uuid = taskId,
@@ -89,18 +91,19 @@ object Scheduler{
                 )
                 allParentResultsAvailable(t).flatMap{ apr =>
                     if(taskReq.parentTasks.isEmpty || apr){
-                        enqueueReady(List(t))
+                        enqueueReady(List(t)) *> List(t.uuid).pure[F]
+
                     }else{
-                        enqueuePending(List(t))
+                        enqueuePending(List(t)) *> List(t.uuid).pure[F]
                     }
                 }
             })
 
-        private def submitNewTaskRequest(taskReq: NewQuantumTaskRequest): F[Unit] =  // TST
+        private def submitNewTaskRequest(taskReq: NewQuantumTaskRequest): F[List[TaskId]] =  // TST
              for{
                 devices <- Scheduler.getAvailableDevices[F](clients)
                 needsToBeCut <- requiresCutting(taskReq, devices)
-                _ <- 
+                tids <- 
                     if(needsToBeCut){ //TODO: Think this through carefully. I am not convinced this is the right place to cut. 
                         val cut = cuttingStrategy(taskReq.circuit)
                         val optimized = cut.flatMap(additionalOptimizationRuns(_))
@@ -118,8 +121,8 @@ object Scheduler{
                                 )
                             }
                         }.flatMap { recreatedTasks =>
-                            if (taskReq.parentTasks.nonEmpty) enqueuePending(recreatedTasks)
-                            else enqueueReady(recreatedTasks)
+                            if (taskReq.parentTasks.nonEmpty) enqueuePending(recreatedTasks) *> List(recreatedTasks.map(_.uuid): _*).pure[F]
+                            else enqueueReady(recreatedTasks) *> List(recreatedTasks.map(_.uuid): _*).pure[F]
                         }
                     }else{
                         ID.make[F, TaskId].flatMap(taskId => {
@@ -133,13 +136,13 @@ object Scheduler{
                                     childTasks = taskReq.childTasks,
                                     createdAt = taskReq.createdAt
                             )
-                            if(taskReq.parentTasks.nonEmpty){enqueuePending(List(t))}
-                            else {enqueueReady(List(t))}
+                            if(taskReq.parentTasks.nonEmpty){enqueuePending(List(t)) *> List(t.uuid).pure[F]}
+                            else {enqueueReady(List(t)) *> List(t.uuid).pure[F]}
                         })
                     }
-            } yield () 
+            } yield tids 
 
-        private def submitSynronizedTaskRequest(str: SynronizedQuantumTaskRequest): F[Unit] =  // TST
+        private def submitSynronizedTaskRequest(str: SynronizedQuantumTaskRequest): F[List[TaskId]] =  // TST
             for{
                 cutTasks <- 
                     if (str.cut) {
@@ -193,7 +196,7 @@ object Scheduler{
                 )
                 allParents = str.l.foldLeft(List.empty[TaskId])((a, b) => a ++ b.parentTasks)
                 _ <- if(allParents.isEmpty){enqueueReady(List(sg))}else{enqueuePending(List(sg))}
-            }yield ()
+            }yield List(groupId)
 
 
         def startScheduling(): F[Unit] = {
@@ -441,6 +444,9 @@ object Scheduler{
             Temporal[F].sleep(computationTime.millis) *> 
             results.update(_ + (ct.uuid -> s"Result of classical task ${ct.uuid.value}"))
         }
+
+        def getSubmittedTasks(): F[List[(String, String, TaskId)]] = 
+            submittedTasks.get
     }
 
 

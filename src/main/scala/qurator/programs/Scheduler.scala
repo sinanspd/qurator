@@ -33,6 +33,7 @@ trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[List[TaskId]]
     def estimateQueueTime(device: Device, task: QuantumTask) : F[Long]
     def getSubmittedTasks(): F[List[(String, String, TaskId)]]
+    def startRuntime: Resource[F, Unit]
 }
 
 object Scheduler{
@@ -49,7 +50,8 @@ object Scheduler{
       readyTasks     <- Ref.of[F, List[Task]](List.empty)
       pendingTasks   <- Ref.of[F, List[Task]](List.empty)
       submittedTasks <- Ref.of[F, List[(String, String, TaskId)]](List.empty) 
-      results        <- Ref.of[F, Map[TaskId, String]](Map.empty)        
+      results        <- Ref.of[F, Map[TaskId, String]](Map.empty)    
+      _ <- Logger[F].info("Creating The Scheduler")    
     } yield new Scheduler[F] {
 
         private val idleDelay: FiniteDuration = 250.millis
@@ -75,9 +77,12 @@ object Scheduler{
 
 
         def submitTask(taskReq: TaskRequest): F[List[TaskId]] = taskReq match{
-            case str : SynronizedQuantumTaskRequest => submitSynronizedTaskRequest(str)
-            case ntr : NewQuantumTaskRequest => submitNewTaskRequest(ntr)
-            case ctr : NewClassicalTaskRequest => submitClassicalTaskRequest(ctr)
+            case str : SynronizedQuantumTaskRequest => 
+                Logger[F].info("Received Synronized Task") *> submitSynronizedTaskRequest(str)
+            case ntr : NewQuantumTaskRequest => 
+                 Logger[F].info("Received Quantum Task") *>  submitNewTaskRequest(ntr)
+            case ctr : NewClassicalTaskRequest => 
+                 Logger[F].info("Received Classical Task") *>  submitClassicalTaskRequest(ctr)
         }
 
         private def submitClassicalTaskRequest(taskReq: NewClassicalTaskRequest): F[List[TaskId]] = 
@@ -226,7 +231,7 @@ object Scheduler{
                         Temporal[F].sleep(idleDelay) *> loop
                 }
 
-            Concurrent[F].start(loop).void
+            loop
         }
 
         private def scheduleOneQuantumTask(task: QuantumTask): F[Unit] = {
@@ -286,10 +291,32 @@ object Scheduler{
                 .compile
                 .drain
         
-        private def fetchAllInProgressJobResults(): F[Unit] = 
-            submittedTasks.get.flatMap(sts => {
-                sts.traverse_(st => fetchResultsFromCorrespondingProvider(st._1, st._2, st._3))
-            }) *> ??? // promote pending to ready 
+        def startRuntime: Resource[F, Unit] =
+            Resource
+                .make {
+                    (Concurrent[F].start(startScheduling), Concurrent[F].start(startFetchingResults)).tupled
+                } { case (schedFib, fetchFib) =>
+                    schedFib.cancel *> fetchFib.cancel
+                }
+                .void
+
+        private def fetchAllInProgressJobResults(): F[Unit] =
+            for {
+                sts <- submittedTasks.get
+                _   <- sts.traverse_ { case (provider, jobId, taskId) =>
+                        fetchResultsFromCorrespondingProvider(provider, jobId, taskId)
+                    }
+                rs <- results.get
+                _ <- submittedTasks.update(_.filterNot { case (_, _, tid) => rs.contains(tid) })
+
+                promotable <- pendingTasks.modify { ps =>
+                val (goReady, stayPending) =
+                    ps.partition(t => Scheduler.allParentResultsAvailable(rs, t)) 
+                (stayPending, goReady)
+                }
+
+                _ <- readyTasks.update(_ ++ promotable)
+            } yield ()
         
         //TODO: On Failure of job this needs to reschedule 
         private def fetchResultsFromCorrespondingProvider(provider: String, providerId: String, taskId: TaskId): F[Unit] = provider match{

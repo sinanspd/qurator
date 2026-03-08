@@ -1,0 +1,4314 @@
+{
+  "braketSchemaHeader": {
+    "name": "braket.device_schema.standardized_gate_model_qpu_device_properties",
+    "version": "1"
+  },
+  "oneQubitProperties": {
+    "0": {
+      "T1": {
+        "value": 0.00007807259569969638,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000056512599052371826,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999662544605748,
+          "standardError": 0.0000046063640554639295
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994979608236806,
+          "standardError": 0.00005087100235618267
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.98
+        }
+      ]
+    },
+    "1": {
+      "T1": {
+        "value": 0.000054816884127895094,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.0000033627207025599404,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993224669323288,
+          "standardError": 0.000033670845029127626
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9979330628702924,
+          "standardError": 0.00007826873123515799
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.96
+        }
+      ]
+    },
+    "2": {
+      "T1": {
+        "value": 0.00004868230767529624,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002788431833966598,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994337293450029,
+          "standardError": 0.00001517591355796127
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9984943864235534,
+          "standardError": 0.00009286106986729052
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.988
+        }
+      ]
+    },
+    "3": {
+      "T1": {
+        "value": 0.00004771131006986451,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00003052240983936194,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994626199076104,
+          "standardError": 0.00001707183501577157
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9989708366376858,
+          "standardError": 0.0000871803971675572
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.985
+        }
+      ]
+    },
+    "4": {
+      "T1": {
+        "value": 0.00005186262635104022,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000033987097030729885,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993773258560552,
+          "standardError": 0.00002625929383800476
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999220912111979,
+          "standardError": 0.00006583081896829925
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.975
+        }
+      ]
+    },
+    "5": {
+      "T1": {
+        "value": 0.00006381304980229707,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00005539778554264352,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9996135692761356,
+          "standardError": 0.000007511453453634674
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993777906193774,
+          "standardError": 0.000009188456814815835
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.954
+        }
+      ]
+    },
+    "6": {
+      "T1": {
+        "value": 0.00001741845282632326,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002359752856229136,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9992582537390166,
+          "standardError": 0.000015527665098871423
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990529559334258,
+          "standardError": 0.000008254474109862424
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.962
+        }
+      ]
+    },
+    "7": {
+      "T1": {
+        "value": 0.00003763128563138984,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000027421906330316048,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999385806605176,
+          "standardError": 0.000024523558011915177
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9985476429834174,
+          "standardError": 0.000047399912376349206
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.967
+        }
+      ]
+    },
+    "8": {
+      "T1": {
+        "value": 0.00004011101812517737,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002580051390732585,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993894484254398,
+          "standardError": 0.000030806029725909386
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986327975869332,
+          "standardError": 0.0000748555998628547
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.981
+        }
+      ]
+    },
+    "9": {
+      "T1": {
+        "value": 0.00005026493309090441,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000026528763681143985,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993475726528984,
+          "standardError": 0.000011101928403440329
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.998886100401366,
+          "standardError": 0.000042865913846117265
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.983
+        }
+      ]
+    },
+    "10": {
+      "T1": {
+        "value": 0.00003229908391411129,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000016214428855132468,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9989568689485804,
+          "standardError": 0.0000764847900908343
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.934833725894148,
+          "standardError": 0.02283592733761263
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.939
+        }
+      ]
+    },
+    "11": {
+      "T1": {
+        "value": 0.00004664612969795811,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002334065752163106,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994112307615056,
+          "standardError": 0.00001696346015692152
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9988509109583844,
+          "standardError": 0.00003414653841701583
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.973
+        }
+      ]
+    },
+    "12": {
+      "T1": {
+        "value": 0.000024174501993323716,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000021534585155968955,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991830664525128,
+          "standardError": 0.00002238662082755457
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986447628157408,
+          "standardError": 0.00003808786072907876
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.972
+        }
+      ]
+    },
+    "13": {
+      "T1": {
+        "value": 0.00003597040814140584,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.0000014489179664955998,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9962646487915052,
+          "standardError": 0.00013072103074455863
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9954723932928546,
+          "standardError": 0.00018518997125600904
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.944
+        }
+      ]
+    },
+    "14": {
+      "T1": {
+        "value": 0.000023774235028195537,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002193975080966304,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9992227987875127,
+          "standardError": 0.000031491570685568145
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9988209595157532,
+          "standardError": 0.00004292235784946518
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.983
+        }
+      ]
+    },
+    "15": {
+      "T1": {
+        "value": 0.000040269495210631945,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000017951362383472613,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999126414611271,
+          "standardError": 0.00003966662378778782
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986533185973644,
+          "standardError": 0.00006938559308664192
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.957
+        }
+      ]
+    },
+    "16": {
+      "T1": {
+        "value": 0.00003426977707632339,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00001872979631833971,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993839849668182,
+          "standardError": 0.00003542440824262285
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990121575348784,
+          "standardError": 0.0001746091705086302
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.983
+        }
+      ]
+    },
+    "17": {
+      "T1": {
+        "value": 0.00003532768420333454,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000021059221369634784,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993078188157594,
+          "standardError": 0.000023480631632033293
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.835739133767655,
+          "standardError": 0.03176514209137937
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.96
+        }
+      ]
+    },
+    "18": {
+      "T1": {
+        "value": 0.00004167828289558528,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002159376632504539,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9829236592007882,
+          "standardError": 0.00203137870171769
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9614697788552145,
+          "standardError": 0.005344468569754845
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.983
+        }
+      ]
+    },
+    "19": {
+      "T1": {
+        "value": 0.00006102832364107691,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00003016166767544348,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9995677411221284,
+          "standardError": 0.000021344137786905066
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999260688036224,
+          "standardError": 0.000027937726774315277
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.959
+        }
+      ]
+    },
+    "20": {
+      "T1": {
+        "value": 0.000028757228487386044,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000033434647565444564,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993357449748668,
+          "standardError": 0.000018951063955294692
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986315991654312,
+          "standardError": 0.000025114179380886888
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.987
+        }
+      ]
+    },
+    "21": {
+      "T1": {
+        "value": 0.00007247441715430014,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000023323744941405877,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9989262877376768,
+          "standardError": 0.00004373802238636507
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9975639747277308,
+          "standardError": 0.000219846221168984
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.989
+        }
+      ]
+    },
+    "22": {
+      "T1": {
+        "value": 0.000024947514520423653,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000018391512646820377,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9989696465187105,
+          "standardError": 0.00006534849868912794
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9985814587502856,
+          "standardError": 0.000055389934411062056
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.982
+        }
+      ]
+    },
+    "23": {
+      "T1": {
+        "value": 0.00003647051827315728,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000016311912269140194,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9992593446426687,
+          "standardError": 0.000017138481579146865
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9987628652881614,
+          "standardError": 0.00005676135245655392
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.968
+        }
+      ]
+    },
+    "24": {
+      "T1": {
+        "value": 0.000042919339219738006,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002521238003838633,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990748952320366,
+          "standardError": 0.00003672170321720744
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9985394742736664,
+          "standardError": 0.00005473422199031776
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.96
+        }
+      ]
+    },
+    "25": {
+      "T1": {
+        "value": 0.00003256805089857373,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002095148169889427,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9992360798691642,
+          "standardError": 0.000025960180802752516
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986911910002668,
+          "standardError": 0.00005428141276701361
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.98
+        }
+      ]
+    },
+    "26": {
+      "T1": {
+        "value": 0.0000257526225457827,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000014432569416689134,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9989006914586288,
+          "standardError": 0.00004186715106078253
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9977862117959148,
+          "standardError": 0.00014027761467568198
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.915
+        }
+      ]
+    },
+    "27": {
+      "T1": {
+        "value": 0.00002018455440677691,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00000906740557016228,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9981581979347904,
+          "standardError": 0.00008062130210305516
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.997782083407881,
+          "standardError": 0.00009868933696660478
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.971
+        }
+      ]
+    },
+    "28": {
+      "T1": {
+        "value": 0.000023143107300560573,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002398238240997053,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9985271326313933,
+          "standardError": 0.00007902353600005625
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9981384972912706,
+          "standardError": 0.00011149179450732424
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.98
+        }
+      ]
+    },
+    "29": {
+      "T1": {
+        "value": 0.000021000069615917383,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00001912505984225099,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9984143799809732,
+          "standardError": 0.00004211576798667041
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9980652544975817,
+          "standardError": 0.000015485259533653342
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.944
+        }
+      ]
+    },
+    "30": {
+      "T1": {
+        "value": 0.00003736109667729082,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000019479375638287166,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993080150724118,
+          "standardError": 0.000011613324694444395
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990171021396466,
+          "standardError": 0.000052305174311326666
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.987
+        }
+      ]
+    },
+    "31": {
+      "T1": {
+        "value": 0.000046503407000964,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000020250121138598587,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990182732182182,
+          "standardError": 0.000026595046667180037
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9981813826832374,
+          "standardError": 0.00011806047172795951
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.98
+        }
+      ]
+    },
+    "32": {
+      "T1": {
+        "value": 0.00000887341028166233,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00001179607751122802,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9832915669739708,
+          "standardError": 0.0012887078255203435
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9861652983392396,
+          "standardError": 0.0018508328200543224
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.974
+        }
+      ]
+    },
+    "33": {
+      "T1": {
+        "value": 0.000031526243446045044,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000020156566268525467,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.998486246148069,
+          "standardError": 0.00014105860262590843
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.995287278345002,
+          "standardError": 0.0004976138628474966
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.916
+        }
+      ]
+    },
+    "34": {
+      "T1": {
+        "value": 0.00004096020536570322,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000035154494832712047,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994553008449928,
+          "standardError": 0.000025620803349277765
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990521596678312,
+          "standardError": 0.0000282124235490859
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.962
+        }
+      ]
+    },
+    "35": {
+      "T1": {
+        "value": 0.00005391085468042789,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000030959089151183505,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999385646469276,
+          "standardError": 0.00008186594629356251
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991237477446264,
+          "standardError": 0.00002636125227075512
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.966
+        }
+      ]
+    },
+    "36": {
+      "T1": {
+        "value": 0.000032833402900722675,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00001608454184687247,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999012974904106,
+          "standardError": 0.000042425613268244335
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9984227061614526,
+          "standardError": 0.00004138362351091524
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.977
+        }
+      ]
+    },
+    "37": {
+      "T1": {
+        "value": 0.0000256513996490515,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000017654532997291028,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991955310025036,
+          "standardError": 0.00003675010991809564
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986810325364812,
+          "standardError": 0.00002579724414909968
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.95
+        }
+      ]
+    },
+    "38": {
+      "T1": {
+        "value": 0.000021959957000383667,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000014223374267707811,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991035506944314,
+          "standardError": 0.00004490392300075035
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986532387805644,
+          "standardError": 0.00003161445763455476
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.974
+        }
+      ]
+    },
+    "39": {
+      "T1": {
+        "value": 0.00002817902928820004,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000017854874623024486,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9952500594889642,
+          "standardError": 0.0005581707392701001
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9951939680197104,
+          "standardError": 0.0003574369521528584
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.964
+        }
+      ]
+    },
+    "40": {
+      "T1": {
+        "value": 0.00001894203881258605,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00000849163926597285,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9958046547531754,
+          "standardError": 0.00023684676695734364
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9950202836120988,
+          "standardError": 0.0005139352061107939
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.947
+        }
+      ]
+    },
+    "41": {
+      "T1": {
+        "value": 0.000023463680508317708,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000013184257356080307,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9989004533892636,
+          "standardError": 0.000057014181277307286
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.998840134986392,
+          "standardError": 0.00002899332936017871
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.887
+        }
+      ]
+    },
+    "43": {
+      "T1": {
+        "value": 0.000042744888030465944,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000016521048466611177,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991104726209912,
+          "standardError": 0.0001362835503902233
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9989949102327104,
+          "standardError": 0.0000231923127637592
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.981
+        }
+      ]
+    },
+    "44": {
+      "T1": {
+        "value": 0.00007237480300936738,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000025860946740063895,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993310776943396,
+          "standardError": 0.000048723710530078493
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9985396852875308,
+          "standardError": 0.0002001746635604093
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.989
+        }
+      ]
+    },
+    "45": {
+      "T1": {
+        "value": 0.00005389461175386856,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000015696446587831758,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993304526978088,
+          "standardError": 0.000022673592673192232
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986198183463986,
+          "standardError": 0.0002294829354931173
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.977
+        }
+      ]
+    },
+    "46": {
+      "T1": {
+        "value": 0.00005356046441074014,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000012957567981919382,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993105297650392,
+          "standardError": 0.000016008865217680938
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9987298550827836,
+          "standardError": 0.000032253666552295344
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.922
+        }
+      ]
+    },
+    "47": {
+      "T1": {
+        "value": 0.00003756416712485944,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00001527362130970822,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991843995795368,
+          "standardError": 0.000023656821578766135
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9976046418102535,
+          "standardError": 0.0002439473349591287
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.956
+        }
+      ]
+    },
+    "49": {
+      "T1": {
+        "value": 0.000012880214026900204,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.0000055864139976158356,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9982934252927612,
+          "standardError": 0.00005391792676139593
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9971849969534335,
+          "standardError": 0.0001554312608220727
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.7969999999999999
+        }
+      ]
+    },
+    "50": {
+      "T1": {
+        "value": 0.00004391444863527383,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000032027724715666395,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991924972856492,
+          "standardError": 0.000021910479726458616
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9985582685566388,
+          "standardError": 0.0000527670286507158
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.951
+        }
+      ]
+    },
+    "51": {
+      "T1": {
+        "value": 0.00004522619020241869,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002121960367795772,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993870308242108,
+          "standardError": 0.000028789269140913344
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999011757904162,
+          "standardError": 0.0000828362024940834
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.984
+        }
+      ]
+    },
+    "52": {
+      "T1": {
+        "value": 0.000010219207540185238,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000003923573073993936,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.995627548566271,
+          "standardError": 0.00020438625542831536
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.994399118761048,
+          "standardError": 0.00035348681998463957
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.916
+        }
+      ]
+    },
+    "53": {
+      "T1": {
+        "value": 0,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000005367916245724302,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.5,
+          "standardError": 1
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.5,
+          "standardError": 1
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.637
+        }
+      ]
+    },
+    "54": {
+      "T1": {
+        "value": 0.000025238611512046205,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00001893710108302749,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993329231614652,
+          "standardError": 0.00002441545449773636
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9989274784039603,
+          "standardError": 0.0001106076559573634
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.988
+        }
+      ]
+    },
+    "55": {
+      "T1": {
+        "value": 0.00002892990268343887,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000025891554146006968,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994101650538758,
+          "standardError": 0.00002626737090957861
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991662225898016,
+          "standardError": 0.00003141600994693978
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.875
+        }
+      ]
+    },
+    "56": {
+      "T1": {
+        "value": 0.00003780558839916459,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00001246418443034969,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.99870383945364,
+          "standardError": 0.0001612036789538571
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9979169841571016,
+          "standardError": 0.0001309593684981941
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.908
+        }
+      ]
+    },
+    "57": {
+      "T1": {
+        "value": 0.00003817236507019928,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002313543624765657,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994115851946284,
+          "standardError": 0.000020038700222454865
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9989814046705872,
+          "standardError": 0.000051822527074501726
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.982
+        }
+      ]
+    },
+    "58": {
+      "T1": {
+        "value": 0.00004754589842659307,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000015183253356587656,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993613771992648,
+          "standardError": 0.00002812672165109719
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9988207494606998,
+          "standardError": 0.00013414505936925497
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.975
+        }
+      ]
+    },
+    "59": {
+      "T1": {
+        "value": 0.000038736849133691464,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000021524582340282095,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9984551977623998,
+          "standardError": 0.00008529898463506244
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9972961634287998,
+          "standardError": 0.000337192481046355
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.98
+        }
+      ]
+    },
+    "60": {
+      "T1": {
+        "value": 0.00004412539258003001,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000026234714640249734,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9984018957632168,
+          "standardError": 0.0000530576516480825
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9966610475272966,
+          "standardError": 0.00011739799226377416
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.976
+        }
+      ]
+    },
+    "61": {
+      "T1": {
+        "value": 0.00001882128618202472,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000015260222503421517,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9982984773682086,
+          "standardError": 0.00003141444529344465
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.998242591730976,
+          "standardError": 0.00018372854611587393
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.96
+        }
+      ]
+    },
+    "62": {
+      "T1": {
+        "value": 0.00004879712009442372,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.0000169549010105019,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994028664225182,
+          "standardError": 0.000025050749627242247
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990343557706546,
+          "standardError": 0.000020408918313524397
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.981
+        }
+      ]
+    },
+    "63": {
+      "T1": {
+        "value": 0.00006404545079319313,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000023091204389480424,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994170801643686,
+          "standardError": 0.00001280092830678757
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990518130801443,
+          "standardError": 0.00001461248159150074
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.969
+        }
+      ]
+    },
+    "64": {
+      "T1": {
+        "value": 0.00002686079492608684,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000015256178323985736,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999181318106316,
+          "standardError": 0.000018947811205784295
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.998964275709971,
+          "standardError": 0.00020617994490375457
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.989
+        }
+      ]
+    },
+    "65": {
+      "T1": {
+        "value": 0.000013260798623848656,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000012841978668909348,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9985599422419924,
+          "standardError": 0.00004527626611210468
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9981136485217162,
+          "standardError": 0.00006456301308307165
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.958
+        }
+      ]
+    },
+    "66": {
+      "T1": {
+        "value": 0.000047816822059898456,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002135304187511622,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9992758164525524,
+          "standardError": 0.000035466052866347654
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9980073614209252,
+          "standardError": 0.00017225872792812926
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.971
+        }
+      ]
+    },
+    "67": {
+      "T1": {
+        "value": 0.00003614734418899701,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00001882176884193676,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986099181615076,
+          "standardError": 0.00025630362390946775
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9974164623250824,
+          "standardError": 0.00014243212800488597
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.91
+        }
+      ]
+    },
+    "68": {
+      "T1": {
+        "value": 0.0000173502244231738,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000015408334242961175,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9984957880666174,
+          "standardError": 0.000046555398586988594
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9981048123505788,
+          "standardError": 0.00012895941882028547
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.969
+        }
+      ]
+    },
+    "69": {
+      "T1": {
+        "value": 0.00005822742553429627,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002625581178405945,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994596523402868,
+          "standardError": 0.0000218706585585167
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990561058135998,
+          "standardError": 0.000020705484610318975
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.957
+        }
+      ]
+    },
+    "70": {
+      "T1": {
+        "value": 0.00004046149196468285,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000028031554464513775,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993812067817904,
+          "standardError": 0.0000069586152742521455
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991749139861078,
+          "standardError": 0.00004209678501157548
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.969
+        }
+      ]
+    },
+    "71": {
+      "T1": {
+        "value": 0.00002425814279538585,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000024531567920593744,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999463912824096,
+          "standardError": 0.000013728096721279214
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9988167401954896,
+          "standardError": 0.0006304505011370009
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.986
+        }
+      ]
+    },
+    "72": {
+      "T1": {
+        "value": 0.00004178954875055929,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000010901912496974475,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.99704600346129,
+          "standardError": 0.00013596356293402284
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9956550454220732,
+          "standardError": 0.0003622456395391889
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.982
+        }
+      ]
+    },
+    "73": {
+      "T1": {
+        "value": 0.000040905943463842576,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000024651671131525887,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9992071225243552,
+          "standardError": 0.000026899831556904502
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9986719199652688,
+          "standardError": 0.00004518695550741269
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.974
+        }
+      ]
+    },
+    "74": {
+      "T1": {
+        "value": 0.00003281933091048295,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002763407292039055,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999432689946546,
+          "standardError": 0.00001803131551148897
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991115425000135,
+          "standardError": 0.00008719598487567977
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.974
+        }
+      ]
+    },
+    "75": {
+      "T1": {
+        "value": 0.000035731393735138894,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000017942865631059846,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999420176701436,
+          "standardError": 0.000005311786150882345
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9988856234068816,
+          "standardError": 0.0000324358668262184
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.98
+        }
+      ]
+    },
+    "76": {
+      "T1": {
+        "value": 0.00005409087274532709,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00002463104704464314,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999375020549354,
+          "standardError": 0.000018955890789011867
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991163959821122,
+          "standardError": 0.000030132880239874665
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.973
+        }
+      ]
+    },
+    "77": {
+      "T1": {
+        "value": 0.00003305079727233817,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000034118674065108934,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9995489310849122,
+          "standardError": 0.000016618006470204807
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9993715512128108,
+          "standardError": 0.000017113766764675015
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.97
+        }
+      ]
+    },
+    "78": {
+      "T1": {
+        "value": 0.00003959409603959685,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000032370103070000766,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9995328774131356,
+          "standardError": 0.00001891731987847806
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999239098227086,
+          "standardError": 0.000022141186738993853
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.982
+        }
+      ]
+    },
+    "79": {
+      "T1": {
+        "value": 0.00004042893043565421,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.0000018303655919815751,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.5,
+          "standardError": 1
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.5,
+          "standardError": 1
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.772
+        }
+      ]
+    },
+    "80": {
+      "T1": {
+        "value": 0.00005218687966568325,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00003103228537315594,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.999367088284505,
+          "standardError": 0.000016736850174197268
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991564254690924,
+          "standardError": 0.00007566119831548625
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.987
+        }
+      ]
+    },
+    "81": {
+      "T1": {
+        "value": 0.00003690556268809431,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.000016639992076905585,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9990220434215714,
+          "standardError": 0.00004714559379637265
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9988510235918516,
+          "standardError": 0.000049551716865246994
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.961
+        }
+      ]
+    },
+    "82": {
+      "T1": {
+        "value": 0.00004872284603063548,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00004208500787949987,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9995023270064348,
+          "standardError": 0.000017635044921441566
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991944418255996,
+          "standardError": 0.000015458316497234518
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.973
+        }
+      ]
+    },
+    "83": {
+      "T1": {
+        "value": 0.00004727922741265545,
+        "unit": "S"
+      },
+      "T2": {
+        "value": 0.00004335550451672887,
+        "unit": "S"
+      },
+      "oneQubitFidelity": [
+        {
+          "fidelityType": {
+            "name": "RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9994143498767544,
+          "standardError": 0.000030230402770467772
+        },
+        {
+          "fidelityType": {
+            "name": "SIMULTANEOUS_RANDOMIZED_BENCHMARKING"
+          },
+          "fidelity": 0.9991582724550389,
+          "standardError": 0.00010122688444959128
+        },
+        {
+          "fidelityType": {
+            "name": "READOUT"
+          },
+          "fidelity": 0.991
+        }
+      ]
+    }
+  },
+  "twoQubitProperties": {
+    "30-31": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9874719763703852,
+          "standardError": 0.001784042745596025,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "18-19": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.976611260019432,
+          "standardError": 0.0023224236800531324,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "2-3": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9815751326271752,
+          "standardError": 0.0018445749211226496,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "74-75": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9606256275470536,
+          "standardError": 0.004816914520688144,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "46-47": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9626425242642274,
+          "standardError": 0.004614736089556813,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "14-15": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.972576045836162,
+          "standardError": 0.003002018964907271,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "70-71": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9876677072815412,
+          "standardError": 0.0009413484848781102,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "58-59": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9908134028544,
+          "standardError": 0.0012835356970777923,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "3-4": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "59-60": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9857103098554684,
+          "standardError": 0.002063916929060825,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "15-16": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9917061761268252,
+          "standardError": 0.0014632837273006692,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "75-76": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9862295768088656,
+          "standardError": 0.0011781877440689308,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "19-20": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.987299310607624,
+          "standardError": 0.001449679507320658,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "71-72": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9790928567462404,
+          "standardError": 0.002523725726278067,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "31-32": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9744749952622886,
+          "standardError": 0.004640057014699208,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "67-68": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9824306149764156,
+          "standardError": 0.002915408285397001,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "79-80": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9415747293238252,
+          "standardError": 0.006808509724673461,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "11-12": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9545962823348016,
+          "standardError": 0.007955207329684334,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "35-36": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9869127450365998,
+          "standardError": 0.0017596867018711778,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "7-8": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.991776681200411,
+          "standardError": 0.0014855268674252124,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "51-52": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9724045956863008,
+          "standardError": 0.0063848360486079975,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "39-40": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9698162557444768,
+          "standardError": 0.0030947213311295465,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "23-24": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "63-64": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.988525435225908,
+          "standardError": 0.003121064615828192,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "52-53": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "24-25": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9782126554989848,
+          "standardError": 0.0025460669184884607,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "64-65": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9848976012072288,
+          "standardError": 0.0012423898099233866,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "40-41": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9405293393620028,
+          "standardError": 0.02091154366696465,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "8-9": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9915889724434248,
+          "standardError": 0.001127162739447142,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "80-81": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "68-69": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "12-13": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "36-37": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.98176112932682,
+          "standardError": 0.0024076627990730266,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "37-38": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "9-10": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "49-50": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9601590697881388,
+          "standardError": 0.00503745925433433,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "21-22": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9884780398924238,
+          "standardError": 0.0034691725110291313,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "81-82": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9642410779232824,
+          "standardError": 0.0049093351331129164,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "25-26": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9728939434445676,
+          "standardError": 0.0029170017059891463,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "65-66": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.989708044792253,
+          "standardError": 0.0010515270769616391,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "77-78": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9521202638756374,
+          "standardError": 0.013297880550429316,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "53-54": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "50-51": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9756074613587572,
+          "standardError": 0.0026103936013133124,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "38-39": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9872018906728982,
+          "standardError": 0.002502859556934241,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "22-23": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9868316868723164,
+          "standardError": 0.002724680940090685,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "54-55": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9868753093102282,
+          "standardError": 0.0009017395461364988,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "26-27": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.988645364713484,
+          "standardError": 0.000943013604003519,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "78-79": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9589281118760492,
+          "standardError": 0.00973545041585687,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "82-83": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9888037489317868,
+          "standardError": 0.0013931888428756793,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "10-11": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.959390119874684,
+          "standardError": 0.006019721926719976,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "72-79": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9329253990860432,
+          "standardError": 0.02861970371490148,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "0-7": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9704643659648968,
+          "standardError": 0.0036023040557810575,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "60-67": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9920143733252494,
+          "standardError": 0.0006988436392473528,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "76-83": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9890096364888382,
+          "standardError": 0.0016630277177262284,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "20-27": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9917701747177208,
+          "standardError": 0.001566242697512433,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "4-11": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9653659997606502,
+          "standardError": 0.010753435001478745,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "44-51": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9914376314843896,
+          "standardError": 0.001667084698392715,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "16-23": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.993849294491702,
+          "standardError": 0.001906656488337645,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "32-39": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9873860429786356,
+          "standardError": 0.003691500824643404,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "56-63": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.99331242829872,
+          "standardError": 0.0011486473880156795,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "28-35": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "11-18": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9886575173734428,
+          "standardError": 0.004453755782027114,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "39-46": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9921593124113294,
+          "standardError": 0.002148932843127629,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "63-70": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9930523294731026,
+          "standardError": 0.0021185658570820106,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "55-62": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9874773604657804,
+          "standardError": 0.001362006906134953,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "51-58": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9906946366779216,
+          "standardError": 0.001816617751943383,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "7-14": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9900347991976064,
+          "standardError": 0.0008128221430028111,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "23-30": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9911700495360316,
+          "standardError": 0.0013349758965869932,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "67-74": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "18-25": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.983727122121071,
+          "standardError": 0.006023871189341463,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "58-65": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9913881594956262,
+          "standardError": 0.0012599045155217829,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "34-41": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9574461795776474,
+          "standardError": 0.0068909093662722415,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "14-21": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9798112147681798,
+          "standardError": 0.002556333550030922,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "62-69": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "30-37": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9894567555599592,
+          "standardError": 0.002422806362095348,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "70-77": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9939487528718394,
+          "standardError": 0.000844910019571932,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "6-13": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9832444465729046,
+          "standardError": 0.004569549343432396,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "46-53": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "2-9": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9860660914969692,
+          "standardError": 0.001696897739166664,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "74-81": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "37-44": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9941449403482512,
+          "standardError": 0.001379848952890794,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "49-56": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "13-20": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9861643908589252,
+          "standardError": 0.0031176027292334645,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "9-16": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9929217561777572,
+          "standardError": 0.002073709109937913,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "21-28": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.993262326594588,
+          "standardError": 0.0012624982019423746,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "25-32": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9647373047260446,
+          "standardError": 0.0040556502852470075,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "69-76": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9853377855353356,
+          "standardError": 0.0007764889301185417,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "65-72": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9795857115086412,
+          "standardError": 0.006073078197310339,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "53-60": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "33-40": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9889191238642112,
+          "standardError": 0.0022020595088821696,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "73-80": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9867438242714066,
+          "standardError": 0.0015605650775874652,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "61-68": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9656900741406824,
+          "standardError": 0.0021718321152060516,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "5-12": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9923283075058436,
+          "standardError": 0.0014344799813492326,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "45-52": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "29-36": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9786958736761016,
+          "standardError": 0.003917830544368728,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "57-64": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "1-8": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9875765895955442,
+          "standardError": 0.002275543672305691,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "17-24": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9858436559812584,
+          "standardError": 0.0018501451738154337,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "64-71": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9904382315245266,
+          "standardError": 0.0009208016274969932,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "8-15": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.988637580865962,
+          "standardError": 0.0012772020802668134,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "40-47": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9561487486010796,
+          "standardError": 0.016536711721605025,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "12-19": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9918099959253156,
+          "standardError": 0.0014318871517109634,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "68-75": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9708526411959584,
+          "standardError": 0.006085319987132562,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "52-59": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.993113142089469,
+          "standardError": 0.0011304258390523528,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "24-31": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9900702600225056,
+          "standardError": 0.0017905325653668443,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "36-43": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9939654937161942,
+          "standardError": 0.0015379449898988633,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "15-22": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.988478932302528,
+          "standardError": 0.001227269339344597,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "75-82": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9825287475197098,
+          "standardError": 0.001996163998326113,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "31-38": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9892417656275322,
+          "standardError": 0.00164339454751175,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "47-54": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.98096438643227,
+          "standardError": 0.0033720026333604945,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "3-10": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "43-50": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.98505799971074,
+          "standardError": 0.0027553677506555185,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "19-26": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9913380411011726,
+          "standardError": 0.002590624905129023,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "71-78": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9813699009495458,
+          "standardError": 0.0019445090027201469,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "59-66": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9924462951788856,
+          "standardError": 0.0007387167165862499,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "44-45": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9914198021311872,
+          "standardError": 0.003621765698203439,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "72-73": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "16-17": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.980766110898568,
+          "standardError": 0.002264334750470245,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "50-57": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.95619241065109,
+          "standardError": 0.004963980387321289,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "10-17": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.8268815712996875,
+          "standardError": 0.028246441980651897,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "0-1": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.941566690708162,
+          "standardError": 0.008102889557601392,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "60-61": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9854226914084054,
+          "standardError": 0.002901149227640002,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "28-29": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9805829338482406,
+          "standardError": 0.004214420499576886,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "4-5": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9903578099266924,
+          "standardError": 0.00208146850171853,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "56-57": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9228057419583922,
+          "standardError": 0.023799743154335848,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "32-33": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9845439084405488,
+          "standardError": 0.002831594175117623,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "26-33": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "66-73": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9862047567429356,
+          "standardError": 0.001576759055772152,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "54-61": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9383460006648195,
+          "standardError": 0.025780444065084635,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "38-45": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.989106758885522,
+          "standardError": 0.0020203902312788315,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "22-29": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9923519967297958,
+          "standardError": 0.001498153968113602,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "29-30": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9868965159921398,
+          "standardError": 0.0019405072042484187,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "33-34": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9915262578924948,
+          "standardError": 0.0012813927883919133,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "73-74": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9841932568498,
+          "standardError": 0.0017697504764925928,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "17-18": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9728128192157895,
+          "standardError": 0.007111885965408853,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "61-62": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.903883434942009,
+          "standardError": 0.007194035401510078,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "57-58": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "45-46": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9824119104158928,
+          "standardError": 0.0012064551336612543,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "1-2": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.9705040639376404,
+          "standardError": 0.004377790741137409,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    },
+    "5-6": {
+      "twoQubitGateFidelity": [
+        {
+          "gateName": "ISWAP",
+          "fidelity": 0.5,
+          "standardError": 1,
+          "fidelityType": {
+            "name": "INTERLEAVED_RANDOMIZED_BENCHMARKING"
+          }
+        }
+      ]
+    }
+  }
+}

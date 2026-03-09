@@ -28,6 +28,7 @@ import retry.RetryPolicies._
 import retry.RetryPolicy
 import cats.Monad
 import fs2.Stream
+import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[List[TaskId]]
@@ -62,7 +63,6 @@ object Scheduler{
         //TODO consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
         //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO: Do we even need to estimate the queue? 
         //TODO: Loop back actual job data 
         //TODO: revisit Nick's comments 
 
@@ -108,6 +108,7 @@ object Scheduler{
              for{
                 devices <- Scheduler.getAvailableDevices[F](clients)
                 needsToBeCut <- requiresCutting(taskReq, devices)
+                _ <- Logger[F].info(s"Processing New Quantum Task, it requries cutting?: $needsToBeCut")
                 tids <- 
                     if(needsToBeCut){ //TODO: Think this through carefully. I am not convinced this is the right place to cut. 
                         val cut = cuttingStrategy(taskReq.circuit)
@@ -141,8 +142,16 @@ object Scheduler{
                                     childTasks = taskReq.childTasks,
                                     createdAt = taskReq.createdAt
                             )
-                            if(taskReq.parentTasks.nonEmpty){enqueuePending(List(t)) *> List(t.uuid).pure[F]}
-                            else {enqueueReady(List(t)) *> List(t.uuid).pure[F]}
+                            if(taskReq.parentTasks.nonEmpty){
+                                enqueuePending(List(t)) *> 
+                                 (readyTasks.get, pendingTasks.get).tupled.flatMap { case (r, p) =>
+                                        Logger[F].info(s"enqueuePending: ready=${r.size}, pending=${p.size}") } *>
+                                List(t.uuid).pure[F]
+                            } else {
+                                enqueueReady(List(t)) *>  
+                                (readyTasks.get, pendingTasks.get).tupled.flatMap { case (r, p) =>
+                                    Logger[F].info(s"enqueuePending: ready=${r.size}, pending=${p.size}") } *>
+                                 List(t.uuid).pure[F]}
                         })
                     }
             } yield tids 
@@ -234,22 +243,72 @@ object Scheduler{
             loop
         }
 
-        private def scheduleOneQuantumTask(task: QuantumTask): F[Unit] = {
-            for{
+       private def scheduleOneQuantumTask(task: QuantumTask): F[Unit] =
+            for {
                 devices <- Scheduler.getAvailableDevices(clients)
+
+                _ <- Logger[F].info(s"Attempting to schedule quantum task ${task.uuid}")
+                _ <- Logger[F].info(s"Devices ${devices.map(d => d.platformId)}")
+
                 suitableDevices = devices.filter(d => d.qubits >= task.qubits.value)
+
                 _ <- suitableDevices match {
-                    case Nil =>
-                            Logger[F].warn(s"No eligible devices for task=${task.uuid}")
-                    case ds => ds.traverse{d => 
-                            (estimateFidelity(d, task.circuit, clients, compiler), estimateQueueTime(d, task), estimateTranspilationTime(task.circuit, d.gateSet)).mapN {
-                                (f, q, t) =>
-                                    val ac = getAssignmentCoefficient(f.logPTotal.toLong, q + t)
-                                    (d, ac, f, q)
+                case Nil =>
+                    Logger[F].warn(s"No eligible devices for task=${task.uuid}; re-enqueueing") //TODO: re-queue here for production ready ver. 
+
+                case ds =>
+                    for {
+                        scored <- ds.traverse { d =>
+                            (estimateFidelity(d, task.circuit, clients, compiler),
+                                estimateTranspilationTime(task.circuit, d.gateSet)
+                            ).mapN { (f, tMillis) =>
+                                val ac = getAssignmentCoefficient(f.logPTotal.toLong, d.queueLength + tMillis, task.circuit)
+                                (d, ac, f, d.queueLength)
                             }
                         }
+
+                        best = scored.maxBy { case (_, ac, f, q) => (ac, f.logPTotal, -q) }
+                        _ <- Logger[F].info(s"Picked Device Coefficient: $best")
+                        (bestDevice, _, _, _) = best
+
+                        // compiled <- ???
+
+                        jobId <- submitQuantumToProvider(bestDevice, task, task.circuit)
+                        _ <- submittedTasks.update(_ :+ (bestDevice.platform, jobId, task.uuid))
+                    } yield ()
                 }
-            }yield ()
+            } yield ()
+
+        private def submitQuantumToProvider(
+            device: Device,
+            task: QuantumTask,
+            compiled: Circuit
+        ): F[String] =
+        device.platform match {
+
+            case "Braket" =>
+                for {
+                    token <- "".pure[F] //not needed for tests, will wire later
+                    qasmSource = "" //not needed for tests, will wire later
+                    req = BraketCreateQuantumTaskRequest(
+                        action = "braket.ir.openqasm.program",
+                        associations = None,
+                        clientToken = token,
+                        deviceArn = device.platformId,
+                        deviceParameters = "{}",
+                        shots = task.shots.value
+                    )
+                    resp <- clients.braket.submitBraketOpenQasmTask(req, qasmSource)
+                } yield resp.quantumTaskArn
+
+            case "IBM" => // To Fix
+                new RuntimeException("IBM submit not wired in scheduleOneQuantumTask yet").raiseError[F, String]
+
+            case "Azure" => //Azure is not playing by the rules so we will deal with them later 
+                new RuntimeException("Azure submit not wired in scheduleOneQuantumTask yet").raiseError[F, String]
+
+            case other =>
+                new RuntimeException(s"Unknown platform=$other").raiseError[F, String]
         }
 
 
@@ -260,9 +319,9 @@ object Scheduler{
                 candidateDevicesByTask <- orderedTasks.traverse{t =>
                     val suitableDevices = devices.filter(d => d.qubits >= t.qubits.value)
                     suitableDevices.traverse{d => 
-                        (estimateFidelity(d, t.circuit, clients, compiler), estimateQueueTime(d,t), estimateTranspilationTime(t.circuit, d.gateSet), estimateRunTime(d,t))
-                            .mapN{(f, q, t, run) => 
-                               val queueMillis = q + t
+                        (estimateFidelity(d, t.circuit, clients, compiler), estimateTranspilationTime(t.circuit, d.gateSet), estimateRunTime(d,t))
+                            .mapN{(f, t, run) => 
+                               val queueMillis = d.queueLength + t
                                CandidateDevice(d, fidelity = f.logPTotal.toLong, queueMillis = queueMillis, runMillis = run)
                             }
                     }.map{cs => 
@@ -380,10 +439,23 @@ object Scheduler{
 
         private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = ??? //might not be needed
 
-        private def getAssignmentCoefficient(fidelity: Long, queueTime: Long): Double = 
-            0.7 * fidelity + 0.9 * queueTime //adjust as needed
         
+        private def gateCount(c: Circuit): Long =
+            c.remainingGates.size.toLong 
 
+        private def getAssignmentCoefficient(
+            logFidelity: Double,        
+            queueLength: Long,          
+            circuit: Circuit,
+            transpileCostGates: Long = 0,    
+            lambda: Double = 1e-4       
+        ): Double = {
+            val g = math.max(1L, gateCount(circuit))                 
+            val latencyUnits = queueLength.toDouble * g.toDouble + transpileCostGates.toDouble
+            logFidelity - lambda * latencyUnits
+        }
+
+    
         private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Device]) : F[Boolean] = 
             devices.traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler)).map(lf => lf.filter(_.logPTotal > targetEstimatedFidelity).nonEmpty)
 
@@ -469,6 +541,7 @@ object Scheduler{
         private def fakeClassicalTaskScheduler(ct: ClassicalTask): F[Unit] = {
             val computationTime = 500 + Random.nextInt(1500)
             Temporal[F].sleep(computationTime.millis) *> 
+            Logger[F].info(s"Ran Classical Task, tid: ${ct.uuid}") *>
             results.update(_ + (ct.uuid -> s"Result of classical task ${ct.uuid.value}"))
         }
 
@@ -528,7 +601,7 @@ object Scheduler{
             buckets.reverse.map(b => b.tasks.reverse)
         }
 
-        private[qurator] def attemptToMergeSyncTasks[F[_] : Monad : GenUUID](
+        private[qurator] def attemptToMergeSyncTasks[F[_] : MonadThrow : GenUUID](
             tasks: List[QuantumTask],
             clients: HttpClients[F],
             compiler: FakeCompiler[F],
@@ -548,16 +621,29 @@ object Scheduler{
                 }
                 merged <- groups.traverse(g => Scheduler.flattenGroup(g, devices, clients, compiler, targetEstimatedFidelity))
             } yield merged.flatten
-
-        private[qurator] def getAvailableDevices[F[_] : Monad](clients: HttpClients[F]): F[List[Device]] = 
+        
+        private[qurator] def getAvailableDevices[F[_]: MonadThrow](clients: HttpClients[F]): F[List[Device]] =
             for {
-                ibmDevices <- clients.ibm.fetchDeviceInformation
-                availableIbmDevices = ibmDevices.devices.filter(d => d.status.name == "online").map(_.toDevice)
-                braketDevices <- clients.braket.fetchDeviceList
-                availableBraketDevices = braketDevices.devices.filter(d => d.deviceStatus == "ONLINE" && deviceActive(d)).map(_.toDevice)
-                azureDevices <- clients.azure.fetchDeviceInformation
-                availableAzureDevices = azureDevices.value.filter(d => d.currentAvailability == "Available").map(_.toDevice)
-            } yield availableIbmDevices ++ availableBraketDevices ++ availableAzureDevices
+                ibmE    <- clients.ibm.fetchDeviceInformation.attempt
+                braketE <- clients.braket.fetchDeviceList.attempt
+                azureE  <- clients.azure.fetchDeviceInformation.attempt
+
+                ibm = ibmE.toOption.toList.flatMap(_.devices)
+                .filter(_.status.name == "online")
+                .map(_.toDevice)
+
+                braketOnline = braketE.toOption.toList.flatMap(_.devices)
+                .filter(d => d.deviceStatus == "ONLINE" && deviceActive(d))
+
+                braketDetails <- clients.braket.fetchDeviceDetails(braketOnline.map(_.deviceArn))
+                braket = braketDetails.map(_.toDevice)
+
+                _ = println(s"Braket Devices ${braket.mkString(", ")}")
+
+                azure = azureE.toOption.toList.flatMap(_.value)
+                .filter(_.currentAvailability == "Available")
+                .map(_.toDevice)
+            } yield ibm ++ braket ++ azure
 
         private[qurator] def assignToFinalBuckets( 
             bucket: List[QuantumTask],

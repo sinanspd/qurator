@@ -38,9 +38,7 @@ object Braket{
         deviceStatus: String,
         deviceType: String,
         providerName: String
-    ){
-        def toDevice: Device = ???
-    }
+    )
 
     @derive(decoder, encoder, eqv, show)
     case class BraketDeviceDetailsResponse(
@@ -51,7 +49,20 @@ object Braket{
         providerName: String,
         deviceCapabilities: String,
         deviceQueueInfo: List[BraketDeviceQueueInfo]
-    )
+    ){
+        def toDevice: Device = {
+            val q = decodeQubitCount(deviceCapabilities).getOrElse(0)
+            Device(
+                platform = "Braket",
+                platformId = deviceArn, 
+                q,
+                deviceQueueInfo.headOption.flatMap(q => q.queueSize.toIntOption).getOrElse(0),
+                t1 = 0.0f,
+                t2 =  0.0f,
+                gateSet = List()
+            )
+        }
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class BraketDeviceQueueInfo(
@@ -148,7 +159,14 @@ object Braket{
 
     @derive(decoder, encoder, eqv, show)
     case class DeviceCapabilities(
-        service: DeviceCapabilitiesService
+        service: DeviceCapabilitiesService, 
+        paradigm: Option[BraketParadigm] = None 
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class BraketParadigm(
+        qubitCount: Option[Int] = None,
+        modes: Option[Int] = None 
     )
 
 

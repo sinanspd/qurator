@@ -280,7 +280,7 @@ final case class FakeBenchmarkClients(
 object DummyResponses {
 
   private def nowIso: String = Instant.now().toString
-  
+
   def braketDevice(deviceArn: String, name: String, provider: String, status: String = "ONLINE"): BraketDevice =
     BraketDevice(
       deviceArn = deviceArn,
@@ -721,7 +721,16 @@ object FakeBenchmarkClientsFromRegistry {
     val ibmDevicesInRegistry =
       registry.devicesById.values.toList.filter(_.platform == "IBM")
 
-    // ----- Braket -----
+    val alwaysOpenCaps: String =
+     s"""{
+        |  "service": {
+        |    "braketSchemaHeader": { "name": "dummy", "version": "1" },
+        |    "executionWindows": [
+        |      { "executionDay": "Everyday", "windowStartHour": "00:00", "windowEndHour": "23:59" }
+        |    ]
+        |  },
+        |  "paradigm": { "qubitCount": 84 }
+        |}""".stripMargin
 
     val braketDeviceListResp: BraketDeviceListResponse =
       BraketDeviceListResponse(
@@ -729,7 +738,7 @@ object FakeBenchmarkClientsFromRegistry {
           BraketDevice(
             deviceArn = d.platformId,
             deviceName = d.platformId,
-            deviceCapabilities = "{}",
+            deviceCapabilities = alwaysOpenCaps,
             deviceStatus = "ONLINE",
             deviceType = "QPU",
             providerName = providerFromArn(d.platformId)
@@ -747,12 +756,12 @@ object FakeBenchmarkClientsFromRegistry {
           deviceStatus = "ONLINE",
           deviceType = "QPU",
           providerName = providerFromArn(arn),
-          deviceCapabilities = "{}",
+          deviceCapabilities = alwaysOpenCaps,
           deviceQueueInfo = List(
             BraketDeviceQueueInfo(
               queue = "QUANTUM_TASKS_QUEUE",
               queuePriority = None,
-              queueSize = "0"
+              queueSize = "3"
             )
           )
         )
@@ -796,7 +805,7 @@ object FakeBenchmarkClientsFromRegistry {
         devices = ibmDevicesInRegistry.map { d =>
           IBMBackendDevice(
             name = d.platformId,
-            status = IBMBackendDeviceStatus(name = "active", reason = None),
+            status = IBMBackendDeviceStatus(name = "online", reason = None),
             is_simulator = Some(false),
             qubits = Some(d.qubits),
             clops = None,

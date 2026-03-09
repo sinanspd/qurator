@@ -54,6 +54,7 @@ object IBM{
                 platformId = name,
                 platform = "IBM",
                 qubits= qubits.getOrElse(0),
+                queueLength = queue_length,
                 t1 = 0,
                 t2 = 0,
                 gateSet = List.empty // TODO, need fixing

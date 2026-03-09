@@ -11,6 +11,7 @@ import io.circe.generic.auto._
 import io.circe.parser
 import io.circe.Error
 import qurator.domain.Braket._
+import io.circe.parser.decode
 
 package object domain {
   
@@ -28,9 +29,12 @@ package object domain {
 
   implicit val dataTimeEq: Eq[LocalDateTime] = Eq.fromUniversalEquals
 
-  def decodeExecutionWindows(rawCaps: String): Either[Error, List[BraketExecutionWindows]] =
-    parser.parse(rawCaps).flatMap(_.as[DeviceCapabilities]).map { caps =>
-      caps.service.executionWindows
+  def decodeExecutionWindows(deviceCapabilitiesJson: String): Either[Error, List[BraketExecutionWindows]] =
+    decode[DeviceCapabilities](deviceCapabilitiesJson).map(_.service.executionWindows)
+
+  def decodeQubitCount(deviceCapabilitiesJson: String): Either[Error, Int] =
+    decode[DeviceCapabilities](deviceCapabilitiesJson).map { caps =>
+      caps.paradigm.flatMap(p => p.qubitCount.orElse(p.modes)).getOrElse(0)
     }
 
   def deviceExecutionWindows(d: BraketDevice): Either[Error, List[BraketExecutionWindows]] =

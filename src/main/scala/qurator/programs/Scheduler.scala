@@ -33,7 +33,7 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[List[TaskId]]
     def estimateQueueTime(device: Device, task: QuantumTask) : F[Long]
-    def getSubmittedTasks(): F[List[(String, String, TaskId)]]
+    def getSubmittedTasks(): F[List[(String, String, String, TaskId)]]
     def startRuntime: Resource[F, Unit]
 }
 
@@ -50,7 +50,7 @@ object Scheduler{
     for {
       readyTasks     <- Ref.of[F, List[Task]](List.empty)
       pendingTasks   <- Ref.of[F, List[Task]](List.empty)
-      submittedTasks <- Ref.of[F, List[(String, String, TaskId)]](List.empty) 
+      submittedTasks <- Ref.of[F, List[(String, String, String, TaskId)]](List.empty) //platform, platformId, jobId, taskId
       results        <- Ref.of[F, Map[TaskId, String]](Map.empty)    
       _ <- Logger[F].info("Creating The Scheduler")    
     } yield new Scheduler[F] {
@@ -274,7 +274,7 @@ object Scheduler{
                         // compiled <- ???
 
                         jobId <- submitQuantumToProvider(bestDevice, task, task.circuit)
-                        _ <- submittedTasks.update(_ :+ (bestDevice.platform, jobId, task.uuid))
+                        _ <- submittedTasks.update(_ :+ (bestDevice.platform, bestDevice.platformId, jobId, task.uuid))
                     } yield ()
                 }
             } yield ()
@@ -362,11 +362,11 @@ object Scheduler{
         private def fetchAllInProgressJobResults(): F[Unit] =
             for {
                 sts <- submittedTasks.get
-                _   <- sts.traverse_ { case (provider, jobId, taskId) =>
+                _   <- sts.traverse_ { case (provider, providerId, jobId, taskId) =>
                         fetchResultsFromCorrespondingProvider(provider, jobId, taskId)
                     }
                 rs <- results.get
-                _ <- submittedTasks.update(_.filterNot { case (_, _, tid) => rs.contains(tid) })
+                _ <- submittedTasks.update(_.filterNot { case (_, _, _, tid) => rs.contains(tid) })
 
                 promotable <- pendingTasks.modify { ps =>
                 val (goReady, stayPending) =
@@ -545,7 +545,7 @@ object Scheduler{
             results.update(_ + (ct.uuid -> s"Result of classical task ${ct.uuid.value}"))
         }
 
-        def getSubmittedTasks(): F[List[(String, String, TaskId)]] = 
+        def getSubmittedTasks(): F[List[(String, String, String, TaskId)]] = 
             submittedTasks.get
     }
 

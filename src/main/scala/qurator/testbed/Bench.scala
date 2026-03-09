@@ -37,13 +37,13 @@ object WorkloadSpecs {
     //For test only, remove later 
     val defaultT: Vector[QuantumTaskSpec] =
     Vector(
-      QuantumTaskSpec(Circuit(List(X(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1)),
-      QuantumTaskSpec(Circuit(List(H(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1)),
-      QuantumTaskSpec(Circuit(List(X(0), H(0)), 1), TaskQubits(1), TaskShots(2000), TaskDepth(2)),
-      QuantumTaskSpec(Circuit(List(CX(0, 1)), 2), TaskQubits(2), TaskShots(1500), TaskDepth(1)),
-      QuantumTaskSpec(Circuit(List(H(0), CX(0, 1)), 2), TaskQubits(2), TaskShots(1500), TaskDepth(2)),
-      QuantumTaskSpec(Circuit(List(X(0), X(1), CZ(0, 1)), 2), TaskQubits(2), TaskShots(3000), TaskDepth(3)),
-      QuantumTaskSpec(Circuit(List(X(0), H(1), Swap(0, 1)), 2), TaskQubits(2), TaskShots(2500), TaskDepth(3))
+      QuantumTaskSpec(Circuit(List(X(0), Measure(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1)),
+      QuantumTaskSpec(Circuit(List(H(0), Measure(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1)),
+      QuantumTaskSpec(Circuit(List(X(0), H(0), Measure(0)), 1), TaskQubits(1), TaskShots(2000), TaskDepth(2)),
+      QuantumTaskSpec(Circuit(List(CX(0, 1), Measure(1)), 2), TaskQubits(2), TaskShots(1500), TaskDepth(1)),
+      QuantumTaskSpec(Circuit(List(H(0), CX(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(1500), TaskDepth(2)),
+      QuantumTaskSpec(Circuit(List(X(0), X(1), CZ(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(3000), TaskDepth(3)),
+      QuantumTaskSpec(Circuit(List(X(0), H(1), Swap(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(2500), TaskDepth(3))
     )
 
     def sample(n: Int, seed: Long, T: Vector[QuantumTaskSpec]): IO[List[QuantumTaskSpec]] = 
@@ -66,20 +66,22 @@ final case class JobRecord(
 //This will replace FakeDevice in the testbed. 
 final class BenchmarkFakeDevice private (
   val device: Device,
-  deviceEstimator: DeviceEstimator[IO],
+  //deviceEstimator: DeviceEstimator[IO],
+  queueLen: Int,
+  msPerGate: Long,
   jobsRef: Ref[IO, Vector[JobRecord]]
 ) {
 
   private def nowF: IO[LocalDateTime] =
     Sync[IO].delay(LocalDateTime.now())
 
-  private def processingMillisForDevice: IO[Long] =
-    deviceEstimator.estimateDeviceProcessingSpeed(device.platformId).map {
-      case (min0, max0) =>
-        val lo = math.min(min0, max0).toLong
-        val hi = math.max(min0, max0).toLong
-        if (hi <= lo) lo else (lo + hi) / 2L
-    }
+//   private def processingMillisForDevice: IO[Long] =
+//     deviceEstimator.estimateDeviceProcessingSpeed(device.platformId).map {
+//       case (min0, max0) =>
+//         val lo = math.min(min0, max0).toLong
+//         val hi = math.max(min0, max0).toLong
+//         if (hi <= lo) lo else (lo + hi) / 2L
+//     }
 
   private def localBacklogMillis(now: LocalDateTime, existing: Vector[JobRecord]): Long =
     existing.lastOption match {
@@ -89,62 +91,111 @@ final class BenchmarkFakeDevice private (
         else 0L
     }
 
-  def submitJob(taskId: TaskId): IO[JobRecord] =
+//   def submitJob(taskId: TaskId): IO[JobRecord] =
+//     for {
+//       now <- nowF
+//       existing <- jobsRef.get
+//       //queueLen <- deviceEstimator.estimateDeviceQueueLength(device.platformId)
+//       //procMillis <- processingMillisForDevice
+
+//       externalQueueMillis = queueLen.toLong // * procMillis
+//       localQueueMillis = localBacklogMillis(now, existing)
+//       totalQueueMillis = externalQueueMillis + localQueueMillis
+
+//       startAt = now.plusNanos(totalQueueMillis * 1000000L)
+//       finishAt = startAt.plusNanos(procMillis * 1000000L)
+
+//       rec = JobRecord(
+//         taskId = taskId,
+//         deviceId = device.platformId,
+//         submittedAt = now,
+//         startedAt = startAt,
+//         finishedAt = finishAt,
+//         queueWaitMillis = totalQueueMillis,
+//         runMillis = procMillis
+//       )
+
+//       _ <- jobsRef.update(_ :+ rec)
+//     } yield rec
+
+def submitJob(taskId: TaskId): IO[JobRecord] =
+  for {
+    now <- nowF
+    existing <- jobsRef.get
+
+    val jobMillis: Long = msPerGate * 100L
+    val externalQueueMillis: Long = queueLen.toLong * jobMillis
+    val localQueueMillis: Long = localBacklogMillis(now, existing)
+    val totalQueueMillis: Long = externalQueueMillis + localQueueMillis
+
+    val startAt: LocalDateTime  = now.plusNanos(totalQueueMillis * 1000000L)
+    val finishAt: LocalDateTime = startAt.plusNanos(jobMillis * 1000000L)
+
+    val rec = JobRecord(
+      taskId = taskId,
+      deviceId = device.platformId,
+      submittedAt = now,
+      startedAt = startAt,
+      finishedAt = finishAt,
+      queueWaitMillis = totalQueueMillis,
+      runMillis = jobMillis
+    )
+
+    _ <- jobsRef.update(_ :+ rec)
+  } yield rec
+
+  def estimatedCurrentQueueWaitMillis: IO[Long] =
     for {
-      now <- nowF
-      existing <- jobsRef.get
-      queueLen <- deviceEstimator.estimateDeviceQueueLength(device.platformId)
-      procMillis <- processingMillisForDevice
+        now <- nowF
+        existing <- jobsRef.get
 
-      externalQueueMillis = queueLen.toLong * procMillis
-      localQueueMillis = localBacklogMillis(now, existing)
-      totalQueueMillis = externalQueueMillis + localQueueMillis
+        val jobMillis: Long = msPerGate * 100L
+        val externalQueueMillis: Long = queueLen.toLong * jobMillis
+        val localQueueMillis: Long = localBacklogMillis(now, existing)
+    } yield externalQueueMillis + localQueueMillis
 
-      startAt = now.plusNanos(totalQueueMillis * 1000000L)
-      finishAt = startAt.plusNanos(procMillis * 1000000L)
-
-      rec = JobRecord(
-        taskId = taskId,
-        deviceId = device.platformId,
-        submittedAt = now,
-        startedAt = startAt,
-        finishedAt = finishAt,
-        queueWaitMillis = totalQueueMillis,
-        runMillis = procMillis
-      )
-
-      _ <- jobsRef.update(_ :+ rec)
-    } yield rec
 
   def jobRecord(taskId: TaskId): IO[Option[JobRecord]] =
     jobsRef.get.map(_.find(_.taskId == taskId))
 
-  def estimatedCurrentQueueWaitMillis: IO[Long] =
-    for {
-      now <- nowF
-      existing <- jobsRef.get
-      queueLen <- deviceEstimator.estimateDeviceQueueLength(device.platformId)
-      procMillis <- processingMillisForDevice
-      externalQueueMillis = queueLen.toLong * procMillis
-      localQueueMillis = localBacklogMillis(now, existing)
-    } yield externalQueueMillis + localQueueMillis
+//   def estimatedCurrentQueueWaitMillis: IO[Long] =
+//     for {
+//       now <- nowF
+//       existing <- jobsRef.get
+//       queueLen <- deviceEstimator.estimateDeviceQueueLength(device.platformId)
+//       procMillis <- processingMillisForDevice
+//       externalQueueMillis = queueLen.toLong * procMillis
+//       localQueueMillis = localBacklogMillis(now, existing)
+//     } yield externalQueueMillis + localQueueMillis
 }
 
 object BenchmarkFakeDevice {
-  def make(
-    device: Device,
-    deviceEstimator: DeviceEstimator[IO]
-  ): IO[BenchmarkFakeDevice] =
-    Ref
-      .of[IO, Vector[JobRecord]](Vector.empty)
-      .map(ref => new BenchmarkFakeDevice(device, deviceEstimator, ref))
+//   def make(
+//     device: Device,
+//     deviceEstimator: DeviceEstimator[IO]
+//   ): IO[BenchmarkFakeDevice] =
+//     Ref
+//       .of[IO, Vector[JobRecord]](Vector.empty)
+//       .map(ref => new BenchmarkFakeDevice(device, deviceEstimator, ref))
+// }
+
+    def make(device: Device, queueLen: Int, msPerGate: Long): IO[BenchmarkFakeDevice] = 
+        Ref
+        .of[IO, Vector[JobRecord]](Vector.empty)
+        .map(ref => new BenchmarkFakeDevice(device, queueLen, msPerGate, ref))
 }
 
 final case class BenchmarkDeviceRegistry(
   devicesById: Map[String, Device],
   fakeDevicesById: Map[String, BenchmarkFakeDevice],
-  calibrationsById: Map[String, DeviceCalibration]
+  calibrationsById: Map[String, DeviceCalibration],
+  queueLenByDeviceId: Map[String, Int],   
+  msPerGate: Long = 5L
 ) {
+
+  def queueLen(deviceId: String): Int =
+    queueLenByDeviceId.getOrElse(deviceId, 0)
+
   def devices: List[Device] = devicesById.values.toList
 
   def device(deviceId: String): Device =
@@ -213,20 +264,43 @@ object BenchmarkDeviceRegistry {
     def make(
         devices: List[Device],
         calibrationsById: Map[String, DeviceCalibration],
-        deviceEstimator: DeviceEstimator[IO]
+        deviceEstimator: DeviceEstimator[IO],
+        msPerGate: Long = 5L
     ): IO[BenchmarkDeviceRegistry] =
-        Logger[IO].info("Created Benchmark Device Registry") *> 
-        devices
-        .traverse { d =>
-            BenchmarkFakeDevice.make(d, deviceEstimator).map(fd => d.platformId -> fd)
-        }
-        .map { fakePairs =>
-            BenchmarkDeviceRegistry(
-                devicesById = devices.map(d => d.platformId -> d).toMap,
-                fakeDevicesById = fakePairs.toMap,
-                calibrationsById = calibrationsById
-            )
-        }
+        for{
+          _ <- Logger[IO].info("Created Benchmark Device Registry")  
+          byId = devices.map(d => d.platformId -> d).toMap
+          qMap: Map[String, Int] =
+            byId.keys.map { id =>
+                val q = (math.abs(id.hashCode) % 50) + 1 // 1..50 deterministic
+                id -> q
+            }.toMap
+            fakePairs <- devices.traverse { d =>
+                val qLen = qMap(d.platformId)
+                BenchmarkFakeDevice.make(d, qLen, msPerGate).map(fd => d.platformId -> fd)
+            }
+        } yield BenchmarkDeviceRegistry(
+                    devicesById = byId,
+                    calibrationsById = calibrationsById,
+                    queueLenByDeviceId = qMap,
+                    fakeDevicesById = fakePairs.toMap,
+                    msPerGate = msPerGate
+                )
+    
+        
+
+  
+        // devices
+        // .traverse { d =>
+        //     BenchmarkFakeDevice.make(d, deviceEstimator).map(fd => d.platformId -> fd)
+        // }
+        // .map { fakePairs =>
+        //     BenchmarkDeviceRegistry(
+        //         devicesById = devices.map(d => d.platformId -> d).toMap,
+        //         fakeDevicesById = fakePairs.toMap,
+        //         calibrationsById = calibrationsById
+        //     )
+        // }
 }
 
 final case class SubmittedQuantum(taskId: TaskId, deviceId: String)
@@ -256,6 +330,9 @@ final case class BenchmarkRun(
     lazy val meanPredictedLogFidelity: Double =
         if (quantumMetrics.isEmpty) 0.0
         else quantumMetrics.map(_.predictedLogFidelity).sum / quantumMetrics.size.toDouble
+
+    lazy val geometricMeanPredictedSuccessProbability: Double =
+                math.exp(meanPredictedLogFidelity)
 
     lazy val meanPredictedSuccessProbability: Double =
         if (quantumMetrics.isEmpty) 0.0
@@ -565,7 +642,7 @@ object SchedulerBenchmarkRunner {
         def loop(seen: Map[TaskId, SubmittedQuantum]): IO[List[SubmittedQuantum]] =
             scheduler.getSubmittedTasks().flatMap { raw => 
                 val newOnes = 
-                    raw.flatMap { case (s1, s2, tid) => 
+                    raw.flatMap { case (s1, s2, jid, tid) => 
                         if(!expectedQuantumIds.contains(tid)) None  
                         else{
                             Some(SubmittedQuantum(tid, s2))
@@ -761,7 +838,7 @@ object FakeBenchmarkClientsFromRegistry {
             BraketDeviceQueueInfo(
               queue = "QUANTUM_TASKS_QUEUE",
               queuePriority = None,
-              queueSize = "3"
+              queueSize = registry.queueLen(arn).toString
             )
           )
         )

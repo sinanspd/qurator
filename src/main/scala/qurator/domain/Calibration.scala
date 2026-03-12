@@ -51,14 +51,19 @@ object calibration {
     ) extends DeviceCalibration
 
     case class IQMCalibration(
-        typicalDetectionFalsePositive: Double,
-        typicalDetectionFalseNegative: Double,
-        typicalVacancyError: Option[Double],     
-        typicalFillingError: Option[Double],       
-        typicalAtomLossProbability: Option[Double],
-        t1SingleSec: Option[Double],
-        t2EchoSingleSec: Option[Double],
-        t2SingleSec: Option[Double]
+        t1: Double,
+        t2: Double, 
+        q1fidelity: Double,
+        q2fidelity: Double, 
+        readoutFidelity: Double
+        // typicalDetectionFalsePositive: Double,
+        // typicalDetectionFalseNegative: Double,
+        // typicalVacancyError: Option[Double],     
+        // typicalFillingError: Option[Double],       
+        // typicalAtomLossProbability: Option[Double],
+        // t1SingleSec: Option[Double],
+        // t2EchoSingleSec: Option[Double],
+        // t2SingleSec: Option[Double]
     ) extends DeviceCalibration
 
     case class QuEraCalibration(
@@ -106,23 +111,23 @@ object calibration {
 
         def epsFor(op: Gate): Double =
             op match {
-                case a @ (X(_) | H(_))  =>
+                case a @ (X(_) | H(_) | RX(_, _) | RZ(_, _))  =>
                     val (q, g) = a match { // this is dumb but oh well
                         case X(q)       => (q, "X")
                         case H(q)       => (q, "H")
+                        case RX(_, q)   => (q, "RX")
+                        case RZ(_, q)   => (q, "RZ")
                     }
                     eps1q.get((q, g))
                     .orElse(eps1qAvg)
                     .getOrElse(0.0) //TODO: Should we have a better default value here? 
 
-                case a @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRotate(_, _, _) | Rotate(_, _) | RZ(_ ,_)) =>
+                case a @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRZ(_, _, _)) =>
                     val (a, b, g) = op match{
                         case CX(a, b) => (a, b, "CX")
                         case CZ(a, b) => (a, b, "CZ")
                         case Swap(a , b) => (a, b, "SWAP")
-                        case CRotate(a, _, b) => (a, b, "CRotate")
-                        case Rotate(a ,b) => (a, b, "Rotate")
-                        case RZ(a, b) => (a, b, "RZ")
+                        case CRZ(a, _, b) => (a, b, "CRotate")
                     }
                     eps2q.get((edgeKey(a, b), g))
                     .orElse(eps2qAvg)
@@ -151,10 +156,10 @@ object calibration {
                 case a : Swap =>
                      dur2qNs.get("SWAP").orElse(dur2qAvgNs).getOrElse(0L)
 
-                case a : CRotate =>
+                case a : CRZ =>
                      dur2qNs.get("CRotate").orElse(dur2qAvgNs).getOrElse(0L)
 
-                case a : Rotate =>
+                case a : RX =>
                      dur2qNs.get("Rotate").orElse(dur2qAvgNs).getOrElse(0L)
 
                 case a : RZ =>

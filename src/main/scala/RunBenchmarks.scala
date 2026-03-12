@@ -61,9 +61,9 @@ object RunBenchmarks extends IOApp.Simple {
                         specs <- WorkloadSpecs.sample(n = 10, seed = 42L, T = WorkloadSpecs.defaultT)
                         _ <- scheduler.startRuntime.use { _ => 
                             for{
-                                schedRun <- SchedulerBenchmarkRunner.runSchedulerBenchmark(scheduler, specs, registry, clients, compiler)
-                                leastBusy <- SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy, specs, registry, clients, compiler)
-                                hiFid <- SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity, specs, registry, clients, compiler)
+                                schedRun <-  Logger[IO].info("Running Scheduler Benchmarks") *> SchedulerBenchmarkRunner.runSchedulerBenchmark(scheduler, specs, registry, clients, compiler)
+                                leastBusy <- Logger[IO].info("Running Least Busy Baselines") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy, specs, registry, clients, compiler)
+                                hiFid <- Logger[IO].info("Running Highest Fidelity Benchmarks") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity, specs, registry, clients, compiler)
         
                                 _ <- IO.println(s"Scheduler: q/s=${schedRun.throughputQuantumPerSec}, meanQ=${schedRun.meanQueueWaitMillis}, meanLogF=${schedRun.meanPredictedLogFidelity}, pos_arith=${schedRun.meanPredictedSuccessProbability}, pos_geo=${schedRun.geometricMeanPredictedSuccessProbability}")
                                 _ <- IO.println(s"LeastBusy: q/s=${leastBusy.throughputQuantumPerSec}, meanQ=${leastBusy.meanQueueWaitMillis}, meanLogF=${leastBusy.meanPredictedLogFidelity}, pos_arith=${leastBusy.meanPredictedSuccessProbability}, pos_geo=${leastBusy.geometricMeanPredictedSuccessProbability}")

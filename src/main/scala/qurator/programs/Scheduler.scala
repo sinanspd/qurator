@@ -29,6 +29,7 @@ import retry.RetryPolicy
 import cats.Monad
 import fs2.Stream
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import qurator.domain.IBM._
 
 trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[List[TaskId]]
@@ -302,7 +303,23 @@ object Scheduler{
                 } yield resp.quantumTaskArn
 
             case "IBM" => // To Fix
-                new RuntimeException("IBM submit not wired in scheduleOneQuantumTask yet").raiseError[F, String]
+                val req = 
+                     SubmitJobRequestV2(
+                        "sampler",
+                        device.platformId,
+                        None,
+                        None,
+                        Some("info"),
+                        None,
+                        None,
+                        None,
+                        SamplerV2Input(
+                            pubs = List(
+                                "" //transform to qasm here
+                            )
+                        )
+                    )
+                clients.ibm.submitJob(req).map(_.id)
 
             case "Azure" => //Azure is not playing by the rules so we will deal with them later 
                 new RuntimeException("Azure submit not wired in scheduleOneQuantumTask yet").raiseError[F, String]
@@ -723,11 +740,11 @@ object Scheduler{
                     case CX(ctrl, target) => CX(ctrl + offset, target + offset)
                     case CCX(ctrl1, ctrl2, target) => CCX(ctrl1 + offset, ctrl2 + offset, target + offset)
                     case CZ(ctrl, target) => CZ(ctrl + offset, target + offset)
-                    case U(start, end, power) => U(start + offset, end + offset, power)
-                    case CU(ctrl, start, end, power) => CU(ctrl + offset, start + offset, end + offset, power)
+                    case U(theta, phi, lambda, q) => U(theta, phi, lambda, q + offset)
+                    case CU(ctrl, theta, phi, lambda, target) => CU(ctrl + offset, theta, phi, lambda, target + offset)
                     case Swap(q1, q2) => Swap(q1 + offset, q2 + offset)
-                    case CRotate(ctrl, thetaDenom, q) => CRotate(ctrl + offset, thetaDenom, q + offset)
-                    case Rotate(thetaDenom, q) => Rotate(thetaDenom, q + offset)
+                    case CRZ(ctrl, thetaDenom, q) => CRZ(ctrl + offset, thetaDenom, q + offset)
+                    case RZ(thetaDenom, q) => RZ(thetaDenom, q + offset)
                     case RZ(thetaDenom, q) => RZ(thetaDenom, q + offset)
                     case Measure(q) => Measure(q + offset)
                 }

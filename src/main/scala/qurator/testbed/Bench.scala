@@ -23,6 +23,7 @@ import qurator.clients.AzureQuantumClient
 import qurator.domain.Azure._
 import qurator.clients.BraketClient
 import qurator.clients.IBMClient
+import qurator.testbed.IBMCalibrationInstances._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 final case class QuantumTaskSpec(
@@ -216,7 +217,7 @@ object BenchmarkDeviceRegistry {
             Device(
                 platform = "Braket",
                 platformId = "braket-rigetti-ankaa",
-                qubits = 84,
+                qubits = 82,
                 t1 = 0f,
                 t2 = 0f,
                 gateSet = List.empty
@@ -228,35 +229,150 @@ object BenchmarkDeviceRegistry {
                 t1 = 0f,
                 t2 = 0f,
                 gateSet = List.empty
+            ),
+            Device(
+                platform = "Braket",
+                platformId = "braket-aqt-ibex-q1" ,
+                qubits = 12,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ),
+            Device(
+                platform = "Braket",
+                platformId = "braket-ionq-forte-1",
+                qubits = 36,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ),
+            Device(
+                platform = "Braket",
+                platformId = "braket-quera-aquila",
+                qubits = 256,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ), 
+            Device(
+                platform = "IBM",
+                platformId = "ibm_boston",
+                qubits = 156,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ),
+            Device(
+                platform = "IBM",
+                platformId = "ibm_kingston",
+                qubits = 156,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ), 
+            Device(
+                platform = "IBM",
+                platformId = "ibm_pittsburg",
+                qubits = 156,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ), 
+            Device(
+                platform = "IBM",
+                platformId = "ibm_fez",
+                qubits = 156,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ),
+            Device(
+                platform = "IBM",
+                platformId = "ibm_marrakesh",
+                qubits = 156,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ), 
+            Device(
+                platform = "IBM",
+                platformId = "ibm_torino",
+                qubits = 133,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
             )
         )
-
     ///saaaaaymmmm 
     def defaultCalibrations: Map[String, DeviceCalibration] =
         Map(
-        "braket-rigetti-ankaa" ->
-            RigettiCalibration(
-            avg1qFidelityPct = 98.8,
-            readoutFidelityPct = 92.5,
-            swapFidelityPct = 96.5,
-            t1Seconds = 8.0,
-            t2Seconds = 4.0,
-            swapGateDurationNs = 300,
-            readoutDurationNs = 1200,
-            oneQGateDurationNs = 40,
-            twoQGateDurationNs = 140
-            ),
-        "braket-iqm-garnet" ->
-            IQMCalibration(
-            typicalDetectionFalsePositive = 0.02,
-            typicalDetectionFalseNegative = 0.03,
-            typicalVacancyError = Some(0.04),
-            typicalFillingError = None,
-            typicalAtomLossProbability = Some(0.03),
-            t1SingleSec = Some(7.0),
-            t2EchoSingleSec = Some(4.0),
-            t2SingleSec = Some(3.5)
-            )
+            "braket-rigetti-ankaa" -> //
+                RigettiCalibration( 
+                    avg1qFidelityPct = 97.946, //
+                    readoutFidelityPct = 95.472, // 
+                    swapFidelityPct = 90.130, // 
+                    t1Seconds = 3.6387e-5, //8
+                    t2Seconds = 2.2118e-5, // 
+                    swapGateDurationNs = 300,
+                    readoutDurationNs = 1200,
+                    oneQGateDurationNs = 40,
+                    twoQGateDurationNs = 140
+                ),
+            "braket-iqm-garnet" -> //
+                IQMCalibration(
+                    t1 = 3.3829e-5,
+                    t2 = 8.925e-6, 
+                    q1fidelity = 99.296,
+                    q2fidelity = 99.884, 
+                    readoutFidelity = 97.940
+                    // typicalDetectionFalsePositive = 0.02,
+                    // typicalDetectionFalseNegative = 0.03,
+                    // typicalVacancyError = Some(0.04),
+                    // typicalFillingError = None,
+                    // typicalAtomLossProbability = Some(0.03),
+                    // t1SingleSec = Some(7.0),
+                    // t2EchoSingleSec = Some(4.0),
+                    // t2SingleSec = Some(3.5)
+                ),
+            "braket-aqt-ibex-q1" -> //
+                AQTCalibration(
+                    t1Seconds = 1.168, 
+                    t2Seconds = 0.1632,
+                    readoutFidelity = 99.740, 
+                    readoutDurationSec = 0.0015,
+                    oneQGateDurationSec = 3e-5,
+                    oneQGateFidelity = 99.978, 
+                    twoQGateDurationSec = 0.000335,
+                    twoQGateFidelity = 98.500
+                ),
+            "braket-ionq-forte-1" ->  // 
+                IonQCalibration(
+                    t1Seconds = 100,
+                    t2Seconds = 1,
+                    avg1qFidelityPct = 99.93177087236276,
+                    avg2qFidelityPct = 97.41735442219582, 
+                    avgReadoutFidelity = 99.15,
+                    oneQGateDurationSec = 130e-6,
+                    twoQGateDurationSec = 970e-6,
+                    readoutDurationSec = 150e-6
+                ),
+            "braket-quera-aquila" -> //
+                QuEraCalibration(
+                    typicalDetectionFalsePositive = 0.001,
+                    typicalDetectionFalseNegative = 0.001,
+                    typicalVacancyError = Some(0.001),     
+                    typicalFillingError = Some(0.008),       
+                    typicalAtomLossProbability = Some(0.001),
+                    t1SingleSec = Some(7.5e-5),
+                    t2EchoSingleSec = Some(8e-6),
+                    t2SingleSec = Some(5e-6)
+                ),
+            "ibm_boston" -> ibmBostonCalibration,
+            "ibm_kingston" -> ibmKingstonCalibration,
+            "ibm_pittsburg" -> ibmPittsburghCalibration, 
+            "ibm_fez" -> ibmFezCalibration, 
+            "ibm_marrakesh" -> ibmMarrakeshCalibration, 
+            "ibm_torino" -> ibmTorinoCalibration
         )
 
     implicit val logger = Slf4jLogger.getLogger[IO]
@@ -716,11 +832,11 @@ object SchedulerBenchmarkRunner {
     ): IO[Device] = {
         val feasible = registry.devices.filter(_.qubits >= task.qubits.value)
         if (feasible.isEmpty) {
-        new RuntimeException(s"No feasible device for task").raiseError[IO, Device]
+            new RuntimeException(s"No feasible device for task").raiseError[IO, Device]
         } else {
-        feasible
-            .traverse(d => registry.fakeDevice(d.platformId).estimatedCurrentQueueWaitMillis.map(w => (w, d)))
-            .map(_.minBy(_._1)._2)
+            feasible
+                .traverse(d => registry.fakeDevice(d.platformId).estimatedCurrentQueueWaitMillis.map(w => (w, d)))
+                .map(_.minBy(_._1)._2)
         }
     }
 
@@ -785,6 +901,7 @@ object FakeBenchmarkClientsFromRegistry {
     else if (s.contains("ionq")) "IonQ"
     else if (s.contains("iqm")) "IQM"
     else if (s.contains("quera")) "QuEra"
+    else if (s.contains("aqt")) "AQT"
     else "Unknown"
   }
 

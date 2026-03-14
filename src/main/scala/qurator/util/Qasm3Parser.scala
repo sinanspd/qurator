@@ -3,8 +3,50 @@ package qurator.util
 import scala.collection.mutable
 import scala.util.matching.Regex
 import qurator.domain.circuit._
+import scala.util.control.NonFatal
 
 object Qasm3Parser {
+
+  sealed trait ParseMode
+  object ParseMode {
+    case object Strict extends ParseMode
+    case object Lenient extends ParseMode
+  }
+
+  final case class ParseWarning(
+    statement: String,
+    message: String
+  )
+
+  final case class ParseConfig(
+    mode: ParseMode = ParseMode.Strict,
+    keepUnknownFlatGates: Boolean = false
+  )
+
+  object ParseConfig {
+    val strict: ParseConfig =
+      ParseConfig(
+        mode = ParseMode.Strict,
+        keepUnknownFlatGates = false
+      )
+
+    val lenientSkipUnsupported: ParseConfig =
+      ParseConfig(
+        mode = ParseMode.Lenient,
+        keepUnknownFlatGates = false
+      )
+
+    val lenientKeepNamedUnknown: ParseConfig =
+      ParseConfig(
+        mode = ParseMode.Lenient,
+        keepUnknownFlatGates = true
+      )
+  }
+
+  final case class ParseReport(
+    circuit: Circuit,
+    warnings: Vector[ParseWarning]
+  )
 
   sealed trait ParseError extends RuntimeException
   final case class QasmParseError(msg: String) extends RuntimeException(msg) with ParseError
@@ -30,87 +72,147 @@ object Qasm3Parser {
   private val QregDecl: Regex = "^qreg\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(\\d+)\\s*\\]$".r
   private val CregDecl: Regex = "^creg\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(\\d+)\\s*\\]$".r
 
-  def parse(qasm: String, name: String = ""): Circuit = {
+  def parse(qasm: String, name: String = ""): Circuit =
+    parseWithReport(qasm, name, ParseConfig.strict).circuit
+
+  def parseLenient(qasm: String, name: String = ""): ParseReport =
+    parseWithReport(qasm, name, ParseConfig.lenientSkipUnsupported)
+
+  def parseWithReport(
+    qasm: String,
+    name: String = "",
+    config: ParseConfig = ParseConfig.strict
+  ): ParseReport = {
     val source = stripComments(qasm)
 
-    if (source.contains("{") || source.contains("}")) {
-      throw QasmParseError(
-        "This parser handles flat gate-level OpenQASM 3 only; scoped constructs such as gate/def/if/for/while/box/defcal are not supported."
-      )
-    }
-
     val qregs = mutable.LinkedHashMap.empty[String, Vector[Int]]
-    var nextQubit = 0
-    var maxPhysicalSeen = -1
+    val warnings = mutable.ListBuffer.empty[ParseWarning]
     val gates = mutable.ListBuffer.empty[Gate]
 
+    var nextQubit = 0
+    var maxPhysicalSeen = -1
+
     def declareQubits(regName: String, size: Int): Unit = {
-      if (qregs.contains(regName)) throw QasmParseError(s"Qubit register '$regName' declared twice.")
+      if (qregs.contains(regName)) {
+        throw QasmParseError(s"Qubit register '$regName' declared twice.")
+      }
       val indices = Vector.tabulate(size)(i => nextQubit + i)
       qregs.put(regName, indices)
       nextQubit += size
+    }
+
+    def warn(stmt: String, msg: String): Unit =
+      warnings += ParseWarning(stmt, msg)
+
+    def handleStatement(stmt: String): Unit = stmt match {
+      case s if s.isEmpty =>
+        ()
+
+      case s if isIgnorableStatement(s) =>
+        ()
+
+      case s if isUnsupportedStructuredStatement(s) =>
+        config.mode match {
+          case ParseMode.Strict =>
+            throw QasmParseError(
+              s"Unsupported structured OpenQASM statement: $s"
+            )
+          case ParseMode.Lenient =>
+            warn(s, "Skipped unsupported structured OpenQASM statement")
+        }
+
+      case QubitDecl(null, regName) =>
+        declareQubits(regName, 1)
+
+      case QubitDecl(sizeStr, regName) =>
+        declareQubits(regName, sizeStr.toInt)
+
+      case QregDecl(regName, sizeStr) =>
+        declareQubits(regName, sizeStr.toInt)
+
+      case CregDecl(_, _) =>
+        ()
+
+      case s if isClassicalDeclaration(s) =>
+        ()
+
+      case s if s.startsWith("reset ") =>
+        val qargText = s.stripPrefix("reset").trim
+        val qrefs = splitTopLevel(qargText, ',').map(tok => resolveQArg(tok.trim, qregs))
+        maxPhysicalSeen = math.max(maxPhysicalSeen, maxIndex(qrefs))
+        gates ++= broadcast(qrefs).map {
+          case List(q) => Reset(q)
+          case qs =>
+            throw QasmParseError(
+              s"reset expects 1 quantum operand, got ${qs.length}: $s"
+            )
+        }
+
+      case s if isMeasurementStmt(s) =>
+        val qargText = extractMeasuredQArg(s)
+        val qrefs = splitTopLevel(qargText, ',').map(tok => resolveQArg(tok.trim, qregs))
+        maxPhysicalSeen = math.max(maxPhysicalSeen, maxIndex(qrefs))
+        gates ++= broadcast(qrefs).map {
+          case List(q) => Measure(q)
+          case qs =>
+            throw QasmParseError(
+              s"measure expects 1 quantum operand after broadcasting, got ${qs.length}: $s"
+            )
+        }
+
+      case s if s.startsWith("barrier ") || s == "barrier" || s.startsWith("nop") =>
+        ()
+
+      case s =>
+        val (mods, rest) = parseModifiers(s)
+        val call = parseCall(rest, qregs)
+        maxPhysicalSeen = math.max(maxPhysicalSeen, maxIndex(call.qargs))
+        gates ++= lowerCall(call, mods, config)
     }
 
     val statements = splitTopLevel(source, ';')
 
     statements.foreach { rawStmt =>
       val stmt = rawStmt.trim
-      if (stmt.isEmpty) {
-        ()
-      } else stmt match {
-        case s if isIgnorableStatement(s) =>
-          ()
-
-        case QubitDecl(null, regName) =>
-          declareQubits(regName, 1)
-
-        case QubitDecl(sizeStr, regName) =>
-          declareQubits(regName, sizeStr.toInt)
-
-        case QregDecl(regName, sizeStr) =>
-          declareQubits(regName, sizeStr.toInt)
-
-        case CregDecl(_, _) =>
-          () 
-
-        case s if isClassicalDeclaration(s) =>
-          () 
-        case s if s.startsWith("reset ") =>
-          val qargText = s.stripPrefix("reset").trim
-          val qrefs = splitTopLevel(qargText, ',').map(tok => resolveQArg(tok.trim, qregs))
-          maxPhysicalSeen = math.max(maxPhysicalSeen, maxIndex(qrefs))
-          gates ++= broadcast(qrefs).map {
-            case List(q) => Reset(q)
-            case qs      => throw QasmParseError(s"reset expects 1 quantum operand, got ${qs.length}: $s")
-          }
-
-        case s if isMeasurementStmt(s) =>
-          val qargText = extractMeasuredQArg(s)
-          val qrefs = splitTopLevel(qargText, ',').map(tok => resolveQArg(tok.trim, qregs))
-          maxPhysicalSeen = math.max(maxPhysicalSeen, maxIndex(qrefs))
-          gates ++= broadcast(qrefs).map {
-            case List(q) => Measure(q)
-            case qs      => throw QasmParseError(s"measure expects 1 quantum operand after broadcasting, got ${qs.length}: $s")
-          }
-
-        case s if s.startsWith("barrier ") || s == "barrier" || s.startsWith("nop") =>
-          ()
-
-        case s =>
-          val (mods, rest) = parseModifiers(s)
-          val call = parseCall(rest, qregs)
-          maxPhysicalSeen = math.max(maxPhysicalSeen, maxIndex(call.qargs))
-          gates ++= lowerCall(call, mods)
+      if (stmt.nonEmpty) {
+        try {
+          handleStatement(stmt)
+        } catch {
+          case NonFatal(e) =>
+            config.mode match {
+              case ParseMode.Strict =>
+                throw e
+              case ParseMode.Lenient =>
+                warn(stmt, e.getMessage)
+            }
+        }
       }
     }
 
     val totalQubits = math.max(nextQubit, maxPhysicalSeen + 1)
-    Circuit(gates.toList, totalQubits, name)
+
+    ParseReport(
+      circuit = Circuit(gates.toList, totalQubits, name),
+      warnings = warnings.toVector
+    )
   }
 
-  // ---------------------------
-  // Statement classification
-  // ---------------------------
+  private def isUnsupportedStructuredStatement(s: String): Boolean = {
+    val t = s.trim
+    t.startsWith("gate ")   ||
+    t.startsWith("def ")    ||
+    t.startsWith("defcal ") ||
+    t.startsWith("cal ")    ||
+    t.startsWith("for ")    ||
+    t.startsWith("while ")  ||
+    t.startsWith("if ")     ||
+    t.startsWith("else ")   ||
+    t.startsWith("switch ") ||
+    t.startsWith("box ")    ||
+    t.startsWith("delay ")  ||
+    t.contains("{")         ||
+    t.contains("}")
+  }
 
   private def isIgnorableStatement(s: String): Boolean = {
     val t = s.trim
@@ -151,25 +253,31 @@ object Qasm3Parser {
     }
   }
 
-  // ---------------------------
-  // Lowering
-  // ---------------------------
-
-  private def lowerCall(call: Call, mods: List[Modifier]): List[Gate] = {
+  private def lowerCall(
+    call: Call,
+    mods: List[Modifier],
+    config: ParseConfig
+  ): List[Gate] = {
     val inv = mods.count(_ == Inv) % 2 == 1
     val controls = mods.collect { case Ctrl(n) => n }.sum
 
     val baseCall = if (inv) invertCall(call) else call
 
     controls match {
-      case 0 => lowerSimple(baseCall)
-      case 1 => lowerControlled(baseCall, 1)
-      case 2 => lowerControlled(baseCall, 2)
-      case n => throw QasmParseError(s"Only up to 2 controls are lowered into this Gate ADT; got ctrl($n) in ${call.name}.")
+      case 0 => lowerSimple(baseCall, config)
+      case 1 => lowerControlled(baseCall, 1, config)
+      case 2 => lowerControlled(baseCall, 2, config)
+      case n =>
+        throw QasmParseError(
+          s"Only up to 2 controls are lowered into this Gate ADT; got ctrl($n) in ${call.name}."
+        )
     }
   }
 
-  private def lowerSimple(call: Call): List[Gate] = {
+  private def lowerSimple(
+    call: Call,
+    config: ParseConfig
+  ): List[Gate] = {
     val tuples = broadcast(call.qargs)
 
     def oneParam(name: String): String = expectParamCount(name, call.params, 1).head
@@ -262,15 +370,25 @@ object Qasm3Parser {
         val gamma = oneParam("gphase")
         tuples.map {
           case Nil => GPhase(gamma)
-          case qs  => throw QasmParseError(s"gphase takes no qubit operands, got ${qs.length}")
+          case qs =>
+            throw QasmParseError(
+              s"gphase takes no qubit operands, got ${qs.length}"
+            )
         }
 
-      case other =>
+      case other if config.keepUnknownFlatGates =>
         tuples.map(qs => NamedGate(other, call.params.toVector, qs.toVector))
+
+      case other =>
+        throw QasmParseError(s"Unsupported flat gate '$other'")
     }
   }
 
-  private def lowerControlled(call: Call, controls: Int): List[Gate] = {
+  private def lowerControlled(
+    call: Call,
+    controls: Int,
+    config: ParseConfig
+  ): List[Gate] = {
     val tuples = broadcast(call.qargs)
 
     def oneParam(name: String): String = expectParamCount(name, call.params, 1).head
@@ -310,19 +428,16 @@ object Qasm3Parser {
         val (theta, phi, lambda) = threeParams(call.name)
         tuples.map(expectArity2("ctrl @ U", _)).map { case (c, t) => CU(c, theta, phi, lambda, t) }
 
-      // ctrl @ gphase(gamma) q   ===   U(0, 0, gamma) q
       case (1, "gphase") =>
         val gamma = oneParam("gphase")
         tuples.map(expectArity1("ctrl @ gphase", _)).map(q => U("0", "0", gamma, q))
 
       case _ =>
         throw QasmParseError(
-          s"Unsupported controlled lowering: ${renderModifiers(controls)}${call.name}. " +
-          s"Either add a specific Gate case class or keep it as a NamedGate in a richer AST."
+          s"Unsupported controlled lowering: ${renderModifiers(controls)}${call.name}"
         )
     }
   }
-
   private def invertCall(call: Call): Call = {
     call.name match {
       case "x" | "y" | "z" | "h" | "cx" | "CX" | "cy" | "cz" | "ch" | "swap" | "ccx" | "CCX" | "id" =>

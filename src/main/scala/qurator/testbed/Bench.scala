@@ -25,6 +25,9 @@ import qurator.clients.BraketClient
 import qurator.clients.IBMClient
 import qurator.testbed.IBMCalibrationInstances._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import qurator.util.QuantumTaskLoader
+import qurator.util.Qasm3Parser
+import fs2.io.file.Path
 
 final case class QuantumTaskSpec(
     circuit: Circuit,
@@ -34,18 +37,26 @@ final case class QuantumTaskSpec(
 )
 
 object WorkloadSpecs { 
-    
     //For test only, remove later 
     val defaultT: Vector[QuantumTaskSpec] =
-    Vector(
-      QuantumTaskSpec(Circuit(List(X(0), Measure(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1)),
-      QuantumTaskSpec(Circuit(List(H(0), Measure(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1)),
-      QuantumTaskSpec(Circuit(List(X(0), H(0), Measure(0)), 1), TaskQubits(1), TaskShots(2000), TaskDepth(2)),
-      QuantumTaskSpec(Circuit(List(CX(0, 1), Measure(1)), 2), TaskQubits(2), TaskShots(1500), TaskDepth(1)),
-      QuantumTaskSpec(Circuit(List(H(0), CX(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(1500), TaskDepth(2)),
-      QuantumTaskSpec(Circuit(List(X(0), X(1), CZ(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(3000), TaskDepth(3)),
-      QuantumTaskSpec(Circuit(List(X(0), H(1), Swap(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(2500), TaskDepth(3))
-    )
+        Vector(
+        QuantumTaskSpec(Circuit(List(X(0), Measure(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1)),
+        QuantumTaskSpec(Circuit(List(H(0), Measure(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1)),
+        QuantumTaskSpec(Circuit(List(X(0), H(0), Measure(0)), 1), TaskQubits(1), TaskShots(2000), TaskDepth(2)),
+        QuantumTaskSpec(Circuit(List(CX(0, 1), Measure(1)), 2), TaskQubits(2), TaskShots(1500), TaskDepth(1)),
+        QuantumTaskSpec(Circuit(List(H(0), CX(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(1500), TaskDepth(2)),
+        QuantumTaskSpec(Circuit(List(X(0), X(1), CZ(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(3000), TaskDepth(3)),
+        QuantumTaskSpec(Circuit(List(X(0), H(1), Swap(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(2500), TaskDepth(3))
+        )
+
+    val loadedTasks: IO[Vector[QuantumTaskSpec]] = 
+        QuantumTaskLoader.load(
+            QuantumTaskLoader.Settings(
+                folder = Path("mqt"),
+                shots = 1000,
+                parseConfig = Qasm3Parser.ParseConfig.lenientSkipUnsupported
+            )
+        )
 
     def sample(n: Int, seed: Long, T: Vector[QuantumTaskSpec]): IO[List[QuantumTaskSpec]] = 
         if(n <= 0 || T.isEmpty) List.empty[QuantumTaskSpec].pure[IO]
@@ -808,6 +819,8 @@ object SchedulerBenchmarkRunner {
     ): IO[BenchmarkRun] = {
         for{
             t0 <- monotonicMillis
+            report <- WorkloadSpecs.loadedTasks
+            _ <- Logger[IO].info(s"Loaded ${report.size} task(s)")
             _ <- Logger[IO].info("Starting Scheduler Benchmark")
             quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _)).map(_.flatten)
             _ <- Logger[IO].info(s"QuantumIds: ${quantumIdPairs.mkString(", ")}")

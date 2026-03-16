@@ -200,8 +200,9 @@ object Scheduler{
                         )    
                     }
                 }
-
+                _ <- Logger[F].info(s"Attempting Merge Sync Tasks")
                 possiblyMergedTasks <- Scheduler.attemptToMergeSyncTasks(tasks, clients, compiler, targetEstimatedFidelity) 
+                _ <- Logger[F].info(s"Merged Tasks")
                 groupId <- ID.make[F, TaskId]
                 sg = SyncronizedQuantumTaskList(
                     groupId,
@@ -211,7 +212,7 @@ object Scheduler{
                 )
                 allParents = str.l.foldLeft(List.empty[TaskId])((a, b) => a ++ b.parentTasks)
                 _ <- if(allParents.isEmpty){enqueueReady(List(sg))}else{enqueuePending(List(sg))}
-            }yield List(groupId)
+            }yield tasks.map(_.uuid)
 
 
         def startScheduling(): F[Unit] = {
@@ -299,6 +300,7 @@ object Scheduler{
                         deviceParameters = "{}",
                         shots = task.shots.value
                     )
+                    _ <- Logger[F].info(s"Submitting task ${task.uuid} to device $device") 
                     resp <- clients.braket.submitBraketOpenQasmTask(req, qasmSource)
                 } yield resp.quantumTaskArn
 
@@ -319,7 +321,7 @@ object Scheduler{
                             )
                         )
                     )
-                clients.ibm.submitJob(req).map(_.id)
+                Logger[F].info(s"Submitting task ${task.uuid} to device $device") *> clients.ibm.submitJob(req).map(_.id)
 
             case "Azure" => //Azure is not playing by the rules so we will deal with them later 
                 new RuntimeException("Azure submit not wired in scheduleOneQuantumTask yet").raiseError[F, String]
@@ -331,6 +333,7 @@ object Scheduler{
 
         private def scheduleSynronizedTasks(s: SyncronizedQuantumTaskList): F[Unit] =
             for{
+                _ <- Logger[F].info("Scheduling Syncronized Task")
                 devices <- Scheduler.getAvailableDevices(clients)
                 orderedTasks = prioritizationStrategy(s.tasks).collect{ case t: QuantumTask => t}
                 candidateDevicesByTask <- orderedTasks.traverse{t =>
@@ -346,17 +349,24 @@ object Scheduler{
                         if (possible.nonEmpty) possible else cs 
                     }.map(t -> _)   
                 }.map(_.toMap)
+                _ <- Logger[F].info("Building Sync Plan")
                 plan <- buildGreedySynchronizedPlan(
                     orderedTasks,
                     candidateDevicesByTask,
                     s.t1Budget
                 )
-
+                _ <- Logger[F].info(s"Built Sync Plan. Plan Length: ${plan.assignments.toList.length}")
                 _ <- plan.assignments.toList.traverse_{case (device, tasksOnDevice) => 
                   tasksOnDevice.traverse_{t => 
-                    submitJobWithFallback(device, t, candidateDevicesByTask.getOrElse(t, Nil))  
+                    //submitJobWithFallback(device, t, candidateDevicesByTask.getOrElse(t, Nil))  
+                    submitQuantumToProvider(device, t, t.circuit).flatMap(jobId => 
+                        Logger[F].info(s"Task ${t.uuid} submitted, adding to list") *>
+                        submittedTasks.update(_ :+ (device.platform, device.platformId, jobId, t.uuid))
+                    )
                   }    
                 }
+                cq <- submittedTasks.get
+                _ <- Logger[F].info(s"Current Submitted: ${cq.mkString(", ")}")
             }yield ()
 
 
@@ -452,9 +462,9 @@ object Scheduler{
             }
         }
         
-        private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = ???  
+        private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = 0L.pure[F] 
 
-        private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = ??? //might not be needed
+        private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = 0L.pure[F] //might not be needed
 
         
         private def gateCount(c: Circuit): Long =
@@ -744,7 +754,6 @@ object Scheduler{
                     case CU(ctrl, theta, phi, lambda, target) => CU(ctrl + offset, theta, phi, lambda, target + offset)
                     case Swap(q1, q2) => Swap(q1 + offset, q2 + offset)
                     case CRZ(ctrl, thetaDenom, q) => CRZ(ctrl + offset, thetaDenom, q + offset)
-                    case RZ(thetaDenom, q) => RZ(thetaDenom, q + offset)
                     case RZ(thetaDenom, q) => RZ(thetaDenom, q + offset)
                     case Measure(q) => Measure(q + offset)
                 }

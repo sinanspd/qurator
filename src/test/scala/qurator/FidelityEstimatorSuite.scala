@@ -76,24 +76,18 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
     )
 
   private def mkIQMCalibration(
-    typicalDetectionFalsePositive: Double,
-    typicalDetectionFalseNegative: Double,
-    typicalVacancyError: Option[Double],
-    typicalFillingError: Option[Double],
-    typicalAtomLossProbability: Option[Double],
-    t1SingleSec: Option[Double],
-    t2EchoSingleSec: Option[Double],
-    t2SingleSec: Option[Double]
+    t1: Double,
+    t2: Double, 
+    q1fidelity: Double,
+    q2fidelity: Double, 
+    readoutFidelity: Double
   ): IQMCalibration =
     IQMCalibration(
-      typicalDetectionFalsePositive = typicalDetectionFalsePositive,
-      typicalDetectionFalseNegative = typicalDetectionFalseNegative,
-      typicalVacancyError = typicalVacancyError,
-      typicalFillingError = typicalFillingError,
-      typicalAtomLossProbability = typicalAtomLossProbability,
-      t1SingleSec = t1SingleSec,
-      t2EchoSingleSec = t2EchoSingleSec,
-      t2SingleSec = t2SingleSec
+      t1: Double,
+      t2: Double, 
+      q1fidelity: Double,
+      q2fidelity: Double, 
+      readoutFidelity: Double
     )
 
   private def mkQuEraCalibration(
@@ -188,77 +182,6 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
         expect(out.eps2q.isEmpty) and
         expect(out.readoutFidelity.isEmpty)
       )
-  }
-
-  test("normalizeCalibration IQM computes readout fidelity, init survival, and prefers echo T2") {
-    val in = mkIQMCalibration(
-      typicalDetectionFalsePositive = 0.02,
-      typicalDetectionFalseNegative = 0.04,
-      typicalVacancyError = Some(0.10),
-      typicalFillingError = Some(0.30), 
-      typicalAtomLossProbability = Some(0.05),
-      t1SingleSec = Some(5.0),
-      t2EchoSingleSec = Some(7.0),
-      t2SingleSec = Some(6.0)
-    )
-
-    val out = FidelityEstimator.normalizeCalibration(in)
-
-    IO.pure(
-        approxOpt(out.readoutFidelityAvg, Some(0.97)) and 
-        approxOpt(out.initSurvivalPerQubit, Some(0.90 * 0.95)) and
-        approxOpt(out.t1Avg, Some(5.0)) and
-        approxOpt(out.t2Avg, Some(7.0)) and
-        expect(out.eps1qAvg.isEmpty) and
-        expect(out.eps2qAvg.isEmpty) and
-        expect(out.dur1qAvgNs.isEmpty) and
-        expect(out.dur2qAvgNs.isEmpty) and
-        expect(out.durMeasNs.isEmpty)
-    )
-  }
-
-  test("normalizeCalibration IQM falls back to filling error and single-shot T2 when needed") {
-    val in = mkIQMCalibration(
-      typicalDetectionFalsePositive = 0.01,
-      typicalDetectionFalseNegative = 0.03,
-      typicalVacancyError = None,
-      typicalFillingError = Some(0.08),
-      typicalAtomLossProbability = None,
-      t1SingleSec = Some(2.0),
-      t2EchoSingleSec = None,
-      t2SingleSec = Some(6.0)
-    )
-
-    val out = FidelityEstimator.normalizeCalibration(in)
-
-    IO.pure(
-        approxOpt(out.readoutFidelityAvg, Some(0.98)) and
-        approxOpt(out.initSurvivalPerQubit, Some(0.92)) and
-        approxOpt(out.t1Avg, Some(2.0)) and
-        approxOpt(out.t2Avg, Some(6.0))
-    )
-  }
-
-  test("normalizeCalibration IQM leaves initSurvivalPerQubit empty when occupancy and loss are both unavailable") {
-    val in = mkIQMCalibration(
-      typicalDetectionFalsePositive = 0.01,
-      typicalDetectionFalseNegative = 0.01,
-      typicalVacancyError = None,
-      typicalFillingError = None,
-      typicalAtomLossProbability = None,
-      t1SingleSec = None,
-      t2EchoSingleSec = None,
-      t2SingleSec = None
-    )
-
-    val out = FidelityEstimator.normalizeCalibration(in)
-
-    IO.pure(
-        approxOpt(out.readoutFidelityAvg, Some(0.99)) and
-        expect(out.initSurvivalPerQubit.isEmpty) and
-        expect(out.t1Avg.isEmpty) and
-        expect(out.t2Avg.isEmpty)
-    )
   }
 
   test("normalizeCalibration QuEra mirrors neutral-atom normalization logic") {

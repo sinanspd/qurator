@@ -212,7 +212,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
           qubits = 156,
           t1 = 246.29f,
           t2 = 343.14f,
-          gateSet = List(CZ(0, 0), Rotate(0, 0), RZ(0, 0),  CX(0, 1), X(0))
+          gateSet = List(CZ(0, 0), RX("2", 0), RZ("3", 0),  CX(0, 1), X(0))
         )
       tid <- ID.make[IO, TaskId]
       t = QuantumTask(

@@ -2321,7 +2321,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     }
 
     val braket = new BraketClient[IO] {
-      def fetchDeviceDetails(ids: List[String]): IO[List[BraketDeviceDetailsResponse]] = ???
+      def fetchDeviceDetails(ids: List[String]): IO[List[BraketDeviceDetailsResponse]] = 
+        IO.pure(List.empty)
       def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): IO[BraketCreateQuantumTaskResponse] = ??? 
       def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = ???
       def fetchDeviceList(): IO[BraketDeviceListResponse] =

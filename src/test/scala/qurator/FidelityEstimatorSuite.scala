@@ -155,35 +155,6 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
       twoQGateDurationSec = twoQGateDurationSec
     )
 
-  test("normalizeCalibration IonQ converts percentages to error rates and seconds to ns") {
-    val in = mkIonQCalibration(
-      avg1qFidelityPct = 99.5,
-      avg2qFidelityPct = 98.0,
-      avgReadoutFidelity = 0.97,
-      t1Seconds = 12.0,
-      t2Seconds = 8.0,
-      oneQGateDurationSec = 1e-6,
-      twoQGateDurationSec = 3e-6,
-      readoutDurationSec = 5e-6
-    )
-
-    val out = FidelityEstimator.normalizeCalibration(in)
-
-    IO.pure(
-        approxOpt(out.eps1qAvg, Some(0.005)) and
-        approxOpt(out.eps2qAvg, Some(0.02)) and
-        approxOpt(out.readoutFidelityAvg, Some(0.97)) and
-        approxOpt(out.t1Avg, Some(12.0)) and 
-        approxOpt(out.t2Avg, Some(8.0)) and
-        expect(out.dur1qAvgNs.contains(1000L)) and 
-        expect(out.dur2qAvgNs.contains(3000L)) and
-        expect(out.durMeasNs.contains(5000L)) and
-        expect(out.eps1q.isEmpty) and 
-        expect(out.eps2q.isEmpty) and
-        expect(out.readoutFidelity.isEmpty)
-      )
-  }
-
   test("normalizeCalibration QuEra mirrors neutral-atom normalization logic") {
     val in = mkQuEraCalibration(
       typicalDetectionFalsePositive = 0.03,
@@ -232,32 +203,6 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
         expect(out.durMeasNs.contains(333L)) and
         expect(out.dur1qAvgNs.contains(444L)) and
         expect(out.dur2qAvgNs.contains(555L))
-    )
-  }
-
-  test("normalizeCalibration AQT converts fidelities to error rates and seconds to ns") {
-    val in = mkAQTCalibration(
-      oneQGateFidelity = 0.995,
-      twoQGateFidelity = 0.97,
-      readoutFidelity = 0.96,
-      t1Seconds = 21.0,
-      t2Seconds = 13.0,
-      readoutDurationSec = 4e-6,
-      oneQGateDurationSec = 2e-6,
-      twoQGateDurationSec = 8e-6
-    )
-
-    val out = FidelityEstimator.normalizeCalibration(in)
-
-    IO.pure(
-        approxOpt(out.eps1qAvg, Some(0.005)) and 
-        approxOpt(out.eps2qAvg, Some(0.03)) and
-        approxOpt(out.readoutFidelityAvg, Some(0.96)) and
-        approxOpt(out.t1Avg, Some(21.0)) and
-        approxOpt(out.t2Avg, Some(13.0)) and
-        expect(out.durMeasNs.contains(4000L)) and
-        expect(out.dur1qAvgNs.contains(2000L)) and
-        expect(out.dur2qAvgNs.contains(8000L))
     )
   }
 

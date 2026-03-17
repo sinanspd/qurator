@@ -43,7 +43,6 @@ object SyncBench {
     finishMillis: Long
   )
 
-  
   final case class SyncGroupMetric(
     groupIndex: Int,
     groupSize: Int,

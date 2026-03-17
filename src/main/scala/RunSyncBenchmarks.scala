@@ -36,20 +36,14 @@ object RunSyncBenchmarks extends IOApp.Simple {
     val syncGroups = List(
         SyncBench.SyncGroupSpec(
             tasks = List(
-            QuantumTaskSpec(Circuit(List(H(0), CX(0,1)), 2), TaskQubits(2), TaskShots(1000), TaskDepth(2)),
-            QuantumTaskSpec(Circuit(List(X(0), H(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(2))
+              QuantumTaskSpec(Circuit(List(H(0), CX(0,1)), 2), TaskQubits(2), TaskShots(1000), TaskDepth(2)),
+              QuantumTaskSpec(Circuit(List(X(0), H(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(2)),
+              QuantumTaskSpec(Circuit(List(X(0), X(1), CZ(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(1000), TaskDepth(3)),
+              QuantumTaskSpec(Circuit(List(X(0), H(1), Swap(0, 1), Measure(0)), 2), TaskQubits(2), TaskShots(2500), TaskDepth(3))
             ),
             coherenceBudgetMillis = 5000L
-        ),
-        SyncBench.SyncGroupSpec(
-            tasks = List(
-            QuantumTaskSpec(Circuit(List(CX(0,1)), 2), TaskQubits(2), TaskShots(1000), TaskDepth(1)),
-            QuantumTaskSpec(Circuit(List(X(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1)),
-            QuantumTaskSpec(Circuit(List(H(0)), 1), TaskQubits(1), TaskShots(1000), TaskDepth(1))
-            ),
-            coherenceBudgetMillis = 8000L
         )
-        )
+    )
 
     def run: IO[Unit] = 
         Config.load[IO].flatMap { cfg =>
@@ -78,8 +72,7 @@ object RunSyncBenchmarks extends IOApp.Simple {
                             targetEstimatedFidelity = 0.9,
                             additionalOptimizationRuns = (c: Circuit) => List(c),
                             compiler = compiler
-                        )
-                        specs <- WorkloadSpecs.sample(n = 10, seed = 42L, T = WorkloadSpecs.defaultT)        
+                        )      
                         _ <- scheduler.startRuntime.use { _ => 
                             for{
                                 schedRun <- SyncBench.runSchedulerSyncBenchmark(
@@ -89,9 +82,6 @@ object RunSyncBenchmarks extends IOApp.Simple {
                                                 clients = clients,
                                                 compiler = compiler
                                             )
-                                //leastBusy <- Logger[IO].info("Running Least Busy Baselines") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy, specs, registry, clients, compiler)
-                                //hiFid <- Logger[IO].info("Running Highest Fidelity Benchmarks") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity, specs, registry, clients, compiler)
-        
                                 _ <- IO.println(
                                             s"SchedulerSync: groups/s=${schedRun.groupsPerSec}, " +
                                             s"meanStartSkew=${schedRun.meanStartSkewMillis}, " +
@@ -99,8 +89,6 @@ object RunSyncBenchmarks extends IOApp.Simple {
                                             s"meanViolation=${schedRun.meanBudgetViolationMillis}, " +
                                             s"budgetMetRate=${schedRun.budgetMetRate}, " +
                                             s"survival=${schedRun.meanSurvivalProxy}, " 
-                                            // s"POS_arith=${schedRun.meanArithmeticPOS}, " +
-                                            // s"POS_geom=${schedRun.meanGeometricPOS}"
                                         )
                             }yield()
                         }

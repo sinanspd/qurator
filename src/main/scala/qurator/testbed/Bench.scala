@@ -399,7 +399,7 @@ object BenchmarkDeviceRegistry {
           byId = devices.map(d => d.platformId -> d).toMap
           qMap: Map[String, Int] =
             byId.keys.map { id =>
-                val q = (math.abs(id.hashCode) % 50) + 1 // 1..50 deterministic
+                val q = 0 //(math.abs(id.hashCode) % 50) + 1 //needs to be 0 for sync baselines 
                 id -> q
             }.toMap
             fakePairs <- devices.traverse { d =>

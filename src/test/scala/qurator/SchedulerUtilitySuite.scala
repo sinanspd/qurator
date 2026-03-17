@@ -49,6 +49,8 @@ import scala.annotation.nowarn
 import qurator.domain.Braket._
 import qurator.domain.Azure._
 import qurator.testbed.FakeCompiler
+import qurator.domain.CutQC.CutQCConfig
+import qurator.util.CuttingStrategies
 
 @nowarn
 object SchedulerUtilitySuite extends SimpleIOSuite {
@@ -166,6 +168,9 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
      httpClientConfig = HttpClientConfig(
       timeout = scala.concurrent.duration.DurationInt(30).seconds,
       idleTimeInPool = scala.concurrent.duration.DurationInt(60).seconds
+     ),
+     cutqcConfig = CutQCConfig(
+      baseUri = NonEmptyString("http://localhost:8000")
      )
     ),
     client = Client.fromHttpApp(routes(Ok()))
@@ -175,7 +180,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
   val schedulerIO : IO[Scheduler[IO]] = Scheduler.make[IO](
      dataPersistanceService = fakeTestDataPersistance,
      prioritizationStrategy = identity,
-     cuttingStrategy = (c : Circuit) => List(c),
+     cuttingStrategy = CuttingStrategies.none[IO],
      targetEstimatedFidelity = 0.9,
      additionalOptimizationRuns = (c : Circuit) => List(c),
      compiler = new FakeCompiler[IO](List()),

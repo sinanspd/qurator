@@ -43,7 +43,7 @@ object Scheduler{
         dataPersistanceService: DataPersistanceService[F],
         clients: HttpClients[F],
         prioritizationStrategy: List[Task] => List[Task],
-        cuttingStrategy: Circuit => List[Circuit],
+        cuttingStrategy: (Circuit, List[Device]) => F[List[Circuit]],
         targetEstimatedFidelity: Double, 
         additionalOptimizationRuns: Circuit => List[Circuit],
         compiler: FakeCompiler[F] //abstract this 
@@ -112,25 +112,27 @@ object Scheduler{
                 _ <- Logger[F].info(s"Processing New Quantum Task, it requries cutting?: $needsToBeCut")
                 tids <- 
                     if(needsToBeCut){ //TODO: Think this through carefully. I am not convinced this is the right place to cut. 
-                        val cut = cuttingStrategy(taskReq.circuit)
-                        val optimized = cut.flatMap(additionalOptimizationRuns(_))
-                        optimized.traverse { c =>                                          
-                            ID.make[F, TaskId].map { taskId =>
-                                QuantumTask(
-                                    taskId,
-                                    c,
-                                    taskReq.qubits,
-                                    taskReq.shots,
-                                    taskReq.depth,
-                                    taskReq.parentTasks,
-                                    taskReq.childTasks,
-                                    taskReq.createdAt
-                                )
+                        for {
+                            cut <- cuttingStrategy(taskReq.circuit, devices)
+                            optimized = cut.flatMap(additionalOptimizationRuns(_))
+                            recreatedTasks <- optimized.traverse { c =>
+                                ID.make[F, TaskId].map { taskId =>
+                                    QuantumTask(
+                                        taskId,
+                                        c,
+                                        taskReq.qubits,
+                                        taskReq.shots,
+                                        taskReq.depth,
+                                        taskReq.parentTasks,
+                                        taskReq.childTasks,
+                                        taskReq.createdAt
+                                    )
+                                }
                             }
-                        }.flatMap { recreatedTasks =>
-                            if (taskReq.parentTasks.nonEmpty) enqueuePending(recreatedTasks) *> List(recreatedTasks.map(_.uuid): _*).pure[F]
-                            else enqueueReady(recreatedTasks) *> List(recreatedTasks.map(_.uuid): _*).pure[F]
-                        }
+                            tids <-
+                                if (taskReq.parentTasks.nonEmpty) enqueuePending(recreatedTasks) *> List(recreatedTasks.map(_.uuid): _*).pure[F]
+                                else enqueueReady(recreatedTasks) *> List(recreatedTasks.map(_.uuid): _*).pure[F]
+                        } yield tids
                     }else{
                         ID.make[F, TaskId].flatMap(taskId => {
                             val t = QuantumTask(
@@ -159,27 +161,29 @@ object Scheduler{
 
         private def submitSynronizedTaskRequest(str: SynronizedQuantumTaskRequest): F[List[TaskId]] =  // TST
             for{
+                devices <- Scheduler.getAvailableDevices[F](clients)
                 cutTasks <- 
                     if (str.cut) {
                         str.l.traverse { req =>
-                        requiresCutting(req, Nil).map { needsToBeCut =>
+                        requiresCutting(req, devices).flatMap { needsToBeCut =>
                             if (needsToBeCut) {
-                                val cutCircuits       = cuttingStrategy(req.circuit)                  
-                                val optimizedCircuits = cutCircuits.flatMap(additionalOptimizationRuns) 
+                                cuttingStrategy(req.circuit, devices).map { cutCircuits =>
+                                    val optimizedCircuits = cutCircuits.flatMap(additionalOptimizationRuns) 
 
-                                optimizedCircuits.map { c =>
-                                    NewQuantumTaskRequest(
-                                        circuit     = c,
-                                        qubits      = req.qubits,
-                                        shots       = req.shots,
-                                        depth       = req.depth,
-                                        parentTasks = req.parentTasks,
-                                        childTasks  = req.childTasks,
-                                        createdAt   = req.createdAt
-                                    )
+                                    optimizedCircuits.map { c =>
+                                        NewQuantumTaskRequest(
+                                            circuit     = c,
+                                            qubits      = req.qubits,
+                                            shots       = req.shots,
+                                            depth       = req.depth,
+                                            parentTasks = req.parentTasks,
+                                            childTasks  = req.childTasks,
+                                            createdAt   = req.createdAt
+                                        )
+                                    }
                                 }
                             } else {
-                                List(req) 
+                                List(req).pure[F]
                             }
                         }
                         }.map(_.flatten)

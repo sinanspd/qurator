@@ -16,6 +16,7 @@ import qurator.domain.IBM.IBMConfig
 import scala.concurrent.duration._
 import qurator.domain.Braket.BraketConfig
 import qurator.domain.Azure.AzureConfig
+import qurator.domain.CutQC.CutQCConfig
 
 
 object Config{
@@ -29,8 +30,9 @@ object Config{
          env("AZURE_RESOURCE_GROUP").as[NonEmptyString],
          env("AZURE_SUB_ID").as[NonEmptyString],
          env("AZURE_WORKSPACE").as[NonEmptyString],
-         env("AZURE_QUANTUM_API_KEY").as[NonEmptyString].secret
-        ).parMapN{(ibmInstanceId, ibmAPIkey, pgPassword, awsaccessid, awsapisecret, azureResource, azureSubId, azureWorkspace, azureApiKey) => {
+         env("AZURE_QUANTUM_API_KEY").as[NonEmptyString].secret,
+         env("CUTQC_BASE_URI").as[NonEmptyString].default("http://localhost:8000")
+        ).parMapN{(ibmInstanceId, ibmAPIkey, pgPassword, awsaccessid, awsapisecret, azureResource, azureSubId, azureWorkspace, azureApiKey, cutqcBaseUri) => {
             AppConfig(
                 PostgreSQLConfig(
                     host = "qurator.cjy4iumyuob7.us-east-1.rds.amazonaws.com", 
@@ -61,6 +63,9 @@ object Config{
                     resourceGroup = azureResource,
                     workspace = azureWorkspace,
                     apiKey = azureApiKey
+                ),
+                CutQCConfig(
+                    baseUri = cutqcBaseUri
                 )
             )
         }}.load[F]

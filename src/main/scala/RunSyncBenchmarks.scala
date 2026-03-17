@@ -26,6 +26,8 @@ import qurator.domain.IBM.SamplerV2PUB
 import qurator.programs.Scheduler
 import qurator.domain.Task._
 import qurator.domain.circuit._
+import qurator.clients.CutQCClient
+import qurator.util.CuttingStrategies
 
 object RunSyncBenchmarks extends IOApp.Simple {
 
@@ -58,6 +60,7 @@ object RunSyncBenchmarks extends IOApp.Simple {
                 .evalMap { res => 
                     val services = Services.make[IO](res.postgres)
                     val persistanceService = Services.make[IO](res.postgres).dataPersistanceService
+                    val cutqcClient = CutQCClient.make[IO](cfg.cutqcConfig, res.client)
                     for{
                         registry <- BenchmarkDeviceRegistry.make(
                             devices = BenchmarkDeviceRegistry.defaultDevices,
@@ -71,7 +74,7 @@ object RunSyncBenchmarks extends IOApp.Simple {
                             dataPersistanceService = persistanceService, 
                             clients = clients, 
                             prioritizationStrategy = (a: List[Task]) => a, 
-                            cuttingStrategy = (c: Circuit) => List(c),
+                            cuttingStrategy = CuttingStrategies.cutQC[IO](cutqcClient),
                             targetEstimatedFidelity = 0.9,
                             additionalOptimizationRuns = (c: Circuit) => List(c),
                             compiler = compiler

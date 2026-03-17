@@ -14,6 +14,7 @@ import qurator.domain.IBM._
 import scala.concurrent.duration.FiniteDuration
 import qurator.domain.Braket.BraketConfig
 import qurator.domain.Azure.AzureConfig
+import qurator.domain.CutQC.CutQCConfig
 
 object Types{
 
@@ -37,7 +38,8 @@ object Types{
         httpClientConfig: HttpClientConfig,
         braketConfig: BraketConfig,
         httpServerConfig: HttpServerConfig,
-        azureConfig: AzureConfig
+        azureConfig: AzureConfig,
+        cutqcConfig: CutQCConfig
     )
 
     case class HttpServerConfig(

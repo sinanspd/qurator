@@ -65,7 +65,6 @@ object Scheduler{
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
         //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
         //TODO: Loop back actual job data 
-        //TODO: revisit Nick's comments 
 
         /////////////////////////////////////////////// NOT ADDRESSING NOW ////////////////////////////////////////////
         //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
@@ -206,7 +205,7 @@ object Scheduler{
                 }
                 _ <- Logger[F].info(s"Attempting Merge Sync Tasks")
                 possiblyMergedTasks <- Scheduler.attemptToMergeSyncTasks(tasks, clients, compiler, targetEstimatedFidelity) 
-                _ <- Logger[F].info(s"Merged Tasks")
+                _ <- Logger[F].info(s"Merged Tasks: ${possiblyMergedTasks.map(_.uuid).mkString(", ")}")
                 groupId <- ID.make[F, TaskId]
                 sg = SyncronizedQuantumTaskList(
                     groupId,
@@ -346,10 +345,10 @@ object Scheduler{
                         (estimateFidelity(d, t.circuit, clients, compiler), estimateTranspilationTime(t.circuit, d.gateSet), estimateRunTime(d,t))
                             .mapN{(f, t, run) => 
                                val queueMillis = d.queueLength + t
-                               CandidateDevice(d, fidelity = f.logPTotal.toLong, queueMillis = queueMillis, runMillis = run)
+                               CandidateDevice(d, fidelity = f.logPTotal, queueMillis = queueMillis, runMillis = run)
                             }
                     }.map{cs => 
-                        val possible = cs.filter(_.fidelity >= targetEstimatedFidelity)
+                        val possible = cs.filter(_.fidelity >= math.log(targetEstimatedFidelity))
                         if (possible.nonEmpty) possible else cs 
                     }.map(t -> _)   
                 }.map(_.toMap)
@@ -468,7 +467,21 @@ object Scheduler{
         
         private def estimateSynronizationCost(tasks: List[QuantumTask]): F[Long] = 0L.pure[F] 
 
-        private def estimateRunTime(device: Device, task: QuantumTask) : F[Long] = 0L.pure[F] //might not be needed
+        private def estimateRunTime(device: Device, task: QuantumTask): F[Long] =
+            for {
+                rawCal <- fetchDeviceCalibration(device, clients)
+                cal = FidelityEstimator.normalizeCalibration(rawCal)
+
+                totalGateDurationNs =
+                task.circuit.remainingGates.foldLeft(0L) { (acc, gate) =>
+                    acc + cal.durationNsFor(gate)
+                }
+
+                gateDurationMillis =
+                math.ceil(totalGateDurationNs.toDouble / 1_000_000.0).toLong
+
+                preparationMillis = 3000L
+            } yield preparationMillis + gateDurationMillis
 
         
         private def gateCount(c: Circuit): Long =

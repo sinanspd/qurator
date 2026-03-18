@@ -160,10 +160,10 @@ object calibration {
                      dur2qNs.get("CRotate").orElse(dur2qAvgNs).getOrElse(0L)
 
                 case a : RX =>
-                     dur2qNs.get("Rotate").orElse(dur2qAvgNs).getOrElse(0L)
+                     dur2qNs.get("Rotate").orElse(dur1qAvgNs).getOrElse(0L)
 
                 case a : RZ =>
-                     dur2qNs.get("RZ").orElse(dur2qAvgNs).getOrElse(0L)
+                     dur2qNs.get("RZ").orElse(dur1qAvgNs).getOrElse(0L)
 
                 case a : Measure =>
                     durMeasNs.getOrElse(0L)

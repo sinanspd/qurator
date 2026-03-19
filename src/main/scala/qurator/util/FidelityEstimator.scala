@@ -255,7 +255,7 @@ object FidelityEstimator{
             val availNs = scala.collection.mutable.Map.empty[Int, Long].withDefaultValue(0L)
 
             ops.foreach {
-                case a @ (X(_) | H(_) | Measure(_) | RX(_, _) | RZ(_ ,_) | SX(_)) =>
+                case a @ (X(_) | H(_) | Measure(_) | RX(_, _) | RZ(_ ,_) | SX(_) | RY(_, _)) =>
                     val q = a match { // this is dumb but oh well
                         case X(q)       => q
                         case H(q)       => q
@@ -263,6 +263,7 @@ object FidelityEstimator{
                         case Measure(q) => q
                         case RX(_, q) => q
                         case RZ(_, q) => q
+                        case RY(_, q) => q
                     }
                     val dur = cal.durationNsFor(a)
                     val start = availNs(q)

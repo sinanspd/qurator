@@ -32,8 +32,7 @@ import qurator.util.CuttingStrategies
 object RunSyncBenchmarks extends IOApp.Simple {
 
     implicit val logger = Slf4jLogger.getLogger[IO]
-    //6-5, 6-3, 6-1
-    // 5, 10, 15, 20, 30, 40  
+
     val syncGroups = List(
         SyncBench.SyncGroupSpec(
             tasks = List(

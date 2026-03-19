@@ -233,14 +233,14 @@ object BenchmarkDeviceRegistry {
                 t2 = 0f,
                 gateSet = List.empty
             ),
-            Device(
-                platform = "Braket",
-                platformId = "braket-iqm-garnet",
-                qubits = 20,
-                t1 = 0f,
-                t2 = 0f,
-                gateSet = List.empty
-            ),
+            // Device(
+            //     platform = "Braket",
+            //     platformId = "braket-iqm-garnet",
+            //     qubits = 20,
+            //     t1 = 0f,
+            //     t2 = 0f,
+            //     gateSet = List.empty
+            // ),
             Device(
                 platform = "Braket",
                 platformId = "braket-aqt-ibex-q1" ,
@@ -257,14 +257,14 @@ object BenchmarkDeviceRegistry {
                 t2 = 0f,
                 gateSet = List.empty
             ),
-            Device(
-                platform = "Braket",
-                platformId = "braket-quera-aquila",
-                qubits = 256,
-                t1 = 0f,
-                t2 = 0f,
-                gateSet = List.empty
-            ), 
+            // Device(
+            //     platform = "Braket",
+            //     platformId = "braket-quera-aquila",
+            //     qubits = 256,
+            //     t1 = 0f,
+            //     t2 = 0f,
+            //     gateSet = List.empty
+            // ), 
             Device(
                 platform = "IBM",
                 platformId = "ibm_boston",
@@ -399,7 +399,7 @@ object BenchmarkDeviceRegistry {
           byId = devices.map(d => d.platformId -> d).toMap
           qMap: Map[String, Int] =
             byId.keys.map { id =>
-                val q = (math.abs(id.hashCode) % 50) + 1 //needs to be 0 for sync baselines 
+                val q =  scala.util.Random.between(0, 5) //(math.abs(id.hashCode) % 50) + 1 //needs to be 0 for sync baselines 
                 id -> q
             }.toMap
             fakePairs <- devices.traverse { d =>

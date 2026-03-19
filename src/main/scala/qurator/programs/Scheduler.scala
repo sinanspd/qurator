@@ -677,7 +677,7 @@ object Scheduler{
             for{
                 devices <- getAvailableDevices[F](clients)
                 maxQubits = devices.map(_.qubits).maxOption.getOrElse(0)
-                depthTolerance = 0.10 
+                depthTolerance = 0.20 
                 depthBuckets = Scheduler.bucketByDepth(tasks, depthTolerance)
                 groups = depthBuckets.flatMap { bucket =>
                     assignToFinalBuckets(
@@ -744,7 +744,9 @@ object Scheduler{
             clients: HttpClients[F],
             compiler: FakeCompiler[F],
             targetEstimatedFidelity: Double
-        ): F[List[QuantumTask]] = 
+        ): F[List[QuantumTask]] = {
+            println("Starting Flatten Group")
+            println(s"Group Size ${group.length}")
             group match {
                 case Nil          => List.empty[QuantumTask].pure[F]
                 case single :: Nil => List(single).pure[F]
@@ -774,13 +776,14 @@ object Scheduler{
                                 .traverse(d => Scheduler.estimateFidelity(d, mergedTask.circuit, clients, compiler)) 
                                 .map(_.map(_.logPTotal).maxOption.getOrElse(0.0))
                                 .flatMap { bestFidelity =>
-                                    Logger[F].info(s"Group Size: ${group.size}, mergedQubits: ${mergedQubits}, feasibleDevices: ${feasibleDevices.size}, bestFidelity: ${bestFidelity}, targetFidelity: ${targetEstimatedFidelity}") *>
+                                    Logger[F].info(s"Group Size: ${group.size}, mergedQubits: ${mergedQubits}, feasibleDevices: ${feasibleDevices.size}, bestFidelity: ${bestFidelity}, targetFidelity: ${math.log(targetEstimatedFidelity)}") *>
                                     {if (bestFidelity >= math.log(targetEstimatedFidelity)) List(mergedTask).pure[F]
                                     else g.pure[F]}
                                 }
                             }
                     }
             } 
+        }
 
             private def mergeCircuits(circuits: List[Circuit]): Circuit = circuits.foldLeft(Circuit(List.empty[Gate], 0)){(acc, b) => {
                 val offset = acc.qubits
@@ -795,6 +798,9 @@ object Scheduler{
                     case Swap(q1, q2) => Swap(q1 + offset, q2 + offset)
                     case CRZ(ctrl, thetaDenom, q) => CRZ(ctrl + offset, thetaDenom, q + offset)
                     case RZ(thetaDenom, q) => RZ(thetaDenom, q + offset)
+                    case RY(theta, q) => RY(theta, q + offset)
+                    case RX(theta, q) => RX(theta, q + offset)
+                    case SX(q) => SX(q + offset)
                     case Measure(q) => Measure(q + offset)
                 }
                 Circuit(acc.remainingGates ++ shiftedGates, acc.qubits + b.qubits) //TODO: Update this to merge gates based on slices 

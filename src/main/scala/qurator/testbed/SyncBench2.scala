@@ -581,9 +581,9 @@ private def waitUntilAllSubmitted(
 
             val remaining = expectedIds.diff(mergedSeen.keySet)
 
-            Logger[IO].info(
-                s"Waiting For All Submitted To Finish. Seen=${mergedSeen.keySet.size}/${expectedIds.size}. Remaining=${remaining.mkString(", ")}"
-            ) *>
+            // Logger[IO].info(
+            //     s"Waiting For All Submitted To Finish. Seen=${mergedSeen.keySet.size}/${expectedIds.size}. Remaining=${remaining.mkString(", ")}"
+            // ) *>
             (
                 if (remaining.isEmpty) mergedSeen.values.toList.pure[IO]
                 else Temporal[IO].sleep(pollEvery) *> loop(mergedSeen)
@@ -615,7 +615,7 @@ def runSchedulerSyncTreeBenchmark(
 
     expectedIds = submittedGroups.flatMap(_.expectedIds).toSet
 
-    _ <- Logger[IO].info("Waiting For All Submitted To Finish")
+    //_ <- Logger[IO].info("Waiting For All Submitted To Finish")
     submitted <- waitUntilAllSubmitted(
       scheduler = scheduler,
       expectedIds = expectedIds,

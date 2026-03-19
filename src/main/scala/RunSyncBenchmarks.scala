@@ -32,7 +32,8 @@ import qurator.util.CuttingStrategies
 object RunSyncBenchmarks extends IOApp.Simple {
 
     implicit val logger = Slf4jLogger.getLogger[IO]
-
+    //6-5, 6-3, 6-1
+    // 5, 10, 15, 20, 30, 40  
     val syncGroups = List(
         SyncBench.SyncGroupSpec(
             tasks = List(
@@ -61,7 +62,7 @@ object RunSyncBenchmarks extends IOApp.Simple {
                             calibrationsById = BenchmarkDeviceRegistry.defaultCalibrations,
                             deviceEstimator = new DeviceEstimator(persistanceService)
                         )
-                        dummies = FakeBenchmarkClientsFromRegistry.make(registry)
+                        dummies <- FakeBenchmarkClientsFromRegistry.make(registry)
                         clients = BenchmarkHttpClients.make(registry, dummies)
                         compiler = FakeCompiler[IO](compiled = Nil)
                         scheduler <- Scheduler.make[IO](

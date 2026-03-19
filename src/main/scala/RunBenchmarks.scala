@@ -49,7 +49,7 @@ object RunBenchmarks extends IOApp.Simple {
                             calibrationsById = BenchmarkDeviceRegistry.defaultCalibrations,
                             deviceEstimator = new DeviceEstimator(persistanceService)
                         )
-                        dummies = FakeBenchmarkClientsFromRegistry.make(registry)
+                        dummies <- FakeBenchmarkClientsFromRegistry.make(registry)
                         clients = BenchmarkHttpClients.make(registry, dummies)
                         compiler = FakeCompiler[IO](compiled = Nil)
                         scheduler <- Scheduler.make[IO](

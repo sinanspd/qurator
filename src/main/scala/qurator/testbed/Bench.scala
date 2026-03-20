@@ -218,6 +218,13 @@ final case class BenchmarkDeviceRegistry(
 
   def calibration(deviceId: String): DeviceCalibration =
     calibrationsById(deviceId)
+
+  def observedQueueLength(deviceId: String): IO[Int] =
+    fakeDevice(deviceId).estimatedCurrentQueueWaitMillis.map { waitMs =>
+      val perJobMs = msPerGate * 100L
+      math.max(0L, waitMs / math.max(1L, perJobMs)).toInt
+    }
+  
 }
 
 object BenchmarkDeviceRegistry {
@@ -233,14 +240,14 @@ object BenchmarkDeviceRegistry {
                 t2 = 0f,
                 gateSet = List.empty
             ),
-            // Device(
-            //     platform = "Braket",
-            //     platformId = "braket-iqm-garnet",
-            //     qubits = 20,
-            //     t1 = 0f,
-            //     t2 = 0f,
-            //     gateSet = List.empty
-            // ),
+            Device(
+                platform = "Braket",
+                platformId = "braket-iqm-garnet",
+                qubits = 20,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ),
             Device(
                 platform = "Braket",
                 platformId = "braket-aqt-ibex-q1" ,
@@ -257,14 +264,14 @@ object BenchmarkDeviceRegistry {
                 t2 = 0f,
                 gateSet = List.empty
             ),
-            // Device(
-            //     platform = "Braket",
-            //     platformId = "braket-quera-aquila",
-            //     qubits = 256,
-            //     t1 = 0f,
-            //     t2 = 0f,
-            //     gateSet = List.empty
-            // ), 
+            Device(
+                platform = "Braket",
+                platformId = "braket-quera-aquila",
+                qubits = 256,
+                t1 = 0f,
+                t2 = 0f,
+                gateSet = List.empty
+            ), 
             Device(
                 platform = "IBM",
                 platformId = "ibm_boston",
@@ -388,33 +395,55 @@ object BenchmarkDeviceRegistry {
 
     implicit val logger = Slf4jLogger.getLogger[IO]
 
+    // def make(
+    //     devices: List[Device],
+    //     calibrationsById: Map[String, DeviceCalibration],
+    //     deviceEstimator: DeviceEstimator[IO],
+    //     msPerGate: Long = 5L
+    // ): IO[BenchmarkDeviceRegistry] =
+    //     for{
+    //       _ <- Logger[IO].info("Created Benchmark Device Registry")  
+    //       byId = devices.map(d => d.platformId -> d).toMap
+    //       qMap: Map[String, Int] =
+    //         byId.keys.map { id =>
+    //             val q =  scala.util.Random.between(0, 20000) //(math.abs(id.hashCode) % 50) + 1 //needs to be 0 for sync baselines 
+    //             id -> q
+    //         }.toMap
+    //         fakePairs <- devices.traverse { d =>
+    //             val qLen = qMap(d.platformId)
+    //             BenchmarkFakeDevice.make(d, qLen, msPerGate).map(fd => d.platformId -> fd)
+    //         }
+    //     } yield BenchmarkDeviceRegistry(
+    //                 devicesById = byId,
+    //                 calibrationsById = calibrationsById,
+    //                 queueLenByDeviceId = qMap,
+    //                 fakeDevicesById = fakePairs.toMap,
+    //                 msPerGate = msPerGate
+    //             )
+    
     def make(
         devices: List[Device],
         calibrationsById: Map[String, DeviceCalibration],
         deviceEstimator: DeviceEstimator[IO],
-        msPerGate: Long = 5L
+        msPerGate: Long = 5L,
+        seed: Long = 42L
     ): IO[BenchmarkDeviceRegistry] =
-        for{
-          _ <- Logger[IO].info("Created Benchmark Device Registry")  
-          byId = devices.map(d => d.platformId -> d).toMap
-          qMap: Map[String, Int] =
-            byId.keys.map { id =>
-                val q =  scala.util.Random.between(0, 5) //(math.abs(id.hashCode) % 50) + 1 //needs to be 0 for sync baselines 
-                id -> q
-            }.toMap
+        for {
+            _ <- Logger[IO].info("Created Benchmark Device Registry")
+            byId = devices.map(d => d.platformId -> d).toMap
+            rng  = new scala.util.Random(seed)
+            qMap = byId.keys.map(id => id -> rng.between(0, 20000)).toMap
             fakePairs <- devices.traverse { d =>
-                val qLen = qMap(d.platformId)
-                BenchmarkFakeDevice.make(d, qLen, msPerGate).map(fd => d.platformId -> fd)
+            BenchmarkFakeDevice.make(d, qMap(d.platformId), msPerGate).map(fd => d.platformId -> fd)
             }
         } yield BenchmarkDeviceRegistry(
-                    devicesById = byId,
-                    calibrationsById = calibrationsById,
-                    queueLenByDeviceId = qMap,
-                    fakeDevicesById = fakePairs.toMap,
-                    msPerGate = msPerGate
-                )
-    
-        
+            devicesById = byId,
+            calibrationsById = calibrationsById,
+            queueLenByDeviceId = qMap,
+            fakeDevicesById = fakePairs.toMap,
+            msPerGate = msPerGate
+        )
+                
 
   
         // devices
@@ -823,7 +852,7 @@ object SchedulerBenchmarkRunner {
             _ <- Logger[IO].info(s"Loaded ${report.size} task(s)")
             _ <- Logger[IO].info("Starting Scheduler Benchmark")
             quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _)).map(_.flatten)
-            _ <- Logger[IO].info(s"QuantumIds: ${quantumIdPairs.mkString(", ")}")
+            // _ <- Logger[IO].info(s"QuantumIds: ${quantumIdPairs.mkString(", ")}")
             specById = quantumIdPairs.toMap
             expectedIds = specById.keySet
             submitted <- waitUntilAllSubmitted(scheduler, registry, expectedIds, pollEvery)
@@ -839,18 +868,30 @@ object SchedulerBenchmarkRunner {
     }
 
 
+    // private def chooseLeastBusyDevice(
+    //     task: QuantumTaskSpec,
+    //     registry: BenchmarkDeviceRegistry
+    // ): IO[Device] = {
+    //     val feasible = registry.devices.filter(_.qubits >= task.qubits.value)
+    //     if (feasible.isEmpty) {
+    //         new RuntimeException(s"No feasible device for task").raiseError[IO, Device]
+    //     } else {
+    //         feasible
+    //             .traverse(d => registry.fakeDevice(d.platformId).estimatedCurrentQueueWaitMillis.map(w => (w, d)))
+    //             .map(_.minBy(_._1)._2)
+    //     }
+    // }
+
     private def chooseLeastBusyDevice(
         task: QuantumTaskSpec,
-        registry: BenchmarkDeviceRegistry
-    ): IO[Device] = {
-        val feasible = registry.devices.filter(_.qubits >= task.qubits.value)
-        if (feasible.isEmpty) {
-            new RuntimeException(s"No feasible device for task").raiseError[IO, Device]
-        } else {
-            feasible
-                .traverse(d => registry.fakeDevice(d.platformId).estimatedCurrentQueueWaitMillis.map(w => (w, d)))
-                .map(_.minBy(_._1)._2)
-        }
+        clients: HttpClients[IO]
+    ): IO[Device] =
+    Scheduler.getAvailableDevices[IO](clients).flatMap { devices =>
+        val feasible = devices.filter(_.qubits >= task.qubits.value)
+        if (feasible.isEmpty)
+        IO.raiseError(new RuntimeException("No feasible device for task"))
+        else
+        IO.pure(feasible.minBy(_.queueLength))
     }
 
     private def chooseHighestFidelityDevice(
@@ -863,9 +904,9 @@ object SchedulerBenchmarkRunner {
         if (feasible.isEmpty) {
         new RuntimeException(s"No feasible device for task").raiseError[IO, Device]
         } else {
-        feasible
-            .traverse(d => Scheduler.estimateFidelity[IO](d, task.circuit, clients, compiler).map(est => (est.logPTotal, d)))
-            .map(_.maxBy(_._1)._2)
+            feasible
+                .traverse(d => Scheduler.estimateFidelity[IO](d, task.circuit, clients, compiler).map(est => (est.logPTotal, d)))
+                .map(_.maxBy(_._1)._2)
         }
     }
 
@@ -882,9 +923,10 @@ object SchedulerBenchmarkRunner {
                 for{
                     id <- ID.make[IO, TaskId]
                     d <- policy match {
-                        case BaselinePolicy.LeastBusy => chooseLeastBusyDevice(spec, registry)
+                        case BaselinePolicy.LeastBusy => chooseLeastBusyDevice(spec, clients)
                         case BaselinePolicy.HighestFidelity => chooseHighestFidelityDevice(spec, registry, clients, compiler)
                     }
+                    _ <- Logger[IO].info(s"Baseline Device: ${d.platformId}")
                     rec <- registry.fakeDevice(d.platformId).submitJob(id)
                     est <- Scheduler.estimateFidelity[IO](d, spec.circuit, clients, compiler)
                 }yield QuantumTaskMetric(
@@ -1284,17 +1326,93 @@ object FakeBenchmarkClientsFromRegistry {
           )
         )
 
-      FakeBenchmarkClients(
-        braketDeviceList = IO.pure(braketDeviceListResp),
-        braketDeviceDetails = ids => IO.pure(ids.flatMap(id => braketDetailsByArn.get(id))),
-        braketSubmit = braketSubmitDummy,
-        braketGetJob = braketGetDummy,
-        ibmFetchBearerToken = IO.pure("dummy-token"),
-        ibmDeviceInfo = IO.pure(ibmBackends),
-        ibmSubmit = ibmSubmitDummy,
-        ibmListJob = ibmListJobDummy,
-        ibmMetrics = ibmMetricsDummy
-      )
+    //   FakeBenchmarkClients(
+    //     braketDeviceList = IO.pure(braketDeviceListResp),
+    //     braketDeviceDetails = ids => IO.pure(ids.flatMap(id => braketDetailsByArn.get(id))),
+    //     braketSubmit = braketSubmitDummy,
+    //     braketGetJob = braketGetDummy,
+    //     ibmFetchBearerToken = IO.pure("dummy-token"),
+    //     ibmDeviceInfo = IO.pure(ibmBackends),
+    //     ibmSubmit = ibmSubmitDummy,
+    //     ibmListJob = ibmListJobDummy,
+    //     ibmMetrics = ibmMetricsDummy
+    //   )
+          FakeBenchmarkClients(
+            braketDeviceList =
+                IO.pure(
+                BraketDeviceListResponse(
+                    devices = registry.devices.filter(_.platform == "Braket").map { d =>
+                    BraketDevice(
+                        deviceArn = d.platformId,
+                        deviceName = d.platformId,
+                        deviceCapabilities = alwaysOpenCaps,
+                        deviceStatus = "ONLINE",
+                        deviceType = "QPU",
+                        providerName = providerFromArn(d.platformId)
+                    )
+                    },
+                    nextToken = None
+                )
+                ),
+
+            braketDeviceDetails = ids =>
+                ids.traverse { arn =>
+                registry.observedQueueLength(arn).map { q =>
+                    BraketDeviceDetailsResponse(
+                    deviceArn = arn,
+                    deviceName = arn,
+                    deviceStatus = "ONLINE",
+                    deviceType = "QPU",
+                    providerName = providerFromArn(arn),
+                    deviceCapabilities = alwaysOpenCaps,
+                    deviceQueueInfo = List(
+                        BraketDeviceQueueInfo(
+                        queue = "QUANTUM_TASKS_QUEUE",
+                        queuePriority = None,
+                        queueSize = q.toString
+                        )
+                    )
+                    )
+                }
+                },
+
+            braketSubmit = (req, _) =>
+                ID.make[IO, TaskId].flatMap { tid =>
+                registry.fakeDevice(req.deviceArn).submitJob(tid) *>
+                IO.pure(BraketCreateQuantumTaskResponse(s"arn:aws:braket:bench:task/${req.clientToken}"))
+                },
+
+            braketGetJob = taskId =>
+                IO.pure(DummyResponses.braketQuantumTaskResponse(taskArn = taskId, deviceArn = "unknown")),
+
+            ibmFetchBearerToken = IO.pure("dummy-token"),
+
+            ibmDeviceInfo =
+                registry.devices.filter(_.platform == "IBM").traverse { d =>
+                registry.observedQueueLength(d.platformId).map { q =>
+                    DummyResponses.ibmBackendDevice(
+                    name = d.platformId,
+                    qubits = d.qubits,
+                    queueLength = q,
+                    statusName = "online"
+                    )
+                }
+                }.map(BackendsResponseV2.apply),
+
+            ibmSubmit = req =>
+                ID.make[IO, TaskId].flatMap { tid =>
+                registry.fakeDevice(req.backend).submitJob(tid) *>
+                IO.pure(DummyResponses.ibmCreateJobResponseV2("bench-job-" + java.util.UUID.randomUUID(), req.backend))
+                },
+
+            ibmListJob = id =>
+                IO.pure(DummyResponses.ibmJobDetailsResponseV2(id, backend = "unknown", status = "Completed")),
+
+            ibmMetrics = backendId =>
+                registry.observedQueueLength(backendId).map { q =>
+                DummyResponses.ibmJobMetricsResponse(positionInQueue = q)
+                }
+            )
     }
   }
 }

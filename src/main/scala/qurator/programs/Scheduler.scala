@@ -273,7 +273,7 @@ object Scheduler{
                             (estimateFidelity(d, task.circuit, clients, compiler),
                                 estimateTranspilationTime(task.circuit, d.gateSet)
                             ).mapN { (f, tMillis) =>
-                                val ac = getAssignmentCoefficient(f.logPTotal.toLong, d.queueLength + tMillis, task.circuit)
+                                val ac = getAssignmentCoefficient(f.logPTotal, f.pTotal, d.queueLength + tMillis, task.circuit)
                                 (d, ac, f, d.queueLength)
                             }
                         }
@@ -501,6 +501,7 @@ object Scheduler{
 
         private def getAssignmentCoefficient(
             logFidelity: Double,        
+            pTotal: Double,
             queueLength: Long,          
             circuit: Circuit,
             transpileCostGates: Long = 0,    
@@ -508,12 +509,16 @@ object Scheduler{
         ): Double = {
             val g = math.max(1L, gateCount(circuit))                 
             val latencyUnits = queueLength.toDouble * g.toDouble + transpileCostGates.toDouble
-            logFidelity - lambda * latencyUnits
+            val qNorm = math.log1p(latencyUnits.toDouble)  
+            val wF    = 1.0 / (1.0 + qNorm)                     
+            val wQ    = 1.0 - wF
+            //logFidelity - lambda * latencyUnits
+            wF * pTotal - wQ * qNorm
         }
 
     
         private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Device]) : F[Boolean] = 
-            devices.traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler)).map(lf => lf.filter(_.logPTotal > targetEstimatedFidelity).nonEmpty)
+            devices.traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler)).map(lf => lf.filter(_.logPTotal > math.log(targetEstimatedFidelity)).nonEmpty)
 
         ////////////////////////////////////////////////////////////
         private def allParentResultsAvailable(t: Task) : F[Boolean] = 

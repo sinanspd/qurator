@@ -263,7 +263,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         createdAt = LocalDateTime.now()
       )
       actual = Scheduler.allParentResultsAvailable(
-        results = Map(p1 -> "done"),
+        results = Map(p1 -> ("done", 1L)),
         t = task
       )
     } yield expect(!actual)
@@ -282,8 +282,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
 
       actual = Scheduler.allParentResultsAvailable(
         results = Map(
-          p1 -> "done-1",
-          p2 -> "done-2"
+          p1 -> ("done-1", 1L),
+          p2 -> ("done-2", 1L)
         ),
         t = task
       )
@@ -326,7 +326,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       )
 
       actual = Scheduler.allParentResultsAvailable(
-        results = Map(p2 -> "done"),
+        results = Map(p2 -> ("done", 1L)),
         t = task
       )
     } yield expect(!actual)
@@ -347,9 +347,9 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       )
       actual = Scheduler.allParentResultsAvailable(
         results = Map(
-          p1 -> "done-1",
-          p2 -> "done-2",
-          p3 -> "done-3"
+          p1 -> ("done-1", 1L),
+          p2 -> ("done-2", 2L),
+          p3 -> ("done-3", 3L)
         ),
         t = task
       )
@@ -391,17 +391,17 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
 
       notReady = Scheduler.allParentResultsAvailable(
         results = Map(
-          p1 -> "done-1",
-          p2 -> "done-2"
+          p1 -> ("done-1", 1L),
+          p2 -> ("done-2", 2L)
         ),
         t = group
       )
 
       ready = Scheduler.allParentResultsAvailable(
         results = Map(
-          p1 -> "done-1",
-          p2 -> "done-2",
-          p3 -> "done-3"
+          p1 -> ("done-1", 1L),
+          p2 -> ("done-2", 2L),
+          p3 -> ("done-3", 3L)
         ),
         t = group
       )

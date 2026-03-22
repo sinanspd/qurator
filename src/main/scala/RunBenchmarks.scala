@@ -47,70 +47,99 @@ object RunBenchmarks extends IOApp.Simple {
                     def mkEnv(seed: Long) =
                         for {
                             registry <- BenchmarkDeviceRegistry.make(
-                            BenchmarkDeviceRegistry.defaultDevices,
-                            BenchmarkDeviceRegistry.defaultCalibrations,
-                            new DeviceEstimator(persistanceService),
+                                BenchmarkDeviceRegistry.defaultDevices,
+                                BenchmarkDeviceRegistry.defaultCalibrations,
+                                new DeviceEstimator(persistanceService),
                                 seed = seed
                             )
                             dummies  <- FakeBenchmarkClientsFromRegistry.make(registry)
                             clients   = BenchmarkHttpClients.make(registry, dummies)
                             compiler  = FakeCompiler[IO](compiled = Nil)
                             scheduler <- Scheduler.make[IO](
-                            dataPersistanceService = persistanceService,
-                            clients = clients,
-                            prioritizationStrategy = (a: List[Task]) => a,
-                            cuttingStrategy = CuttingStrategies.cutQC[IO](cutqcClient),
-                            targetEstimatedFidelity = 0.9,
-                            additionalOptimizationRuns = (c: Circuit) => List(c),
-                            compiler = compiler
+                                dataPersistanceService = persistanceService,
+                                clients = clients,
+                                prioritizationStrategy = (a: List[Task]) => a,
+                                cuttingStrategy = CuttingStrategies.cutQC[IO](cutqcClient),
+                                targetEstimatedFidelity = 0.9,
+                                additionalOptimizationRuns = (c: Circuit) => List(c),
+                                compiler = compiler
                             )
                         } yield (registry, clients, compiler, scheduler)
 
                     for{
-                        registry <- BenchmarkDeviceRegistry.make(
-                            devices = BenchmarkDeviceRegistry.defaultDevices,
-                            calibrationsById = BenchmarkDeviceRegistry.defaultCalibrations,
-                            deviceEstimator = new DeviceEstimator(persistanceService)
-                        )
-                        dummies <- FakeBenchmarkClientsFromRegistry.make(registry)
-                        clients = BenchmarkHttpClients.make(registry, dummies)
-                        compiler = FakeCompiler[IO](compiled = Nil)
-                        scheduler <- Scheduler.make[IO](
-                            dataPersistanceService = persistanceService, 
-                            clients = clients, 
-                            prioritizationStrategy = (a: List[Task]) => a, 
-                            cuttingStrategy = CuttingStrategies.cutQC[IO](cutqcClient),
-                            targetEstimatedFidelity = 0.9,
-                            additionalOptimizationRuns = (c: Circuit) => List(c),
-                            compiler = compiler
-                        )
+                        // registry <- BenchmarkDeviceRegistry.make(
+                        //     devices = BenchmarkDeviceRegistry.defaultDevices,
+                        //     calibrationsById = BenchmarkDeviceRegistry.defaultCalibrations,
+                        //     deviceEstimator = new DeviceEstimator(persistanceService)
+                        // )
+                        // dummies <- FakeBenchmarkClientsFromRegistry.make(registry)
+                        // clients = BenchmarkHttpClients.make(registry, dummies)
+                        // compiler = FakeCompiler[IO](compiled = Nil)
+                        // scheduler <- Scheduler.make[IO](
+                        //     dataPersistanceService = persistanceService, 
+                        //     clients = clients, 
+                        //     prioritizationStrategy = (a: List[Task]) => a, 
+                        //     cuttingStrategy = CuttingStrategies.cutQC[IO](cutqcClient),
+                        //     targetEstimatedFidelity = 0.9,
+                        //     additionalOptimizationRuns = (c: Circuit) => List(c),
+                        //     compiler = compiler
+                        // )
                         loaded <- WorkloadSpecs.loadedTasks
-                        loadedFiltered = loaded.filter(t => t.qubits.value <= 5)
-                        specs <- WorkloadSpecs.sample(n = 5, seed = 42L, T = loadedFiltered)
-                        _ <- scheduler.startRuntime.use { _ => 
-                            for{
-                                (reg1, cl1, co1, sch1) <- mkEnv(42L)
-                                schedRun <- sch1.startRuntime.use(_ =>
-                                        SchedulerBenchmarkRunner.runSchedulerBenchmark(sch1, specs, reg1, cl1, co1)
-                                )
-                                (reg2, cl2, co2, _) <- mkEnv(42L)
-                                leastBusy <- SchedulerBenchmarkRunner.runBaseline(
-                                    SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy, specs, reg2, cl2, co2
-                                )
-                                (reg3, cl3, co3, _) <- mkEnv(42L)
-                                hiFid <- SchedulerBenchmarkRunner.runBaseline(
-                                    SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity, specs, reg3, cl3, co3
-                                )
+                        loadedFiltered = loaded.filter(t => t.qubits.value <= 150 && t.qubits.value >= 21 )
+                        specs <- WorkloadSpecs.sample(n = 10, seed = 42L, T = loadedFiltered)
+                        (reg1, cl1, co1, sch1) <- mkEnv(42L) //reinit so that the queue isn't tainted 
+                        schedRun <- Logger[IO].info("Running Scheduler Benchmarks") *>
+                            sch1.startRuntime.use(_ =>
+                                SchedulerBenchmarkRunner.runSchedulerBenchmark(sch1, specs, reg1, cl1, co1)
+                            )
 
-                                // schedRun <-  Logger[IO].info("Running Scheduler Benchmarks") *> SchedulerBenchmarkRunner.runSchedulerBenchmark(scheduler, specs, registry, clients, compiler)
-                                // leastBusy <- Logger[IO].info("Running Least Busy Baselines") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy, specs, registry, clients, compiler)
-                                // hiFid <- Logger[IO].info("Running Highest Fidelity Benchmarks") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity, specs, registry, clients, compiler)
+                        (reg2, cl2, co2, _) <- mkEnv(42L)
+                        leastBusy <- Logger[IO].info("Running Least Busy Baselines") *>
+                            SchedulerBenchmarkRunner.runBaseline(
+                                SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy,
+                                specs,
+                                reg2,
+                                cl2,
+                                co2
+                            )
+
+                        (reg3, cl3, co3, _) <- mkEnv(42L)
+                        hiFid <- Logger[IO].info("Running Highest Fidelity Benchmarks") *>
+                            SchedulerBenchmarkRunner.runBaseline(
+                                SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity,
+                                specs,
+                                reg3,
+                                cl3,
+                                co3
+                            )
+
+                         _ <- IO.println(s"Scheduler: q/s=${schedRun.throughputQuantumPerSec}, meanQ=${schedRun.meanQueueWaitMillis}, meanLogF=${schedRun.meanPredictedLogFidelity}, pos_arith=${schedRun.meanPredictedSuccessProbability}, pos_geo=${schedRun.geometricMeanPredictedSuccessProbability}")
+                         _ <- IO.println(s"LeastBusy: q/s=${leastBusy.throughputQuantumPerSec}, meanQ=${leastBusy.meanQueueWaitMillis}, meanLogF=${leastBusy.meanPredictedLogFidelity}, pos_arith=${leastBusy.meanPredictedSuccessProbability}, pos_geo=${leastBusy.geometricMeanPredictedSuccessProbability}")
+                         _ <- IO.println(s"HighestF: q/s=${hiFid.throughputQuantumPerSec}, meanQ=${hiFid.meanQueueWaitMillis}, meanLogF=${hiFid.meanPredictedLogFidelity}, , pos_arith=${hiFid.meanPredictedSuccessProbability}, pos_geo=${hiFid.geometricMeanPredictedSuccessProbability}")
+                        // _ <- scheduler.startRuntime.use { _ => 
+                        //     for{
+                        //         (reg1, cl1, co1, sch1) <- mkEnv(42L)
+                        //         schedRun <- sch1.startRuntime.use(_ =>
+                        //                 SchedulerBenchmarkRunner.runSchedulerBenchmark(sch1, specs, reg1, cl1, co1)
+                        //         )
+                        //         (reg2, cl2, co2, _) <- mkEnv(42L)
+                        //         leastBusy <- SchedulerBenchmarkRunner.runBaseline(
+                        //             SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy, specs, reg2, cl2, co2
+                        //         )
+                        //         (reg3, cl3, co3, _) <- mkEnv(42L)
+                        //         hiFid <- SchedulerBenchmarkRunner.runBaseline(
+                        //             SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity, specs, reg3, cl3, co3
+                        //         )
+
+                        //         // schedRun <-  Logger[IO].info("Running Scheduler Benchmarks") *> SchedulerBenchmarkRunner.runSchedulerBenchmark(scheduler, specs, registry, clients, compiler)
+                        //         // leastBusy <- Logger[IO].info("Running Least Busy Baselines") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy, specs, registry, clients, compiler)
+                        //         // hiFid <- Logger[IO].info("Running Highest Fidelity Benchmarks") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity, specs, registry, clients, compiler)
         
-                                _ <- IO.println(s"Scheduler: q/s=${schedRun.throughputQuantumPerSec}, meanQ=${schedRun.meanQueueWaitMillis}, meanLogF=${schedRun.meanPredictedLogFidelity}, pos_arith=${schedRun.meanPredictedSuccessProbability}, pos_geo=${schedRun.geometricMeanPredictedSuccessProbability}")
-                                _ <- IO.println(s"LeastBusy: q/s=${leastBusy.throughputQuantumPerSec}, meanQ=${leastBusy.meanQueueWaitMillis}, meanLogF=${leastBusy.meanPredictedLogFidelity}, pos_arith=${leastBusy.meanPredictedSuccessProbability}, pos_geo=${leastBusy.geometricMeanPredictedSuccessProbability}")
-                                _ <- IO.println(s"HighestF: q/s=${hiFid.throughputQuantumPerSec}, meanQ=${hiFid.meanQueueWaitMillis}, meanLogF=${hiFid.meanPredictedLogFidelity}, , pos_arith=${hiFid.meanPredictedSuccessProbability}, pos_geo=${hiFid.geometricMeanPredictedSuccessProbability}")
-                            }yield()
-                        }
+                        //         _ <- IO.println(s"Scheduler: q/s=${schedRun.throughputQuantumPerSec}, meanQ=${schedRun.meanQueueWaitMillis}, meanLogF=${schedRun.meanPredictedLogFidelity}, pos_arith=${schedRun.meanPredictedSuccessProbability}, pos_geo=${schedRun.geometricMeanPredictedSuccessProbability}")
+                        //         _ <- IO.println(s"LeastBusy: q/s=${leastBusy.throughputQuantumPerSec}, meanQ=${leastBusy.meanQueueWaitMillis}, meanLogF=${leastBusy.meanPredictedLogFidelity}, pos_arith=${leastBusy.meanPredictedSuccessProbability}, pos_geo=${leastBusy.geometricMeanPredictedSuccessProbability}")
+                        //         _ <- IO.println(s"HighestF: q/s=${hiFid.throughputQuantumPerSec}, meanQ=${hiFid.meanQueueWaitMillis}, meanLogF=${hiFid.meanPredictedLogFidelity}, , pos_arith=${hiFid.meanPredictedSuccessProbability}, pos_geo=${hiFid.geometricMeanPredictedSuccessProbability}")
+                        //     }yield()
+                        // }
                     } yield ()
                 }.useForever
             }

@@ -111,7 +111,7 @@ object Scheduler{
              for{
                 devices <- Scheduler.getAvailableDevices[F](clients)
                 needsToBeCut <- requiresCutting(taskReq, devices)
-                _ <- Logger[F].info(s"Processing New Quantum Task, it requries cutting?: $needsToBeCut")
+                _ <- Logger[F].info(s"Processing New Quantum Task With ${taskReq.qubits} Qubits, it requries cutting?: $needsToBeCut")
                 tids <- 
                     if(needsToBeCut){ //TODO: Think this through carefully. I am not convinced this is the right place to cut. 
                         for {
@@ -269,18 +269,35 @@ object Scheduler{
 
                 case ds =>
                     for {
+                        // scored <- ds.traverse { d =>
+                        //     (estimateFidelity(d, task.circuit, clients, compiler),
+                        //         estimateTranspilationTime(task.circuit, d.gateSet)
+                        //     ).mapN { (f, tMillis) =>
+                        //         val ac = getAssignmentCoefficient(f.logPTotal, f.pTotal, d.queueLength + tMillis, task.circuit)
+                        //         (d, ac, f, d.queueLength)
+                        //     }
+                        // }
+
                         scored <- ds.traverse { d =>
-                            (estimateFidelity(d, task.circuit, clients, compiler),
+                            (
+                                estimateFidelity(d, task.circuit, clients, compiler),
                                 estimateTranspilationTime(task.circuit, d.gateSet)
                             ).mapN { (f, tMillis) =>
-                                val ac = getAssignmentCoefficient(f.logPTotal, f.pTotal, d.queueLength + tMillis, task.circuit)
-                                (d, ac, f, d.queueLength)
+                                val ac =
+                                    getAssignmentCoefficient(
+                                        pTotal = f.pTotal,
+                                        queueLength = d.queueLength.toLong,
+                                        transpileMillis = tMillis,
+                                        fleetMeanQueue =  ds.map(_.queueLength.toDouble).sum / ds.size.toDouble
+                                    )
+
+                                (d, ac, f, d.queueLength, tMillis)
                             }
                         }
 
-                        best = scored.maxBy { case (_, ac, f, q) => (ac, f.logPTotal, -q) }
+                        best = scored.maxBy { case (_, ac, f, q, t) => (ac, f.logPTotal, -q, -t) }
                         _ <- Logger[F].info(s"Picked Device Coefficient: $best")
-                        (bestDevice, _, _, _) = best
+                        (bestDevice, _, _, _, _) = best
 
                         // compiled <- ???
 
@@ -499,26 +516,77 @@ object Scheduler{
         private def gateCount(c: Circuit): Long =
             c.remainingGates.size.toLong 
 
+        private def clamp(x: Double, lo: Double, hi: Double): Double = math.max(lo, math.min(hi, x))
+
+
+
+
+        // private def getAssignmentCoefficient(
+        //     logFidelity: Double,        
+        //     pTotal: Double,
+        //     queueLength: Long,          
+        //     circuit: Circuit,
+        //     transpileCostGates: Long = 0,    
+        //     lambda: Double = 1e-4       
+        // ): Double = {
+        //     val g = math.max(1L, gateCount(circuit))                 
+        //     val latencyUnits = queueLength.toDouble * g.toDouble + transpileCostGates.toDouble
+        //     val qNorm = math.log1p(latencyUnits.toDouble)  
+        //     val wF    = 1.0 / (1.0 + qNorm)                     
+        //     val wQ    = 1.0 - wF
+        //     logFidelity - lambda * latencyUnits
+        //     //wF * pTotal - wQ * qNorm
+        // }
+
+
         private def getAssignmentCoefficient(
-            logFidelity: Double,        
             pTotal: Double,
-            queueLength: Long,          
-            circuit: Circuit,
-            transpileCostGates: Long = 0,    
-            lambda: Double = 1e-4       
+            queueLength: Long,
+            transpileMillis: Long,
+            fleetMeanQueue: Double,
+            lightLoadQueue: Double = 500.0,
+            heavyLoadQueue: Double = 20000.0,
+            transpileScaleMillis: Double = 5000.0
         ): Double = {
-            val g = math.max(1L, gateCount(circuit))                 
-            val latencyUnits = queueLength.toDouble * g.toDouble + transpileCostGates.toDouble
-            val qNorm = math.log1p(latencyUnits.toDouble)  
-            val wF    = 1.0 / (1.0 + qNorm)                     
-            val wQ    = 1.0 - wF
-            //logFidelity - lambda * latencyUnits
-            wF * pTotal - wQ * qNorm
+            val load =
+                clamp(
+                    (fleetMeanQueue - lightLoadQueue) / (heavyLoadQueue - lightLoadQueue),
+                    0.0,
+                    1.0
+                )
+
+            val wF = 0.80 - 0.55 * load  //0.80 + 0.55  // - 0.75
+            val wQ = 0.15 + 0.45 * load //0.15 - 0.45.  //0.75 + 0.75
+            val wT = 1.0 - wF - wQ        
+
+            val qScaled =
+                clamp(
+                    math.log1p(queueLength.toDouble) / math.log1p(heavyLoadQueue),
+                    0.0,
+                    1.0
+                )
+
+            val tScaled =
+                clamp(
+                    transpileMillis.toDouble / transpileScaleMillis,
+                    0.0,
+                    1.0
+                )
+
+            wF * pTotal - wQ * qScaled - wT * tScaled
         }
 
-    
+            
         private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Device]) : F[Boolean] = 
-            devices.traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler)).map(lf => lf.filter(_.logPTotal > math.log(targetEstimatedFidelity)).nonEmpty)
+            devices
+                .filter(_.qubits > task.qubits.value)
+                .traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler))
+                .map(lf => {
+                    val x = lf.filter(_.pTotal > targetEstimatedFidelity)   //_.logPTotal > math.log(targetEstimatedFidelity))
+                    println(s"========== HERE: ${math.log(targetEstimatedFidelity)} ========") 
+                    println(x.mkString(", "))
+                    x.isEmpty
+                })
 
         ////////////////////////////////////////////////////////////
         private def allParentResultsAvailable(t: Task) : F[Boolean] = 

@@ -472,7 +472,7 @@ object BenchmarkDeviceRegistry {
             _ <- Logger[IO].info("Created Benchmark Device Registry")
             byId = devices.map(d => d.platformId -> d).toMap
             rng  = new scala.util.Random(seed)
-            qMap = byId.keys.map(id => id -> rng.between(0, 200)).toMap
+            qMap = byId.keys.map(id => id -> rng.between(2000, 10000)).toMap
             fakePairs <- devices.traverse { d =>
                 BenchmarkFakeDevice.make(d, qMap(d.platformId), msPerGate).map(fd => d.platformId -> fd)
             }
@@ -801,40 +801,133 @@ object SchedulerBenchmarkRunner {
     private def monotonicMillis: IO[Long] =
         Temporal[IO].monotonic.map(_.toMillis)
     
+    private def expandSpecForBenchmark(
+        spec: QuantumTaskSpec,
+        clients: HttpClients[IO],
+        compiler: FakeCompiler[IO],
+        targetEstimatedFidelity: Double,
+        cuttingStrategy: (Circuit, List[Device]) => IO[List[Circuit]],
+        additionalOptimizationRuns: Circuit => List[Circuit]
+    ): IO[List[QuantumTaskSpec]] =
+        for {
+            devices <- Scheduler.getAvailableDevices[IO](clients)
+
+            feasibleNoCut <- devices
+                .filter(_.qubits >= spec.qubits.value)
+                .traverse(d => Scheduler.estimateFidelity[IO](d, spec.circuit, clients, compiler))
+                .map(_.exists(_.pTotal > targetEstimatedFidelity))
+
+            expanded <-
+                if (feasibleNoCut) {
+                    List(spec).pure[IO]
+                } else {
+                    cuttingStrategy(spec.circuit, devices).map { cut =>
+                        cut.flatMap(additionalOptimizationRuns).map { c =>
+                            QuantumTaskSpec(
+                                circuit = c,
+                                qubits  = TaskQubits(c.qubits),
+                                shots   = spec.shots,
+                                depth   = spec.depth
+                            )
+                        }
+                    }
+                }
+        } yield expanded
+
+
+    // private def submitOneWorkItem(
+    //     scheduler: Scheduler[IO], 
+    //     spec: QuantumTaskSpec
+    // ): IO[List[(TaskId, QuantumTaskSpec)]] =
+    //     for{ 
+    //         npw <- LocalDateTime.now().pure[IO]
+    //         paretReq = new NewClassicalTaskRequest(
+    //             program = (),
+    //             parentTasks = Nil, //TODO: This obv shouldn't be the case for the full suite, we need longer ancestoral chains 
+    //             childTasks = Nil,
+    //             createdAt = npw
+    //         )
+    //         _ <- Logger[IO].info("Submitted one task to the scheduler")
+    //         parentId <- scheduler.submitTask(paretReq)
+    //         quantumReq = NewQuantumTaskRequest(
+    //             circuit = spec.circuit,
+    //             qubits = spec.qubits,
+    //             shots = spec.shots,
+    //             depth = spec.depth,
+    //             parentTasks = parentId, 
+    //             childTasks = Nil,
+    //             createdAt = npw
+    //         )
+    //         quantumIds <- scheduler.submitTask(quantumReq)
+    //         childReq = NewClassicalTaskRequest(
+    //             program = (),
+    //             parentTasks = quantumIds,
+    //             childTasks = Nil,
+    //             createdAt = npw
+    //         )
+    //         _ <- scheduler.submitTask(childReq)
+    //     } yield quantumIds.map(id => (id, spec))
 
     private def submitOneWorkItem(
-        scheduler: Scheduler[IO], 
-        spec: QuantumTaskSpec
+        scheduler: Scheduler[IO],
+        spec: QuantumTaskSpec,
+        clients: HttpClients[IO],
+        compiler: FakeCompiler[IO],
+        targetEstimatedFidelity: Double,
+        cuttingStrategy: (Circuit, List[Device]) => IO[List[Circuit]],
+        additionalOptimizationRuns: Circuit => List[Circuit]
     ): IO[List[(TaskId, QuantumTaskSpec)]] =
-        for{ 
+        for {
             npw <- LocalDateTime.now().pure[IO]
-            paretReq = new NewClassicalTaskRequest(
+
+            parentReq = NewClassicalTaskRequest(
                 program = (),
-                parentTasks = Nil, //TODO: This obv shouldn't be the case for the full suite, we need longer ancestoral chains 
+                parentTasks = Nil,
                 childTasks = Nil,
                 createdAt = npw
             )
-            _ <- Logger[IO].info("Submitted one task to the scheduler")
-            parentId <- scheduler.submitTask(paretReq)
+
+            parentId <- scheduler.submitTask(parentReq)
+
+            expectedExpanded <- expandSpecForBenchmark(
+                spec,
+                clients,
+                compiler,
+                targetEstimatedFidelity,
+                cuttingStrategy,
+                additionalOptimizationRuns
+            )
+
             quantumReq = NewQuantumTaskRequest(
                 circuit = spec.circuit,
                 qubits = spec.qubits,
                 shots = spec.shots,
                 depth = spec.depth,
-                parentTasks = parentId, 
+                parentTasks = parentId,
                 childTasks = Nil,
                 createdAt = npw
             )
+
             quantumIds <- scheduler.submitTask(quantumReq)
+
+            _ <-
+                if (quantumIds.length != expectedExpanded.length)
+                    IO.raiseError(
+                        new RuntimeException(
+                            s"Benchmark expansion mismatch: scheduler returned ${quantumIds.length} ids but benchmark expected ${expectedExpanded.length}"
+                        )
+                    )
+                else IO.unit
+
             childReq = NewClassicalTaskRequest(
                 program = (),
                 parentTasks = quantumIds,
                 childTasks = Nil,
                 createdAt = npw
             )
-            _ <- scheduler.submitTask(childReq)
-        } yield quantumIds.map(id => (id, spec))
 
+            _ <- scheduler.submitTask(childReq)
+        } yield quantumIds.zip(expectedExpanded)
 
     // private def waitUntilAllSubmitted(
     //     scheduler: Scheduler[IO],
@@ -937,12 +1030,12 @@ object SchedulerBenchmarkRunner {
     //     }
 
 
-
     def runSchedulerBenchmark(
         scheduler: Scheduler[IO], 
         specs: List[QuantumTaskSpec],
         registry: BenchmarkDeviceRegistry,
         clients: HttpClients[IO],
+        cuttingStrategy: (Circuit, List[Device]) => IO[List[Circuit]],
         compiler: FakeCompiler[IO],
         pollEvery: scala.concurrent.duration.FiniteDuration = scala.concurrent.duration.DurationInt(100).millis
     ): IO[BenchmarkRun] = {
@@ -951,7 +1044,7 @@ object SchedulerBenchmarkRunner {
             report <- WorkloadSpecs.loadedTasks
             _ <- Logger[IO].info(s"Loaded ${report.size} task(s)")
             _ <- Logger[IO].info("Starting Scheduler Benchmark")
-            quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _)).map(_.flatten)
+            quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _, clients, compiler, 0.9, cuttingStrategy, (c: Circuit) => List(c))).map(_.flatten)
             // _ <- Logger[IO].info(s"QuantumIds: ${quantumIdPairs.mkString(", ")}")
             specById = quantumIdPairs.toMap
             expectedIds = specById.keySet

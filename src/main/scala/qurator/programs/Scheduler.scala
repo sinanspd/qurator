@@ -49,27 +49,34 @@ object Scheduler{
         cuttingStrategy: (Circuit, List[Device]) => F[List[Circuit]],
         targetEstimatedFidelity: Double, 
         additionalOptimizationRuns: Circuit => List[Circuit],
-        compiler: FakeCompiler[F] //abstract this 
+        compiler: FakeCompiler[F] //abstract this
   ): F[Scheduler[F]] =
     for {
       readyTasks     <- Ref.of[F, List[Task]](List.empty)
       pendingTasks   <- Ref.of[F, List[Task]](List.empty)
       submittedTasks <- Ref.of[F, List[(String, String, String, TaskId)]](List.empty) //platform, platformId, jobId, taskId
       results        <- Ref.of[F, Map[TaskId, (String, Long)]](Map.empty)    
+      taskIndex      <- Ref.of[F, Map[TaskId, Task]](Map.empty)
+      mergedAliases  <- Ref.of[F, Map[TaskId, List[TaskId]]](Map.empty)
       _ <- Logger[F].info("Creating The Scheduler")    
     } yield new Scheduler[F] {
 
         private val idleDelay: FiniteDuration = 250.millis
 
        
+
+
+        //TODO: Standard merging 
+        //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
+        //TODO: Loop back actual job data 
+        //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
         //TODO Merge Cut Task Results 
         //TODO for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
         //TODO consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
-        //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO: Loop back actual job data 
-
+        //TODO batch submissions 
         /////////////////////////////////////////////// NOT ADDRESSING NOW ////////////////////////////////////////////
+        //TODO: Cutting/commuting circuits concerns me. Generating the alternative programs can be very time intensive (indeed classical processing part of circuit cutting is known to be heavy work). This could do more harm than good. One possibility is to look for emerging patterns. Maybe we don't need to know the exact circuit to estimate the cut/commuted programs. For example, an oracle can depend on a runtime variable, however I don't need to know the exact oracle to know that measurement will commute over it as it encodes classical logic. If static program analysis can detect these patterns, we can do look-ahead cutting and start the program generation at idle time (i.e. while waiting for the dependencies to resolve) 
         //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
         //TODO Fall back to other devices on failure (maybe after expontential backoff ?)
         //TODO think about reservations?? 
@@ -77,6 +84,7 @@ object Scheduler{
         //TODO: I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
         //TODO: We need to move some of the logic to supervisor so that the scheduler keeps running on error 
         //TODO: Stronger topology mapping 
+        //TODO: Is it possible to network topology into account? 
 
 
         def submitTask(taskReq: TaskRequest): F[List[TaskId]] = taskReq match{
@@ -116,13 +124,14 @@ object Scheduler{
                     if(needsToBeCut){ //TODO: Think this through carefully. I am not convinced this is the right place to cut. 
                         for {
                             cut <- cuttingStrategy(taskReq.circuit, devices)
+                            _ <- Logger[F].info(s"Cut length ${cut.length}")
                             optimized = cut.flatMap(additionalOptimizationRuns(_))
                             recreatedTasks <- optimized.traverse { c =>
                                 ID.make[F, TaskId].map { taskId =>
                                     QuantumTask(
                                         taskId,
                                         c,
-                                        taskReq.qubits,
+                                        TaskQubits(c.qubits),
                                         taskReq.shots,
                                         taskReq.depth,
                                         taskReq.parentTasks,
@@ -545,7 +554,7 @@ object Scheduler{
             transpileMillis: Long,
             fleetMeanQueue: Double,
             lightLoadQueue: Double = 500.0,
-            heavyLoadQueue: Double = 20000.0,
+            heavyLoadQueue: Double = 10000.0,
             transpileScaleMillis: Double = 5000.0
         ): Double = {
             val load =
@@ -579,7 +588,7 @@ object Scheduler{
             
         private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Device]) : F[Boolean] = 
             devices
-                .filter(_.qubits > task.qubits.value)
+                .filter(_.qubits >= task.qubits.value)
                 .traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler))
                 .map(lf => {
                     val x = lf.filter(_.pTotal > targetEstimatedFidelity)   //_.logPTotal > math.log(targetEstimatedFidelity))
@@ -678,7 +687,7 @@ object Scheduler{
         private def fakeClassicalTaskScheduler(ct: ClassicalTask): F[Unit] = {
             val computationTime = 500 + Random.nextInt(1500)
             Temporal[F].sleep(computationTime.millis) *> 
-            Logger[F].info(s"Ran Classical Task, tid: ${ct.uuid}") *>
+            // Logger[F].info(s"Ran Classical Task, tid: ${ct.uuid}") *>
             markCompleted(ct.uuid, s"Result of classical task ${ct.uuid.value}")
         }
 

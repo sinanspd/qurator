@@ -16,6 +16,7 @@ object CuttingStrategies {
         List(circuit).pure[F]
 
     def cutQC[F[_]: MonadCancelThrow: Logger](client: CutQCClient[F])(circuit: Circuit, devices: List[Device]): F[List[Circuit]] = {
+        Logger[F].info(s"$circuit") *>
         client.cut(CutRequest(
             circuit = circuit.toQasm,
             // TODO: Come up with better heuristics for these constraints

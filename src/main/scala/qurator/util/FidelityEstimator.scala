@@ -291,6 +291,28 @@ object FidelityEstimator{
         def score(compiled: Circuit, cal: CanonicalCalibration): FidelityEstimate = {
             val endTimesSec = scheduleEndTimesSec(compiled.remainingGates, cal)
 
+            val mqubit = compiled.remainingGates.map{
+                case a @ (X(_) | H(_) | Measure(_) | RX(_, _) | RZ(_ ,_) | SX(_) | RY(_, _)) =>
+                    val q = a match { // this is dumb but oh well
+                        case X(q)       => q
+                        case H(q)       => q
+                        case SX(q) => q
+                        case Measure(q) => q
+                        case RX(_, q) => q
+                        case RZ(_, q) => q
+                        case RY(_, q) => q
+                    }
+                    q
+                case op @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRZ(_, _, _)) =>
+                    val (a, b) = op match{
+                        case CX(a, b) => (a, b)
+                        case CZ(a, b) => (a, b)
+                        case Swap(a , b) => (a, b)
+                        case CRZ(a, _, b) => (a, b)
+                    }
+                    Math.max(a, b)
+            }.max
+
             val logPOps = compiled.remainingGates.foldLeft(0.0) { (acc, op) =>
                 op match {
                     case a @ (X(_) | H(_) | RX(_, _) | RZ(_ ,_))  =>
@@ -333,13 +355,24 @@ object FidelityEstimator{
 
             val logPTotal = logPOps + logPDecoh
             val pTotal = Math.exp(logPTotal) 
-
-            FidelityEstimate(
+            val est = FidelityEstimate(
                 logPOps = logPOps,
                 logPDecoh = logPDecoh,
                 logPTotal = logPTotal,
                 pTotal = pTotal,
                 perQubitEndTimeSec = endTimesSec
             )
+
+            val fcoeff =
+                if (mqubit > 20) 0.3
+                else if (mqubit > 10) 0.7
+                else 1.0
+
+            val adjusted = est.copy(
+                pTotal = est.pTotal * fcoeff,
+                logPTotal = est.logPTotal + math.log(fcoeff)
+            )
+
+            adjusted
         }
 }

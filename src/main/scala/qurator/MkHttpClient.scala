@@ -6,7 +6,6 @@ import org.http4s.client.Client
 import org.http4s.ember.client.EmberClientBuilder
 import qurator.Types.HttpClientConfig
 
-// Just to demonstrate how far we can take this pattern and void hard constraints like Async
 trait MkHttpClient[F[_]] {
   def newEmber(c: HttpClientConfig): Resource[F, Client[F]]
 }

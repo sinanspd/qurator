@@ -43,19 +43,6 @@ object SyncBench2 {
     require(tasks.nonEmpty, "SyncGroupSpec.tasks must be non-empty")
   }
 
-//   final case class SubmittedSyncGroup(
-//     groupIndex: Int,
-//     coherenceBudgetMillis: Long,
-//     expectedIds: Set[TaskId]
-//   )
-
-    // final case class SubmittedSyncGroup(
-    //     groupIndex: Int,
-    //     coherenceBudgetMillis: Long,
-    //     taskIdsInOrder: List[TaskId]
-    // ) {
-    //     lazy val expectedIds: Set[TaskId] = taskIdsInOrder.toSet
-    // }
 
   final case class SyncSubmittedQuantum(
     taskId: TaskId,
@@ -127,38 +114,6 @@ final case class SyncBenchmarkRun(
   sealed trait SyncBaselinePolicy {
     def name: String
   }
-
-// private def buildSubmittedTaskMetricsForGroup(
-//   groupSubmitted: List[SyncSubmittedQuantum],
-//   registry: BenchmarkDeviceRegistry
-// ): IO[List[SyncTaskMetric]] = {
-
-//   val groupedByDevice: Map[String, List[SyncSubmittedQuantum]] =
-//     groupSubmitted.groupBy(_.deviceId)
-
-//   groupedByDevice.values.toList.flatTraverse { devAssignments =>
-//     devAssignments.foldLeftM[IO, (Long, List[SyncTaskMetric])]((0L, List.empty[SyncTaskMetric])) {
-//       case ((accRunMillis, acc), sub) =>
-//         registry.fakeDevice(sub.deviceId).submitJob(sub.taskId).map { rec =>
-//           val submittedMillis = rec.submittedAt.atZone(java.time.ZoneId.systemDefault()).toInstant.toEpochMilli
-//           val startedMillis   = rec.startedAt.atZone(java.time.ZoneId.systemDefault()).toInstant.toEpochMilli
-//           val finishedMillis  = rec.finishedAt.atZone(java.time.ZoneId.systemDefault()).toInstant.toEpochMilli
-
-//           val startMillis  = startedMillis - submittedMillis
-//           val finishMillis = finishedMillis - submittedMillis
-
-//           val m = SyncTaskMetric(
-//             taskId = sub.taskId,
-//             deviceId = sub.deviceId,
-//             startMillis = startMillis,
-//             finishMillis = finishMillis
-//           )
-
-//           (accRunMillis, acc :+ m)
-//         }
-//     }.map(_._2)
-//   }
-// }
 
 private def randomQuantumSpecFromPool(
   rng: scala.util.Random,

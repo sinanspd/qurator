@@ -28,10 +28,98 @@ import qurator.domain.Task._
 import qurator.domain.circuit._
 import qurator.clients.CutQCClient
 import qurator.util.CuttingStrategies
+import qurator.domain.device._
+import cats.syntax.all._
 
 object RunBenchmarks extends IOApp.Simple {
 
     implicit val logger = Slf4jLogger.getLogger[IO]
+
+    def dummyBackUpCutter: (Circuit, List[Device]) => IO[List[Circuit]] =
+        (c: Circuit, _: List[Device]) => {
+
+            val n = math.max(1, c.qubits)
+            val leftWidth  = math.max(1, n / 2)
+            val rightWidth = math.max(1, n - leftWidth)
+
+            val leftRange  = 0 until leftWidth
+            val rightRange = leftWidth until n
+
+            def inLeft(q: Int): Boolean =
+            leftRange.contains(q)
+
+            def inRight(q: Int): Boolean =
+            rightRange.contains(q)
+
+            def remapLeft(g: Gate): Option[Gate] = g match {
+            case X(q) if inLeft(q)           => Some(X(q))
+            case H(q) if inLeft(q)           => Some(H(q))
+            case SX(q) if inLeft(q)          => Some(SX(q))
+            case Measure(q) if inLeft(q)     => Some(Measure(q))
+            case RX(theta, q) if inLeft(q)   => Some(RX(theta, q))
+            case RY(theta, q) if inLeft(q)   => Some(RY(theta, q))
+            case RZ(theta, q) if inLeft(q)   => Some(RZ(theta, q))
+
+            case CX(a, b) if inLeft(a) && inLeft(b)         => Some(CX(a, b))
+            case CZ(a, b) if inLeft(a) && inLeft(b)         => Some(CZ(a, b))
+            case Swap(a, b) if inLeft(a) && inLeft(b)       => Some(Swap(a, b))
+            case CRZ(a, theta, b) if inLeft(a) && inLeft(b) => Some(CRZ(a, theta, b))
+
+            case CCX(a, b, t) if inLeft(a) && inLeft(b) && inLeft(t) =>
+                Some(CCX(a, b, t))
+
+            case U(theta, phi, lambda, q) if inLeft(q) =>
+                Some(U(theta, phi, lambda, q))
+
+            case CU(ctrl, theta, phi, lambda, target)
+                if inLeft(ctrl) && inLeft(target) =>
+                Some(CU(ctrl, theta, phi, lambda, target))
+
+            case _ => None
+            }
+
+            def remapRight(g: Gate): Option[Gate] = g match {
+            case X(q) if inRight(q)           => Some(X(q - leftWidth))
+            case H(q) if inRight(q)           => Some(H(q - leftWidth))
+            case SX(q) if inRight(q)          => Some(SX(q - leftWidth))
+            case Measure(q) if inRight(q)     => Some(Measure(q - leftWidth))
+            case RX(theta, q) if inRight(q)   => Some(RX(theta, q - leftWidth))
+            case RY(theta, q) if inRight(q)   => Some(RY(theta, q - leftWidth))
+            case RZ(theta, q) if inRight(q)   => Some(RZ(theta, q - leftWidth))
+
+            case CX(a, b) if inRight(a) && inRight(b) =>
+                Some(CX(a - leftWidth, b - leftWidth))
+
+            case CZ(a, b) if inRight(a) && inRight(b) =>
+                Some(CZ(a - leftWidth, b - leftWidth))
+
+            case Swap(a, b) if inRight(a) && inRight(b) =>
+                Some(Swap(a - leftWidth, b - leftWidth))
+
+            case CRZ(a, theta, b) if inRight(a) && inRight(b) =>
+                Some(CRZ(a - leftWidth, theta, b - leftWidth))
+
+            case CCX(a, b, t) if inRight(a) && inRight(b) && inRight(t) =>
+                Some(CCX(a - leftWidth, b - leftWidth, t - leftWidth))
+
+            case U(theta, phi, lambda, q) if inRight(q) =>
+                Some(U(theta, phi, lambda, q - leftWidth))
+
+            case CU(ctrl, theta, phi, lambda, target)
+                if inRight(ctrl) && inRight(target) =>
+                Some(CU(ctrl - leftWidth, theta, phi, lambda, target - leftWidth))
+
+            case _ => None
+            }
+
+            val leftGates  = H(0) :: c.remainingGates.flatMap(remapLeft)
+            val rightGates = H(0) :: c.remainingGates.flatMap(remapRight)
+
+            val leftCircuit  = Circuit(leftGates,  leftWidth + 1, "")
+            val rightCircuit = Circuit(rightGates, rightWidth + 1, "")
+
+            List(leftCircuit, rightCircuit).pure[IO]
+        }
 
     def run: IO[Unit] = 
         Config.load[IO].flatMap { cfg =>
@@ -42,7 +130,7 @@ object RunBenchmarks extends IOApp.Simple {
                 .evalMap { res => 
                     val services = Services.make[IO](res.postgres)
                     val persistanceService = Services.make[IO](res.postgres).dataPersistanceService
-                    val cutqcClient = CutQCClient.make[IO](cfg.cutqcConfig, res.client)
+                    val cutqcClient =  CutQCClient.make[IO](cfg.cutqcConfig, res.client)
 
                     def mkEnv(seed: Long) =
                         for {
@@ -59,7 +147,7 @@ object RunBenchmarks extends IOApp.Simple {
                                 dataPersistanceService = persistanceService,
                                 clients = clients,
                                 prioritizationStrategy = (a: List[Task]) => a,
-                                cuttingStrategy = CuttingStrategies.cutQC[IO](cutqcClient),
+                                cuttingStrategy = dummyBackUpCutter, //CuttingStrategies.cutQC[IO](cutqcClient),
                                 targetEstimatedFidelity = 0.9,
                                 additionalOptimizationRuns = (c: Circuit) => List(c),
                                 compiler = compiler
@@ -67,30 +155,13 @@ object RunBenchmarks extends IOApp.Simple {
                         } yield (registry, clients, compiler, scheduler)
 
                     for{
-                        // registry <- BenchmarkDeviceRegistry.make(
-                        //     devices = BenchmarkDeviceRegistry.defaultDevices,
-                        //     calibrationsById = BenchmarkDeviceRegistry.defaultCalibrations,
-                        //     deviceEstimator = new DeviceEstimator(persistanceService)
-                        // )
-                        // dummies <- FakeBenchmarkClientsFromRegistry.make(registry)
-                        // clients = BenchmarkHttpClients.make(registry, dummies)
-                        // compiler = FakeCompiler[IO](compiled = Nil)
-                        // scheduler <- Scheduler.make[IO](
-                        //     dataPersistanceService = persistanceService, 
-                        //     clients = clients, 
-                        //     prioritizationStrategy = (a: List[Task]) => a, 
-                        //     cuttingStrategy = CuttingStrategies.cutQC[IO](cutqcClient),
-                        //     targetEstimatedFidelity = 0.9,
-                        //     additionalOptimizationRuns = (c: Circuit) => List(c),
-                        //     compiler = compiler
-                        // )
                         loaded <- WorkloadSpecs.loadedTasks
-                        loadedFiltered = loaded.filter(t => t.qubits.value <= 150 && t.qubits.value >= 21 )
+                        loadedFiltered = loaded.filter(t => t.qubits.value <= 5) // && t.qubits.value >= 21 )
                         specs <- WorkloadSpecs.sample(n = 10, seed = 42L, T = loadedFiltered)
                         (reg1, cl1, co1, sch1) <- mkEnv(42L) //reinit so that the queue isn't tainted 
                         schedRun <- Logger[IO].info("Running Scheduler Benchmarks") *>
                             sch1.startRuntime.use(_ =>
-                                SchedulerBenchmarkRunner.runSchedulerBenchmark(sch1, specs, reg1, cl1, co1)
+                                SchedulerBenchmarkRunner.runSchedulerBenchmark(sch1, specs, reg1, cl1, dummyBackUpCutter, co1)
                             )
 
                         (reg2, cl2, co2, _) <- mkEnv(42L)
@@ -113,33 +184,9 @@ object RunBenchmarks extends IOApp.Simple {
                                 co3
                             )
 
-                         _ <- IO.println(s"Scheduler: q/s=${schedRun.throughputQuantumPerSec}, meanQ=${schedRun.meanQueueWaitMillis}, meanLogF=${schedRun.meanPredictedLogFidelity}, pos_arith=${schedRun.meanPredictedSuccessProbability}, pos_geo=${schedRun.geometricMeanPredictedSuccessProbability}")
+                         _ <- IO.println(s"Scheduler: q/s=${schedRun.throughputQuantumPerSec}, meanQ=${schedRun.meanQueueWaitMillis}, meanLogF=${schedRun.meanPredictedLogFidelity}, pos_arith=${schedRun.meanPredictedSuccessProbability}, pos_geo=${schedRun.geometricMeanPredictedSuccessProbability}, n=${schedRun.uniqueSubmittedJobs}")
                          _ <- IO.println(s"LeastBusy: q/s=${leastBusy.throughputQuantumPerSec}, meanQ=${leastBusy.meanQueueWaitMillis}, meanLogF=${leastBusy.meanPredictedLogFidelity}, pos_arith=${leastBusy.meanPredictedSuccessProbability}, pos_geo=${leastBusy.geometricMeanPredictedSuccessProbability}")
                          _ <- IO.println(s"HighestF: q/s=${hiFid.throughputQuantumPerSec}, meanQ=${hiFid.meanQueueWaitMillis}, meanLogF=${hiFid.meanPredictedLogFidelity}, , pos_arith=${hiFid.meanPredictedSuccessProbability}, pos_geo=${hiFid.geometricMeanPredictedSuccessProbability}")
-                        // _ <- scheduler.startRuntime.use { _ => 
-                        //     for{
-                        //         (reg1, cl1, co1, sch1) <- mkEnv(42L)
-                        //         schedRun <- sch1.startRuntime.use(_ =>
-                        //                 SchedulerBenchmarkRunner.runSchedulerBenchmark(sch1, specs, reg1, cl1, co1)
-                        //         )
-                        //         (reg2, cl2, co2, _) <- mkEnv(42L)
-                        //         leastBusy <- SchedulerBenchmarkRunner.runBaseline(
-                        //             SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy, specs, reg2, cl2, co2
-                        //         )
-                        //         (reg3, cl3, co3, _) <- mkEnv(42L)
-                        //         hiFid <- SchedulerBenchmarkRunner.runBaseline(
-                        //             SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity, specs, reg3, cl3, co3
-                        //         )
-
-                        //         // schedRun <-  Logger[IO].info("Running Scheduler Benchmarks") *> SchedulerBenchmarkRunner.runSchedulerBenchmark(scheduler, specs, registry, clients, compiler)
-                        //         // leastBusy <- Logger[IO].info("Running Least Busy Baselines") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy, specs, registry, clients, compiler)
-                        //         // hiFid <- Logger[IO].info("Running Highest Fidelity Benchmarks") *> SchedulerBenchmarkRunner.runBaseline(SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity, specs, registry, clients, compiler)
-        
-                        //         _ <- IO.println(s"Scheduler: q/s=${schedRun.throughputQuantumPerSec}, meanQ=${schedRun.meanQueueWaitMillis}, meanLogF=${schedRun.meanPredictedLogFidelity}, pos_arith=${schedRun.meanPredictedSuccessProbability}, pos_geo=${schedRun.geometricMeanPredictedSuccessProbability}")
-                        //         _ <- IO.println(s"LeastBusy: q/s=${leastBusy.throughputQuantumPerSec}, meanQ=${leastBusy.meanQueueWaitMillis}, meanLogF=${leastBusy.meanPredictedLogFidelity}, pos_arith=${leastBusy.meanPredictedSuccessProbability}, pos_geo=${leastBusy.geometricMeanPredictedSuccessProbability}")
-                        //         _ <- IO.println(s"HighestF: q/s=${hiFid.throughputQuantumPerSec}, meanQ=${hiFid.meanQueueWaitMillis}, meanLogF=${hiFid.meanPredictedLogFidelity}, , pos_arith=${hiFid.meanPredictedSuccessProbability}, pos_geo=${hiFid.geometricMeanPredictedSuccessProbability}")
-                        //     }yield()
-                        // }
                     } yield ()
                 }.useForever
             }

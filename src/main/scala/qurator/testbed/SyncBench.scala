@@ -26,12 +26,6 @@ object SyncBench {
     require(tasks.nonEmpty, "SyncGroupSpec.tasks must be non-empty")
   }
 
-//   final case class SubmittedSyncGroup(
-//     groupIndex: Int,
-//     coherenceBudgetMillis: Long,
-//     expectedIds: Set[TaskId]
-//   )
-
     final case class SubmittedSyncGroup(
         groupIndex: Int,
         coherenceBudgetMillis: Long,
@@ -105,38 +99,6 @@ object SyncBench {
   sealed trait SyncBaselinePolicy {
     def name: String
   }
-
-// private def buildSubmittedTaskMetricsForGroup(
-//   groupSubmitted: List[SyncSubmittedQuantum],
-//   registry: BenchmarkDeviceRegistry
-// ): IO[List[SyncTaskMetric]] = {
-
-//   val groupedByDevice: Map[String, List[SyncSubmittedQuantum]] =
-//     groupSubmitted.groupBy(_.deviceId)
-
-//   groupedByDevice.values.toList.flatTraverse { devAssignments =>
-//     devAssignments.foldLeftM[IO, (Long, List[SyncTaskMetric])]((0L, List.empty[SyncTaskMetric])) {
-//       case ((accRunMillis, acc), sub) =>
-//         registry.fakeDevice(sub.deviceId).submitJob(sub.taskId).map { rec =>
-//           val submittedMillis = rec.submittedAt.atZone(java.time.ZoneId.systemDefault()).toInstant.toEpochMilli
-//           val startedMillis   = rec.startedAt.atZone(java.time.ZoneId.systemDefault()).toInstant.toEpochMilli
-//           val finishedMillis  = rec.finishedAt.atZone(java.time.ZoneId.systemDefault()).toInstant.toEpochMilli
-
-//           val startMillis  = startedMillis - submittedMillis
-//           val finishMillis = finishedMillis - submittedMillis
-
-//           val m = SyncTaskMetric(
-//             taskId = sub.taskId,
-//             deviceId = sub.deviceId,
-//             startMillis = startMillis,
-//             finishMillis = finishMillis
-//           )
-
-//           (accRunMillis, acc :+ m)
-//         }
-//     }.map(_._2)
-//   }
-// }
 
 private def buildSubmittedTaskMetricsForGroup(
   assignmentsInOrder: List[(TaskId, String, QuantumTaskSpec)],
@@ -346,17 +308,6 @@ private def waitUntilAllSubmitted(
         SynronizedQuantumTaskRequest(g.tasks.map(q => 
             NewQuantumTaskRequest(q.circuit, q.qubits, q.shots, q.depth, List(), List(), LocalDateTime.now())), g.coherenceBudgetMillis, false))
 
-    //   submittedGroups <- groups.zip(syncTaskReqs).zipWithIndex.traverse {
-    //         case ((g, req), idx) =>
-    //             scheduler.submitTask(req).map { ids =>
-    //             SubmittedSyncGroup(
-    //                 groupIndex = idx,
-    //                 coherenceBudgetMillis = g.coherenceBudgetMillis,
-    //                 expectedIds = ids.toSet
-    //             )
-    //             }
-    //         }
-
         submittedGroups <- groups.zip(syncTaskReqs).zipWithIndex.traverse {
             case ((g, req), idx) =>
                 scheduler.submitTask(req).map { ids =>
@@ -388,25 +339,6 @@ private def waitUntilAllSubmitted(
 
       submittedById: Map[TaskId, String] =
         submitted.map(s => s.taskId -> s.deviceId).toMap
-
-    //   groupMetrics <- submittedGroups.traverse { sg =>
-    //         val groupSubmitted: List[SyncSubmittedQuantum] =
-    //             submitted.filter(s => sg.expectedIds.contains(s.taskId))
-
-    //         buildSubmittedTaskMetricsForGroup(
-    //             groupSubmitted = groupSubmitted,
-    //             quantumById = syncSpecById,
-    //             registry = registry,
-    //             clients = clients,
-    //             compiler = compiler
-    //         ).map { taskMetrics =>
-    //             buildGroupMetric(
-    //             groupIndex = sg.groupIndex,
-    //             coherenceBudgetMillis = sg.coherenceBudgetMillis,
-    //             taskMetrics = taskMetrics
-    //             )
-    //         }
-    //  }
 
      groupMetrics <- submittedGroups.zip(groups).traverse { case (sg, group) =>
         val submittedById: Map[TaskId, String] =

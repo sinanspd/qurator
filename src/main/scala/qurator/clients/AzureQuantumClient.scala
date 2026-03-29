@@ -116,7 +116,7 @@ object AzureQuantumClient {
                 }
             } 
 
-        def fetchDeviceCalibration(deviceId: String): F[DeviceCalibration] = ???   
+        def fetchDeviceCalibration(deviceId: String): F[DeviceCalibration] = ??? // Azure doesn't expose this, which is a big problem
     }   
 }
 

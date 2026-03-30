@@ -92,7 +92,7 @@ object Scheduler{
         //TODO: Is it possible to network topology into account? 
 
 
-        private val mergeEnabled: Boolean = false
+        private val mergeEnabled: Boolean = true
         private val mergeMaxQubits: Int = 10
         private val mergeQueueFactorMillis: Long = 3000L
 

@@ -1,6 +1,8 @@
 # macOS
 .DS_Store
 
+CutQC/venv/
+
 # sbt specific
 dist/*
 target/

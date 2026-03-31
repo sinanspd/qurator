@@ -1,3 +1,5 @@
+Heuristic hybrid classical-quantum task scheduler 
+
 Heuristic hybrid classical-quantum task scheduler. In order to run:
 
 1. Set up your cloud accounts and add the corresponding values to your env
@@ -31,4 +33,4 @@ loadedFiltered = loaded.filter(t => t.qubits.value <= x) //Filter circuit size h
 specs <- WorkloadSpecs.sample(n = N, seed = 42L, T = loadedFiltered) // adjust, n, number of quantum tasks here 
 ```
 
-Please note that large workloads require upwards of 50GB of heap 
+Please note that large workloads require upwards of 50GB of heap. You can adjust the heap space when running with `sbt -J-XmxNG run` by replacing `N` with the heap space you want JVM to utilize. 

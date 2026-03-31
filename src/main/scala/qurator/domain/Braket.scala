@@ -132,7 +132,6 @@ object Braket{
         endedAt: Option[String],
         experimentalCapabilities: Option[Map[String, String]],
         failureReason: Option[String],
-        //jobArn: String,
         numSuccessfulShots: Int,
         outputS3Bucket: Option[String],
         outputS3Directory: Option[String],
@@ -149,13 +148,6 @@ object Braket{
         executableCount: Int,
         programCount: Int
     )
-
-
-//    "experimentalCapabilities": { ... },
-//    "tags": { 
-//       "string" : "string" 
-//    }
-
 
     @derive(decoder, encoder, eqv, show)
     case class DeviceCapabilities(

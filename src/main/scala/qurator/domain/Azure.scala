@@ -51,7 +51,7 @@ object Azure{
             d.targets.map(t => 
                 DeviceQueueInformationCreate(
                     name = t.id,
-                    provider = stringToDeviceProvider(d.id.toUpperCase()),  //this is terrible, find a better solution
+                    provider = stringToDeviceProvider(d.id.toUpperCase()),  
                     queueLength = 0, //sadly they don't give us number of jobs 
                     waitTimeAvg = Some(t.averageQueueTime),
                     waitTimep50 = None,
@@ -60,11 +60,6 @@ object Azure{
                 )
             )
         )
-
-    // Available Target is available
-    // Degraded  Target is available with degraded experience.
-    // Unavailable	Target is unavailable.
-    
 
     @derive(decoder, encoder, eqv, show)
     case class AzureJobCreateRequest(
@@ -75,9 +70,7 @@ object Azure{
         target: String,
         inputDataFormat: Option[String] = None,
         inputDataUri: Option[String] = None,
-        //inputParams: Option[Map[String, String]] = None, //TODO: Not supported yet
         jobType: Option[String] = None, //Unknown, QuantumComputing, Optimization 
-        //metadata: Option[Map[String, String]] = None, //TODO: Not supported yet
         outputDataFormat: Option[String] = None,
         outputDataUri: Option[String] = None,
         priority: Option[Int] = None, //Standard, High
@@ -93,14 +86,11 @@ object Azure{
         costEstimate: Option[CostEstimate],
         creationTime: String,
         endExecutionTime: Option[String],
-        //errorData: Option[WorkspaceItemError],
         id: String,
         inputDataFormat: Option[String], // It seems the most general we can go is "qir.v1". Some providers like quantinuum support "oneywell.openqasm.v1" but that isn't enough. I.e. doesn't seem like Pasqal does. It requires "pasqal.pulser.v1"
         inputDataUri: Option[String],
-       //inputParams: Option[String],
         itemType: String,
         jobType: String, //Unknown, QuantumComputing, Optimization 
-        //metadata: Option[String],
         name: String,
         outputDataFormat: Option[String],
         outputDataUri: Option[String],
@@ -111,7 +101,6 @@ object Azure{
         status: String, // Executing, Succeeded, Failed, Canceled, Waiting
         tags: Option[List[String]],
         target: String,
-        //usage: Option[String]
     )
 
     @derive(decoder, encoder, eqv, show)

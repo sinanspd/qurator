@@ -56,7 +56,7 @@ object Scheduler{
         cuttingStrategy: (Circuit, List[Device]) => F[List[Circuit]],
         targetEstimatedFidelity: Double, 
         additionalOptimizationRuns: Circuit => List[Circuit],
-        compiler: FakeCompiler[F] //abstract this
+        compiler: FakeCompiler[F] 
   ): F[Scheduler[F]] =
     for {
       readyTasks     <- Ref.of[F, List[Task]](List.empty)
@@ -70,28 +70,6 @@ object Scheduler{
     } yield new Scheduler[F] {
 
         private val idleDelay: FiniteDuration = 250.millis
-
-
-        //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
-        //TODO: Loop back actual job data 
-        //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO Merge Cut Task Results 
-        //TODO for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
-        //TODO consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
-        //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
-        //TODO batch submissions 
-        /////////////////////////////////////////////// NOT ADDRESSING NOW ////////////////////////////////////////////
-        //TODO: Cutting/commuting circuits concerns me. Generating the alternative programs can be very time intensive (indeed classical processing part of circuit cutting is known to be heavy work). This could do more harm than good. One possibility is to look for emerging patterns. Maybe we don't need to know the exact circuit to estimate the cut/commuted programs. For example, an oracle can depend on a runtime variable, however I don't need to know the exact oracle to know that measurement will commute over it as it encodes classical logic. If static program analysis can detect these patterns, we can do look-ahead cutting and start the program generation at idle time (i.e. while waiting for the dependencies to resolve) 
-        //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
-        //TODO Fall back to other devices on failure (maybe after expontential backoff ?)
-        //TODO think about reservations?? 
-        //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
-        //TODO: I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
-        //TODO: We need to move some of the logic to supervisor so that the scheduler keeps running on error 
-        //TODO: Stronger topology mapping 
-        //TODO: Is it possible to network topology into account? 
-
-
         private val mergeEnabled: Boolean = true
         private val mergeMaxQubits: Int = 10
         private val mergeQueueFactorMillis: Long = 3000L
@@ -124,13 +102,13 @@ object Scheduler{
                 }
             })
 
-        private def submitNewTaskRequest(taskReq: NewQuantumTaskRequest): F[List[TaskId]] =  // TST
+        private def submitNewTaskRequest(taskReq: NewQuantumTaskRequest): F[List[TaskId]] =  
              for{
                 devices <- Scheduler.getAvailableDevices[F](clients)
                 needsToBeCut <- requiresCutting(taskReq, devices)
                 _ <- Logger[F].info(s"Processing New Quantum Task With ${taskReq.qubits} Qubits, it requries cutting?: $needsToBeCut")
                 tids <- 
-                    if(needsToBeCut){ //TODO: Think this through carefully. I am not convinced this is the right place to cut. 
+                    if(needsToBeCut){
                         for {
                             cut <- cuttingStrategy(taskReq.circuit, devices)
                             _ <- Logger[F].info(s"Cut length ${cut.length}")
@@ -182,7 +160,7 @@ object Scheduler{
                     }
             } yield tids 
 
-        private def submitSynronizedTaskRequest(str: SynronizedQuantumTaskRequest): F[List[TaskId]] =  // TST
+        private def submitSynronizedTaskRequest(str: SynronizedQuantumTaskRequest): F[List[TaskId]] =  
             for{
                 devices <- Scheduler.getAvailableDevices[F](clients)
                 cutTasks <- 
@@ -313,7 +291,7 @@ object Scheduler{
                         _ <- Logger[F].info(s"Picked Device Coefficient: $best")
                         (bestDevice, _, _, _, _) = best
 
-                        // compiled <- ???
+                        // compiled 
 
                         jobId <- submitQuantumToProvider(bestDevice, task, task.circuit)
                         _ <- submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(bestDevice.platformId, task.circuit)))
@@ -334,8 +312,8 @@ object Scheduler{
 
             case "Braket" =>
                 for {
-                    token <- UUID.randomUUID().toString.pure[F] //not needed for tests, will wire later
-                    qasmSource = "" //not needed for tests, will wire later
+                    token <- UUID.randomUUID().toString.pure[F]
+                    qasmSource = "" //not needed for benchmarks, will wire later
                     req = BraketCreateQuantumTaskRequest(
                         action = "braket.ir.openqasm.program",
                         associations = None,
@@ -348,7 +326,7 @@ object Scheduler{
                     resp <- clients.braket.submitBraketOpenQasmTask(req, qasmSource)
                 } yield resp.quantumTaskArn
 
-            case "IBM" => // To Fix
+            case "IBM" => 
                 val req = 
                      SubmitJobRequestV2(
                         "sampler",
@@ -361,7 +339,7 @@ object Scheduler{
                         None,
                         SamplerV2Input(
                             pubs = List(
-                                "" //transform to qasm here
+                                "" 
                             )
                         )
                     )
@@ -404,7 +382,6 @@ object Scheduler{
                 _ <- Logger[F].info(s"Built Sync Plan. Plan Length: ${plan.assignments.toList.length}")
                 _ <- plan.assignments.toList.traverse_{case (device, tasksOnDevice) => 
                   tasksOnDevice.traverse_{t => 
-                    //submitJobWithFallback(device, t, candidateDevicesByTask.getOrElse(t, Nil))  
                     submitQuantumToProvider(device, t, t.circuit).flatMap { jobId =>
                         Logger[F].info(s"Task ${t.uuid} submitted, adding to list") *>
                         submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(device.platformId, t.circuit))) *>
@@ -458,7 +435,6 @@ object Scheduler{
                 _ <- readyTasks.update(_ ++ promotable)
             } yield ()
         
-        //TODO: On Failure of job this needs to reschedule 
         private def fetchResultsFromCorrespondingProvider(
             provider: String,
             providerId: String,
@@ -505,23 +481,14 @@ object Scheduler{
                 case "IBM" => 
                     val action = Retry[F]
                         .retry(retryPolicy)(clients.ibm.submitJob(task.toIBM) *> Logger[F].info("Submitted Task to IBM"))
-                        // .adaptError {
-                        //     case e => () //TODO: fallback to another device here 
-                        // }
                     bgAction(action)
                 case "Braket" => 
                     val action = Retry[F]
                         .retry(retryPolicy)(clients.braket.submitBraketOpenQasmTask(task.toBraket, task.circuit.toQasm) *> Logger[F].info("Submitted Task to IBM"))
-                        // .adaptError {
-                        //     case e => ()
-                        // }
                     bgAction(action)
                 case "Azure" => 
                     val action = Retry[F]
                         .retry(retryPolicy)(clients.azure.submitJob(task.uuid.value.toString, task.toAzure) *> Logger[F].info("Submitted Task to IBM"))
-                        // .adaptError {
-                        //     case e => ()
-                        // }
                     bgAction(action)
             }
         }
@@ -791,7 +758,7 @@ object Scheduler{
                 .filter(_.qubits >= task.qubits.value)
                 .traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler))
                 .map(lf => {
-                    val x = lf.filter(_.pTotal > targetEstimatedFidelity)   //_.logPTotal > math.log(targetEstimatedFidelity))
+                    val x = lf.filter(_.pTotal > targetEstimatedFidelity)   
                     println(s"========== HERE: ${math.log(targetEstimatedFidelity)} ========") 
                     println(x.mkString(", "))
                     x.isEmpty
@@ -875,8 +842,6 @@ object Scheduler{
         // not used
         private def estimateTranspilationTime(circuit: Circuit, targetGateSet: List[Gate]) : F[Long] = 
             (circuit.remainingGates.length / 1000000L).pure[F] 
-            // This is very dumb and will likely get removed. 
-            // We need to transpile to decide on other factors anyway so accounting for potential transpilation not needed
 
         private def enqueueReady(newTasks: List[Task]): F[Unit] =
             readyTasks.update(ts => prioritizationStrategy(newTasks ++ ts))
@@ -887,7 +852,6 @@ object Scheduler{
         private def fakeClassicalTaskScheduler(ct: ClassicalTask): F[Unit] = {
             val computationTime = 500 + Random.nextInt(1500)
             Temporal[F].sleep(computationTime.millis) *> 
-            // Logger[F].info(s"Ran Classical Task, tid: ${ct.uuid}") *>
             markCompleted(ct.uuid, s"Result of classical task ${ct.uuid.value}")
         }
 
@@ -965,7 +929,7 @@ object Scheduler{
                     assignToFinalBuckets(
                         bucket = bucket,
                         capacity = maxQubits, 
-                        maxTasksPerBin = 3 //fix this, obv shouldn't be constant
+                        maxTasksPerBin = 3 
                     )
                 }
                 merged <- groups.traverse(g => Scheduler.flattenGroup(g, devices, clients, compiler, targetEstimatedFidelity))
@@ -1085,7 +1049,7 @@ object Scheduler{
                     case SX(q) => SX(q + offset)
                     case Measure(q) => Measure(q + offset)
                 }
-                Circuit(acc.remainingGates ++ shiftedGates, acc.qubits + b.qubits) //TODO: Update this to merge gates based on slices 
+                Circuit(acc.remainingGates ++ shiftedGates, acc.qubits + b.qubits) 
             }}  
 
             private[qurator] def estimateFidelity[F[_]: Monad](
@@ -1099,10 +1063,6 @@ object Scheduler{
                     cal = FidelityEstimator.normalizeCalibration(deviceCal)
                     est = FidelityEstimator.score(compiled, cal)
                 } yield est
-
-            // Circuit Depth, Avg. CX error over the circuit, Avg CX in the circuit critical path, readout errors on the measured qubits. 
-            //The model is built as a product of linear terms: Fn =
-            //Π(ai + bi ∗ xi), where Fn is the fidelity of job n, xi is the feature and ai and bi are the tuned coefficient ??
 
             private def fetchDeviceCalibration[F[_]: Monad](device: Device, clients: HttpClients[F]): F[DeviceCalibration] = device.platform match {
                 case "IBM" => clients.ibm.fetchDeviceCalibration(device.platformId)

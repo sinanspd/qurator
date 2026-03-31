@@ -301,14 +301,6 @@ object BenchmarkDeviceRegistry {
                     q1fidelity = 99.296,
                     q2fidelity = 99.884, 
                     readoutFidelity = 97.940
-                    // typicalDetectionFalsePositive = 0.02,
-                    // typicalDetectionFalseNegative = 0.03,
-                    // typicalVacancyError = Some(0.04),
-                    // typicalFillingError = None,
-                    // typicalAtomLossProbability = Some(0.03),
-                    // t1SingleSec = Some(7.0),
-                    // t2EchoSingleSec = Some(4.0),
-                    // t2SingleSec = Some(3.5)
                 ),
             "braket-aqt-ibex-q1" -> //
                 AQTCalibration(
@@ -868,7 +860,6 @@ object SchedulerBenchmarkRunner {
             _ <- Logger[IO].info(s"Loaded ${report.size} task(s)")
             _ <- Logger[IO].info("Starting Scheduler Benchmark")
             quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _, clients, compiler, 0.9, cuttingStrategy, (c: Circuit) => List(c))).map(_.flatten)
-            // _ <- Logger[IO].info(s"QuantumIds: ${quantumIdPairs.mkString(", ")}")
             specById = quantumIdPairs.toMap
             expectedIds = quantumIdPairs.map(_._1).toSet
             submitted <- waitUntilAllSubmitted(scheduler, registry, expectedIds, pollEvery)

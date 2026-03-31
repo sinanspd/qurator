@@ -1,0 +1,13 @@
+numpy
+qiskit[qasm3-import]
+matplotlib
+pydot
+scipy
+tqdm
+pylatexenc
+scikit-learn
+tensorflow
+networkx
+gurobipy
+psutil
+qiskit-aer

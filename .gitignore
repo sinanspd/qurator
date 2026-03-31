@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+CutQC/
+mqt/ 
+
 # sbt specific
 dist/*
 target/

@@ -57,7 +57,7 @@ object IBM{
                 queueLength = queue_length,
                 t1 = 0,
                 t2 = 0,
-                gateSet = List.empty
+                gateSet = List.empty // TODO, need fixing
             )
     }
 
@@ -128,7 +128,7 @@ object IBM{
     @derive(decoder, encoder, eqv, show)
     case class JobTimeStamps(
         created: String,
-        finished: Option[String], 
+        finished: Option[String], // Do these Option just to be safe, what happens if the job fails?? 
         running: Option[String]
     )
     
@@ -150,6 +150,8 @@ object IBM{
         backend: String,
         state: JobState, // "Queued", "Running", "Completed","Cancelled", "Failed"
         status: String, // "Queued", "Running", "Completed","Cancelled", "Failed"
+        //params: Map[String, String], //TODO:  Don't Parse this for now 
+        //program: Map[String, String], //TODO:  Don't Parse this for now 
         created: String,
         program: JobProgram,
         runtime: Option[String],
@@ -161,6 +163,21 @@ object IBM{
         estimated_running_time_seconds: Option[Double],
         calibration_id: Option[String]
     )   
+
+//     "usage": {
+//       "title": "Usage",
+//       "description": "usage metrics",
+//       "type": "object",
+//       "properties": {
+//         "seconds": {
+//           "type": "number",
+//           "description": "Number of seconds of Qiskit Runtime usage including quantum compute and near-time classical pre- and post-processing"
+//         }
+//       },
+//       "required": [
+//         "seconds"
+//       ]
+//     },
 
     @derive(decoder, encoder, eqv, show)
     case class JobState(
@@ -199,7 +216,8 @@ object IBM{
 
     @derive(decoder, encoder, eqv, show)
     case class SamplerV2Input(
-        pubs: List[String],
+        pubs: List[String],//List[SamplerV2PUB],
+        //options: Option[SamplerV2Options], // TODO: Not supported yet 
         shots: Option[Int] = None,
         support_qiskit: Option[Boolean] = None,
         version: Int = 2
@@ -208,6 +226,107 @@ object IBM{
     @derive(decoder, encoder, eqv, show)
     case class SamplerV2PUB(
         circuit: String,
+        // parameters: Option[Map[String, Double]], // TODO: Not supported yet 
         shots: Option[Int]
-    )    
+    )
+
+    // case class SamplerV2Options(
+    //     default_shots: Option[Int],
+    //     dynamical_decoupling: Option[DynamicalDecouplingOptions],
+    //     execution: Option[SamplerV2ExecutionOptions],
+    //     twirling: Option[TwirlingOptions],
+    //     simulator: Option[SimulatorOptions],
+    //     experimental: Option[Map[String, String]]
+    // )
+
+    // case class DynamicalDecouplingOptions(
+    //     enable: Option[Boolean],
+    //     sequence_type: Option[String],
+    //     extra_slack_distribution: Option[String],
+    //     scheduling_method: Option[String], //TODO: This might become relevant 
+    //     skip_reset_qubits: Option[Boolean]
+    // )
+
+    // case class SamplerV2ExecutionOptions(
+    //     init_qubits: Option[Boolean],
+    //     rep_delay: Option[Double], //TODO: This might become relevant 
+    //     meas_type: Option[String]
+    // )
+
+    // case class TwirlingOptions(
+    //     enable_gates: Option[Boolean],
+    //     enable_measure: Option[Boolean],
+    //     num_randomizations: Option[Either[Int, String]],
+    //     shots_per_randomization: Option[Either[Int, String]],
+    //     strategy: Option[String]
+    // )
+    
+    // case class SimulatorOptions(
+    //     noise_model: Option[Map[String, String]],
+    //     seed_simulator: Option[Int],
+    //     coupling_map: Option[List[Int]],
+    //     basis_gates: Option[List[Option[String]]]
+    // )
+
+    // case class EstimatorV2Input(
+    //     pubs: List[EstimatorV2PUB],
+    //     options: Option[EstimatorV2Options],
+    //     shots: Option[Int],
+    //     support_qiskit: Option[Boolean],
+    //     version: Int = 2
+    // )
+
+    // case class EstimatorV2PUB(
+    //     circuit: String,
+    //     observables: Either[String, List[String]],
+    //     parameters: Option[Map[String, Double]],
+    //     precision: Option[Double]
+    // )
+
+    // case class EstimatorV2Options(
+    //     seed_estimator: Option[Int],
+    //     default_precision: Option[Double],
+    //     default_shots: Option[Int],
+    //     dynamical_decoupling: Option[DynamicalDecouplingOptions],
+    //     resilience: Option[ResilienceOptions],
+    //     execution: Option[EstimatorV2ExecutionOptions]
+    // )
+
+    // case class ResilienceOptions(
+    //     measure_mitigation: Option[Boolean],
+    //     measure_noise_learning: Option[MeasureNoiseLearningOptions],
+    //     zne_mitigation: Option[Boolean],
+    //     zne: Option[ZNEOptions],
+    //     pec_mitigation: Option[Boolean],
+    //     pec: Option[PECOptions],
+    //     layer_noise_learning: Option[LayerNoiseLearningOptions]
+    // )
+
+    // case class LayerNoiseLearningOptions(
+
+    // )
+
+    // case class EstimatorV2ExecutionOptions(
+    //     init_qubits: Option[Boolean],
+    //     rep_delay: Option[Double],
+    //     meas_type: Option[String]
+    // )
+
+    // case class MeasureNoiseLearningOptions(
+    //     num_randomizations: Option[Int],
+    //     shots_per_randomization: Option[Either[Int, String]]
+    // )
+
+    // case class ZNEOptions(
+    //     noise_factors: Option[List[Double]],
+    //     extrapolator: Option[Either[List[String], String]],
+    //     amplifier: Option[String],
+    //     extrapolated_noise_factors: Option[List[Double]]
+    // )
+
+    // case class PECOptions(
+    //     max_overhead: Option[Either[Double, String]],
+    //     noise_gain: Option[Either[Double, String]]
+    // )
+    
 }

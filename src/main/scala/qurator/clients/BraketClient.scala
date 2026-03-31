@@ -41,6 +41,7 @@ trait BraketClient[F[_]] {
   def fetchDeviceList: F[BraketDeviceListResponse]
   def fetchDeviceDetails(ids: List[String]): F[List[BraketDeviceDetailsResponse]]
   def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): F[BraketCreateQuantumTaskResponse] 
+  // ^ TODO: This needs to be fixed so that the qasm source can be fetched from the request. Need to confirm the Braker IR first 
   def getQuantumTask(taskId: String) : F[BraketQuantumTaskResponse]
   def fetchDeviceCalibration(deviceArn: String): F[DeviceCalibration]
 }
@@ -182,6 +183,10 @@ object BraketClient {
             )
 
              val clientToken = id.value.toString
+
+             
+
+            // This must be serialized as a *string* into the action field
              val actionString: String = oProg.asJson.noSpaces
 
              val reqBody = BraketCreateQuantumTaskRequest(
@@ -196,7 +201,7 @@ object BraketClient {
                 shots             = r.shots,
              )
 
-            val payload    = reqBody.toString.getBytes(StandardCharsets.UTF_8) 
+            val payload    = reqBody.toString.getBytes(StandardCharsets.UTF_8) //  THIS ISNT GOOD
 
             val host         = s"braket.us-east-1.amazonaws.com"   
             val canonicalUri = "/quantum-task"

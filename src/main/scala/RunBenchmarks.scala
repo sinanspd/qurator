@@ -147,7 +147,7 @@ object RunBenchmarks extends IOApp.Simple {
                                 dataPersistanceService = persistanceService,
                                 clients = clients,
                                 prioritizationStrategy = (a: List[Task]) => a,
-                                cuttingStrategy = dummyBackUpCutter, 
+                                cuttingStrategy = dummyBackUpCutter, //CuttingStrategies.cutQC[IO](cutqcClient),
                                 targetEstimatedFidelity = 0.9,
                                 additionalOptimizationRuns = (c: Circuit) => List(c),
                                 compiler = compiler

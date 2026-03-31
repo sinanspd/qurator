@@ -44,7 +44,7 @@ object Task{
     
     case class ClassicalTask(
        uuid: TaskId,
-       program: Any,
+       program: Any, //TODO: Fix This 
        parentTasks: List[TaskId],
        childTasks: List[TaskId],
        createdAt: LocalDateTime
@@ -74,7 +74,7 @@ object Task{
     case class SynronizedQuantumTaskRequest(l: List[NewQuantumTaskRequest], t1Budget: Long, cut: Boolean = false) extends TaskRequest
 
     case class NewClassicalTaskRequest(
-       program: Any, 
+       program: Any, //TODO: Fix This 
        parentTasks: List[TaskId],
        childTasks: List[TaskId],
        createdAt: LocalDateTime

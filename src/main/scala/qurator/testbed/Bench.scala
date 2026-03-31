@@ -301,14 +301,6 @@ object BenchmarkDeviceRegistry {
                     q1fidelity = 99.296,
                     q2fidelity = 99.884, 
                     readoutFidelity = 97.940
-                    // typicalDetectionFalsePositive = 0.02,
-                    // typicalDetectionFalseNegative = 0.03,
-                    // typicalVacancyError = Some(0.04),
-                    // typicalFillingError = None,
-                    // typicalAtomLossProbability = Some(0.03),
-                    // t1SingleSec = Some(7.0),
-                    // t2EchoSingleSec = Some(4.0),
-                    // t2SingleSec = Some(3.5)
                 ),
             "braket-aqt-ibex-q1" -> //
                 AQTCalibration(

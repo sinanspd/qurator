@@ -137,38 +137,6 @@ object FidelityEstimator{
 
                 initSurvivalPerQubit = None
             )
-            // val fp = a.typicalDetectionFalsePositive
-            // val fn = a.typicalDetectionFalseNegative
-            // val readoutFid = 1.0 - (fp + fn) / 2.0
-            // val vacancy = a.typicalVacancyError.orElse(a.typicalFillingError).getOrElse(Double.NaN)
-            // val pOccupied = if (vacancy.isFinite) 1.0 - vacancy else Double.NaN
-            // val loss = a.typicalAtomLossProbability.getOrElse(Double.NaN)
-            // val pSurvive = if (loss.isFinite) 1.0 - loss else Double.NaN
-            // val initSurvivalPerQubit =
-            //     if (pOccupied.isFinite && pSurvive.isFinite) Some(pOccupied * pSurvive)
-            //     else if (pOccupied.isFinite) Some(pOccupied)
-            //     else if (pSurvive.isFinite) Some(pSurvive)
-            //     else None
-            // val t1Avg = a.t1SingleSec
-            // val t2Avg = a.t2EchoSingleSec.orElse(a.t2SingleSec)
-            // CanonicalCalibration(
-            //     eps1q = Map.empty,
-            //     eps2q = Map.empty,
-            //     eps1qAvg = None,                
-            //     eps2qAvg = None,
-            //     readoutFidelity = Map.empty,
-            //     readoutFidelityAvg = Some(readoutFid),
-            //     t1 = Map.empty,
-            //     t2 = Map.empty,
-            //     t1Avg = t1Avg,
-            //     t2Avg = t2Avg,
-            //     dur1qNs = Map.empty,
-            //     dur2qNs = Map.empty,
-            //     durMeasNs = None,
-            //     dur1qAvgNs = None,
-            //     dur2qAvgNs = None,
-            //     initSurvivalPerQubit = initSurvivalPerQubit
-            // )
 
         case a : QuEraCalibration =>
             val fp = a.typicalDetectionFalsePositive
@@ -256,7 +224,7 @@ object FidelityEstimator{
 
             ops.foreach {
                 case a @ (X(_) | H(_) | Measure(_) | RX(_, _) | RZ(_ ,_) | SX(_) | RY(_, _)) =>
-                    val q = a match { // this is dumb but oh well
+                    val q = a match { 
                         case X(q)       => q
                         case H(q)       => q
                         case SX(q) => q
@@ -293,7 +261,7 @@ object FidelityEstimator{
 
             val mqubit = compiled.remainingGates.map{
                 case a @ (X(_) | H(_) | Measure(_) | RX(_, _) | RZ(_ ,_) | SX(_) | RY(_, _)) =>
-                    val q = a match { // this is dumb but oh well
+                    val q = a match {
                         case X(q)       => q
                         case H(q)       => q
                         case SX(q) => q

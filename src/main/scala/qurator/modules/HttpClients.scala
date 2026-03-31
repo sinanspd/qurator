@@ -22,7 +22,6 @@ object HttpClients {
         def azure: AzureQuantumClient[F] = AzureQuantumClient.make[F](cfg.azureConfig, client)  
     }
 
-  //only to be used by tests, we will eventually switch to mock routes and remove this. Don't use elsewhere. 
   private[qurator] def fromParts[F[_]](
       ibm0: IBMClient[F],
       braket0: BraketClient[F],

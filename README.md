@@ -15,6 +15,8 @@ export AZURE_SUB_ID=${YOUR_AZURE_SUB_ID}
 export AZURE_WORKSPACE=${YOUR_AZURE_WORKSPACE}
 ```
 
+If you are running locally on the testbed, these values can be dummy values but they do need to exist. 
+
 2. Run POSTGRES Locally and export your password
 
 export SC_POSTGRES_PASSWORD=${SC_POSTGRES_PASSWORD}

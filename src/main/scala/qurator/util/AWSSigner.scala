@@ -82,7 +82,6 @@ object AWSSigner {
 
     val payloadHash = payload 
 
-    // In a momentary lapse of all reason, Amazon decided that ARNs should be double encoded
     val canonicalPath  = if(rawPath != ""){basePath + "/" + canonicalizePath(canonicalizePath(rawPath))}else{basePath}
     val canonicalQuery = ""                        //Not used but still need to be signed unfortunately
 

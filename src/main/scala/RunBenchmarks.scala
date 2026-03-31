@@ -147,7 +147,7 @@ object RunBenchmarks extends IOApp.Simple {
                                 dataPersistanceService = persistanceService,
                                 clients = clients,
                                 prioritizationStrategy = (a: List[Task]) => a,
-                                cuttingStrategy = dummyBackUpCutter, //CuttingStrategies.cutQC[IO](cutqcClient),
+                                cuttingStrategy = dummyBackUpCutter,
                                 targetEstimatedFidelity = 0.9,
                                 additionalOptimizationRuns = (c: Circuit) => List(c),
                                 compiler = compiler
@@ -156,7 +156,7 @@ object RunBenchmarks extends IOApp.Simple {
 
                     for{
                         loaded <- WorkloadSpecs.loadedTasks
-                        loadedFiltered = loaded.filter(t => t.qubits.value <= 5) // && t.qubits.value >= 21 )
+                        loadedFiltered = loaded.filter(t => t.qubits.value <= 5) 
                         specs <- WorkloadSpecs.sample(n = 10, seed = 42L, T = loadedFiltered)
                         (reg1, cl1, co1, sch1) <- mkEnv(42L) //reinit so that the queue isn't tainted 
                         schedRun <- Logger[IO].info("Running Scheduler Benchmarks") *>

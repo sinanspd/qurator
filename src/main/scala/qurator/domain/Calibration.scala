@@ -56,14 +56,6 @@ object calibration {
         q1fidelity: Double,
         q2fidelity: Double, 
         readoutFidelity: Double
-        // typicalDetectionFalsePositive: Double,
-        // typicalDetectionFalseNegative: Double,
-        // typicalVacancyError: Option[Double],     
-        // typicalFillingError: Option[Double],       
-        // typicalAtomLossProbability: Option[Double],
-        // t1SingleSec: Option[Double],
-        // t2EchoSingleSec: Option[Double],
-        // t2SingleSec: Option[Double]
     ) extends DeviceCalibration
 
     case class QuEraCalibration(
@@ -112,7 +104,7 @@ object calibration {
         def epsFor(op: Gate): Double =
             op match {
                 case a @ (X(_) | H(_) | RX(_, _) | RZ(_, _))  =>
-                    val (q, g) = a match { // this is dumb but oh well
+                    val (q, g) = a match { 
                         case X(q)       => (q, "X")
                         case H(q)       => (q, "H")
                         case RX(_, q)   => (q, "RX")
@@ -120,7 +112,7 @@ object calibration {
                     }
                     eps1q.get((q, g))
                     .orElse(eps1qAvg)
-                    .getOrElse(0.0) //TODO: Should we have a better default value here? 
+                    .getOrElse(0.0)
 
                 case a @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRZ(_, _, _)) =>
                     val (a, b, g) = op match{

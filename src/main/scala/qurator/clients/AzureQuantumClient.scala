@@ -33,7 +33,6 @@ import qurator.domain.Azure._
 import qurator.domain.calibration._
 
 trait AzureQuantumClient[F[_]] {
-   //def fetchBearerToken: F[String] //This is more secure but requires tremendous setup in Azure. Implement later.
    def fetchDeviceInformation: F[AzureDeviceStatusResponse]
    def submitJob(jobId: String, jobRequest: AzureJobCreateRequest): F[AzureJobResponse]
    def getQuantumTask(jobId: String): F[AzureJobResponse]

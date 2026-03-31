@@ -19,9 +19,8 @@ object CuttingStrategies {
         Logger[F].info(s"$circuit") *>
         client.cut(CutRequest(
             circuit = circuit.toQasm,
-            // TODO: Come up with better heuristics for these constraints
-            max_cuts = 5, //circuit.qubits,
-            max_subcircuits = 3,//circuit.qubits,
+            max_cuts = 5,
+            max_subcircuits = 3,
             max_subcircuit_width = devices.map(d => d.qubits).max,
             subcircuit_size_imbalance = 2.0
         )).map { r =>

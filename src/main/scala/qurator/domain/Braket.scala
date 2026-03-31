@@ -150,13 +150,6 @@ object Braket{
         programCount: Int
     )
 
-
-//    "experimentalCapabilities": { ... },
-//    "tags": { 
-//       "string" : "string" 
-//    }
-
-
     @derive(decoder, encoder, eqv, show)
     case class DeviceCapabilities(
         service: DeviceCapabilitiesService, 

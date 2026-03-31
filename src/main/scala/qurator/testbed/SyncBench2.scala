@@ -535,10 +535,6 @@ private def waitUntilAllSubmitted(
                 }
 
             val remaining = expectedIds.diff(mergedSeen.keySet)
-
-            // Logger[IO].info(
-            //     s"Waiting For All Submitted To Finish. Seen=${mergedSeen.keySet.size}/${expectedIds.size}. Remaining=${remaining.mkString(", ")}"
-            // ) *>
             (
                 if (remaining.isEmpty) mergedSeen.values.toList.pure[IO]
                 else Temporal[IO].sleep(pollEvery) *> loop(mergedSeen)

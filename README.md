@@ -21,12 +21,14 @@ If you are running locally on the testbed, these values can be dummy values but 
 
 export SC_POSTGRES_PASSWORD=${SC_POSTGRES_PASSWORD}
 
-3. If you are going to be using CutQC as the cutter, initilize a virtual env under ./CutQC and run 
+3. Download the [MQT dataset](https://www.cda.cit.tum.de/mqtbench/) and place the QASM files under a folder named `mqt` in the project root directory 
+
+4. If you are going to be using CutQC as the cutter, initilize a virtual env under ./CutQC and run 
 
 `pip install -r requirements.txt`
 `python server.py` 
 
-4. `sbt run` and select the benchmarks you like to perform 
+5. `sbt run` and select the benchmarks you like to perform 
 
 The scheduler itself can be found at `src/main/scala/qurator/programs/Scheduler.scala` 
 

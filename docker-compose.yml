@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: sc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SC_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: qure
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: qure-app
+    depends_on:
+      - postgres
+    environment:
+      IBM_INSTANCE_ID: ${IBM_INSTANCE_ID:-}
+      IBM_API_KEY: ${IBM_API_KEY:-}
+      AWS_ACCESS_ID: ${AWS_ACCESS_ID:-}
+      AWS_API_SECRET: ${AWS_API_SECRET:-}
+      AZURE_QUANTUM_API_KEY: ${AZURE_QUANTUM_API_KEY:-}
+      AZURE_RESOURCE_GROUP: ${AZURE_RESOURCE_GROUP:-}
+      AZURE_SUB_ID: ${AZURE_SUB_ID:-}
+      AZURE_WORKSPACE: ${AZURE_WORKSPACE:-}
+      SC_POSTGRES_PASSWORD: ${SC_POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:

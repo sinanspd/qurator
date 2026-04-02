@@ -89,9 +89,9 @@ ThisBuild / assemblyMergeStrategy in assembly := {
 lazy val root = project
   .in(file("."))
   .settings(
-    assembly / mainClass := Some("qurator.DataPersitance"),
+    assembly / mainClass := Some("RunBenchmarks"),
     name := "qure",
-    organization := "com.sinanspd", 
+    organization := "anon", 
     scalacOptions ++= List("-Ymacro-annotations", "-Yrangepos", "-Wconf:cat=unused:info"),
     version := "0.1.20-SNAPSHOT",
     crossScalaVersions := Seq("2.12.10"),

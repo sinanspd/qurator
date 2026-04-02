@@ -1,6 +1,14 @@
 Heuristic hybrid classical-quantum task scheduler 
 
-Heuristic hybrid classical-quantum task scheduler. In order to run:
+For a quick demonstration with sample data consisting of small circuits, we provide a docker image. First install sbt if you haven't already and create a FAT Jar with
+
+`sbt assembly`
+
+Then you can run 
+
+`docker compose up --build` to observe the output. 
+
+In order to larger tests and production code:
 
 1. Set up your cloud accounts and add the corresponding values to your env
 
@@ -19,7 +27,7 @@ If you are running locally on the testbed, these values can be dummy values but 
 
 2. Run POSTGRES Locally and export your password
 
-export SC_POSTGRES_PASSWORD=${SC_POSTGRES_PASSWORD}
+`export SC_POSTGRES_PASSWORD=${SC_POSTGRES_PASSWORD}`
 
 3. Download the [MQT dataset](https://www.cda.cit.tum.de/mqtbench/) and place the QASM files under a folder named `mqt` in the project root directory 
 

@@ -8,7 +8,7 @@ Then you can run
 
 `docker compose up --build` to observe the output. 
 
-In order to larger tests and production code:
+In order to run larger tests and production code:
 
 1. Set up your cloud accounts and add the corresponding values to your env
 

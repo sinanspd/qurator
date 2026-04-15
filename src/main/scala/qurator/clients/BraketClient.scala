@@ -41,7 +41,6 @@ trait BraketClient[F[_]] {
   def fetchDeviceList: F[BraketDeviceListResponse]
   def fetchDeviceDetails(ids: List[String]): F[List[BraketDeviceDetailsResponse]]
   def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): F[BraketCreateQuantumTaskResponse] 
-  // ^ TODO: This needs to be fixed so that the qasm source can be fetched from the request. Need to confirm the Braker IR first 
   def getQuantumTask(taskId: String) : F[BraketQuantumTaskResponse]
   def fetchDeviceCalibration(deviceArn: String): F[DeviceCalibration]
 }

@@ -3,6 +3,7 @@
 
 CutQC/
 mqt/ 
+src/main/scala/Trial.scala
 
 # sbt specific
 dist/*

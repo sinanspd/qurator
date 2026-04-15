@@ -73,23 +73,26 @@ object Scheduler{
 
 
         //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
-        //TODO: Loop back actual job data 
-        //TODO: Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+        //TODO Loop back actual job data 
+        //TODO Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
         //TODO Merge Cut Task Results 
         //TODO for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
         //TODO consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
         //TODO batch submissions 
+        //TODO Is anything from Q-Dream useful?? 
+        //TODO Is anything from Qonductor useful?? 
+         //TODO Is anything from Pilot-Quantum useful?? 
         /////////////////////////////////////////////// NOT ADDRESSING NOW ////////////////////////////////////////////
-        //TODO: Cutting/commuting circuits concerns me. Generating the alternative programs can be very time intensive (indeed classical processing part of circuit cutting is known to be heavy work). This could do more harm than good. One possibility is to look for emerging patterns. Maybe we don't need to know the exact circuit to estimate the cut/commuted programs. For example, an oracle can depend on a runtime variable, however I don't need to know the exact oracle to know that measurement will commute over it as it encodes classical logic. If static program analysis can detect these patterns, we can do look-ahead cutting and start the program generation at idle time (i.e. while waiting for the dependencies to resolve) 
+        //TODO Cutting/commuting circuits concerns me. Generating the alternative programs can be very time intensive (indeed classical processing part of circuit cutting is known to be heavy work). This could do more harm than good. One possibility is to look for emerging patterns. Maybe we don't need to know the exact circuit to estimate the cut/commuted programs. For example, an oracle can depend on a runtime variable, however I don't need to know the exact oracle to know that measurement will commute over it as it encodes classical logic. If static program analysis can detect these patterns, we can do look-ahead cutting and start the program generation at idle time (i.e. while waiting for the dependencies to resolve) 
         //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
         //TODO Fall back to other devices on failure (maybe after expontential backoff ?)
-        //TODO think about reservations?? 
         //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
-        //TODO: I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
-        //TODO: We need to move some of the logic to supervisor so that the scheduler keeps running on error 
-        //TODO: Stronger topology mapping 
-        //TODO: Is it possible to network topology into account? 
+        //TODO I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
+        //TODO We need to move some of the logic to supervisor so that the scheduler keeps running on error 
+        //TODO Stronger topology mapping 
+        //TODO Is it possible to network topology into account? 
+        //TODO UI 
 
 
         private val mergeEnabled: Boolean = true
@@ -447,7 +450,7 @@ object Scheduler{
                         )
                 }
                 rs <- results.get
-                //_ <- submittedTasks.update(_.filterNot { case (_, _, _, tid) => rs.contains(tid) }) //TODO: Uncomment this later when you find a fix for benchmark suite
+                //_ <- submittedTasks.update(_.filterNot { case (_, _, _, tid) => rs.contains(tid) }) //TODO Uncomment this later when you find a fix for benchmark suite
 
                 promotable <- pendingTasks.modify { ps =>
                 val (goReady, stayPending) =
@@ -458,7 +461,7 @@ object Scheduler{
                 _ <- readyTasks.update(_ ++ promotable)
             } yield ()
         
-        //TODO: On Failure of job this needs to reschedule 
+        //TODO On Failure of job this needs to reschedule 
         private def fetchResultsFromCorrespondingProvider(
             provider: String,
             providerId: String,
@@ -487,7 +490,7 @@ object Scheduler{
                 }
         } 
 
-        //TODO: Once we unify the client traits, all this pattern matching will go away 
+        //TODO Once we unify the client traits, all this pattern matching will go away 
         private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = {
             def bgAction(fa: F[Unit]): F[Unit] =
                 fa.onError {
@@ -506,7 +509,7 @@ object Scheduler{
                     val action = Retry[F]
                         .retry(retryPolicy)(clients.ibm.submitJob(task.toIBM) *> Logger[F].info("Submitted Task to IBM"))
                         // .adaptError {
-                        //     case e => () //TODO: fallback to another device here 
+                        //     case e => () //TODO fallback to another device here 
                         // }
                     bgAction(action)
                 case "Braket" => 
@@ -1085,7 +1088,7 @@ object Scheduler{
                     case SX(q) => SX(q + offset)
                     case Measure(q) => Measure(q + offset)
                 }
-                Circuit(acc.remainingGates ++ shiftedGates, acc.qubits + b.qubits) //TODO: Update this to merge gates based on slices 
+                Circuit(acc.remainingGates ++ shiftedGates, acc.qubits + b.qubits) //TODO Update this to merge gates based on slices 
             }}  
 
             private[qurator] def estimateFidelity[F[_]: Monad](

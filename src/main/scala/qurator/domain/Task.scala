@@ -68,6 +68,16 @@ object Task{
         createdAt: LocalDateTime
     ) extends Task
 
+    case class TaskCompletion(
+        taskId: TaskId,
+        result: String,
+        completedAtMillis: Long,
+        provider: Option[String] = None,
+        deviceId: Option[String] = None,
+        jobId: Option[String] = None,
+        executedCircuit: Option[Circuit] = None
+    )
+
 
     sealed trait TaskRequest 
 

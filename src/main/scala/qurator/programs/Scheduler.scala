@@ -80,19 +80,16 @@ object Scheduler{
         //TODO consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
         //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
         //TODO batch submissions 
-        //TODO Is anything from Q-Dream useful?? 
-        //TODO Is anything from Qonductor useful?? 
-         //TODO Is anything from Pilot-Quantum useful?? 
-        /////////////////////////////////////////////// NOT ADDRESSING NOW ////////////////////////////////////////////
-        //TODO Cutting/commuting circuits concerns me. Generating the alternative programs can be very time intensive (indeed classical processing part of circuit cutting is known to be heavy work). This could do more harm than good. One possibility is to look for emerging patterns. Maybe we don't need to know the exact circuit to estimate the cut/commuted programs. For example, an oracle can depend on a runtime variable, however I don't need to know the exact oracle to know that measurement will commute over it as it encodes classical logic. If static program analysis can detect these patterns, we can do look-ahead cutting and start the program generation at idle time (i.e. while waiting for the dependencies to resolve) 
         //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
         //TODO Fall back to other devices on failure (maybe after expontential backoff ?)
         //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
         //TODO I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
         //TODO We need to move some of the logic to supervisor so that the scheduler keeps running on error 
         //TODO Stronger topology mapping 
-        //TODO Is it possible to network topology into account? 
         //TODO UI 
+        //TODO Is anything from Q-Dream useful?? 
+        //TODO Is anything from Qonductor useful?? 
+        //TODO Is anything from Pilot-Quantum useful??
 
 
         private val mergeEnabled: Boolean = true
@@ -133,7 +130,7 @@ object Scheduler{
                 needsToBeCut <- requiresCutting(taskReq, devices)
                 _ <- Logger[F].info(s"Processing New Quantum Task With ${taskReq.qubits} Qubits, it requries cutting?: $needsToBeCut")
                 tids <- 
-                    if(needsToBeCut){ //TODO: Think this through carefully. I am not convinced this is the right place to cut. 
+                    if(needsToBeCut){ 
                         for {
                             cut <- cuttingStrategy(taskReq.circuit, devices)
                             _ <- Logger[F].info(s"Cut length ${cut.length}")

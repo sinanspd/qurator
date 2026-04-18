@@ -78,7 +78,6 @@ object Task{
         executedCircuit: Option[Circuit] = None
     )
 
-
     sealed trait TaskRequest 
 
     case class SynronizedQuantumTaskRequest(l: List[NewQuantumTaskRequest], t1Budget: Long, cut: Boolean = false) extends TaskRequest

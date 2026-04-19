@@ -10,7 +10,6 @@ import qurator.AppResources
 import qurator.modules.Services
 import qurator.programs.DeviceEstimator
 import qurator.programs.Scheduler
-import qurator.clients.CutQCClient
 import qurator.domain.Task._
 import qurator.domain.circuit._
 import qurator.testbed._
@@ -70,7 +69,6 @@ object RunSyncTreeBenchmarks extends IOApp.Simple {
           .evalMap { res =>
             val services = Services.make[IO](res.postgres)
             val persistenceService = services.dataPersistanceService
-            val cutqcClient = CutQCClient.make[IO](cfg.cutqcConfig, res.client)
 
             for {
               trees <- buildTreeSpecs
@@ -90,7 +88,7 @@ object RunSyncTreeBenchmarks extends IOApp.Simple {
                 dataPersistanceService = persistenceService,
                 clients = clients,
                 prioritizationStrategy = (a: List[Task]) => a,
-                cuttingStrategy = CuttingStrategies.cutQC[IO](cutqcClient),
+                cuttingStrategy = CuttingStrategies.none[IO], //CuttingStrategies.cutQC[IO](cutqcClient),
                 targetEstimatedFidelity = 0.7,
                 additionalOptimizationRuns = (c: Circuit) => List(c),
                 compiler = compiler

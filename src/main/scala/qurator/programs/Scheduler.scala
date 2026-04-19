@@ -32,6 +32,7 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import qurator.domain.IBM._
 import cats.Applicative
 import java.util.UUID
+import qurator.dashboard._
 
 
 final case class SubmittedJobInfo(
@@ -41,71 +42,120 @@ final case class SubmittedJobInfo(
 
 trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[List[TaskId]]
+    def submitTask(taskReq: TaskRequest, onComplete: TaskCompletion => F[Unit]): F[List[TaskId]]
     def estimateQueueTime(device: Device, task: QuantumTask) : F[Long]
     def getSubmittedTasks(): F[List[(String, String, String, TaskId)]]
-    def getResults(): F[Map[TaskId, (String, Long)]]
     def getSubmittedJobInfo(): F[Map[String, SubmittedJobInfo]]
     def startRuntime: Resource[F, Unit]
+    def dashboardUrl: String
 }
 
 object Scheduler{
-  def make[F[_]: GenUUID: Concurrent: Logger : Temporal : Background](
+  def make[F[_]: GenUUID: Concurrent: Logger : Temporal : Background : Async](
         dataPersistanceService: DataPersistanceService[F],
         clients: HttpClients[F],
         prioritizationStrategy: List[Task] => List[Task],
         cuttingStrategy: (Circuit, List[Device]) => F[List[Circuit]],
         targetEstimatedFidelity: Double, 
         additionalOptimizationRuns: Circuit => List[Circuit],
+        dashboardConfig: SchedulerDashboardConfig = SchedulerDashboardConfig(),
         compiler: FakeCompiler[F] //abstract this
   ): F[Scheduler[F]] =
     for {
-      readyTasks     <- Ref.of[F, List[Task]](List.empty)
-      pendingTasks   <- Ref.of[F, List[Task]](List.empty)
-      submittedTasks <- Ref.of[F, List[(String, String, String, TaskId)]](List.empty) //platform, platformId, jobId, taskId
-      results        <- Ref.of[F, Map[TaskId, (String, Long)]](Map.empty)    
-      taskIndex      <- Ref.of[F, Map[TaskId, Task]](Map.empty)
-      mergedAliases  <- Ref.of[F, Map[TaskId, List[TaskId]]](Map.empty)
+      readyTasks       <- Ref.of[F, List[Task]](List.empty)
+      pendingTasks     <- Ref.of[F, List[Task]](List.empty)
+      submittedTasks   <- Ref.of[F, List[(String, String, String, TaskId)]](List.empty) //platform, platformId, jobId, taskId
+      completedTasks   <- Ref.of[F, Set[TaskId]](Set.empty)
+      taskCallbacks    <- Ref.of[F, Map[TaskId, TaskCompletion => F[Unit]]](Map.empty)
+      taskIndex        <- Ref.of[F, Map[TaskId, Task]](Map.empty)
+      mergedAliases    <- Ref.of[F, Map[TaskId, List[TaskId]]](Map.empty)
       submittedJobInfo <- Ref.of[F, Map[String, SubmittedJobInfo]](Map.empty)
+      dashboardState   <- Ref.of[F, SchedulerDashboardState](SchedulerDashboardState.empty)
       _ <- Logger[F].info("Creating The Scheduler")    
     } yield new Scheduler[F] {
+
+        def dashboardUrl: String =
+            SchedulerDashboard.dashboardUrl(dashboardConfig)
 
         private val idleDelay: FiniteDuration = 250.millis
 
 
         //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
-        //TODO Loop back actual job data 
-        //TODO Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO Merge Cut Task Results 
-        //TODO for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
-        //TODO consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
-        //TODO Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
-        //TODO batch submissions 
-        //TODO There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
-        //TODO Fall back to other devices on failure (maybe after expontential backoff ?)
-        //TODO add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
-        //TODO I think buildGreedySynchronizedPlan needs to be revised (chain scheduling issue)
-        //TODO We need to move some of the logic to supervisor so that the scheduler keeps running on error 
-        //TODO Stronger topology mapping 
-        //TODO UI 
-        //TODO Is anything from Q-Dream useful?? 
-        //TODO Is anything from Qonductor useful?? 
-        //TODO Is anything from Pilot-Quantum useful??
+        //TODO 9 Fall back to other devices on failure (maybe after expontential backoff ?)
+
+        //TODO 1 Loop back actual job data 
+        //TODO 2 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+        //TODO 3 for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
+        //TODO 4 consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
+        //TODO 5 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
+        //TODO 6 batch submissions 
+        //TODO 7 There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
+        //TODO 8 add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
+        //TODO 9 We need to move some of the logic to supervisor so that the scheduler keeps running on error 
+        //TODO 10 Stronger topology mapping 
+        //TODO 11 Merge Cut Task Results --> change UI as well 
+        //TODO 12 Is anything from Q-Dream useful?? 
+        //TODO 13 Is anything from Qonductor useful?? 
+        //TODO 14 Is anything from Pilot-Quantum useful??
+
 
 
         private val mergeEnabled: Boolean = true
         private val mergeMaxQubits: Int = 10
         private val mergeQueueFactorMillis: Long = 3000L
 
-        def submitTask(taskReq: TaskRequest): F[List[TaskId]] = taskReq match{
+        private def registerDashboardTask(task: Task, pendingReason: String): F[Unit] =
+            dashboardState.update(st => SchedulerDashboard.recordTask(st, task, pendingReason))
+
+        private def markDashboardPendingReason(taskIds: List[TaskId], pendingReason: String): F[Unit] =
+            dashboardState.update(st => SchedulerDashboard.markPendingReason(st, taskIds, pendingReason))
+
+        private def markDashboardSubmitted(
+            taskIds: List[TaskId],
+            provider: Option[String],
+            deviceId: Option[String],
+            jobId: Option[String],
+            note: Option[String] = None
+        ): F[Unit] =
+            nowMillis.flatMap { ts =>
+                dashboardState.update(st =>
+                SchedulerDashboard.markSubmitted(
+                    st,
+                    taskIds = taskIds,
+                    provider = provider,
+                    deviceId = deviceId,
+                    jobId = jobId,
+                    submittedAtMillis = ts,
+                    note = note
+                )
+                )
+            }
+
+        private def noopCallback(t: TaskCompletion): F[Unit] =
+            Applicative[F].unit
+
+        private def rememberCallbacks(
+            taskIds: List[TaskId],
+            onComplete: TaskCompletion => F[Unit]
+        ): F[Unit] =
+            taskCallbacks.update(_ ++ taskIds.map(_ -> onComplete).toMap)
+
+        def submitTask(taskReq: TaskRequest): F[List[TaskId]] =
+            submitTask(taskReq, noopCallback)
+
+        def submitTask(taskReq: TaskRequest, onComplete: TaskCompletion => F[Unit]): F[List[TaskId]] = taskReq match{
             case str : SynronizedQuantumTaskRequest => 
-                Logger[F].info("Received Synronized Task") *> submitSynronizedTaskRequest(str)
+                Logger[F].info("Received Synronized Task") *> submitSynronizedTaskRequest(str, onComplete)
             case ntr : NewQuantumTaskRequest => 
-                 Logger[F].info("Received Quantum Task") *>  submitNewTaskRequest(ntr)
+                 Logger[F].info("Received Quantum Task") *>  submitNewTaskRequest(ntr, onComplete)
             case ctr : NewClassicalTaskRequest => 
-                 Logger[F].info("Received Classical Task") *>  submitClassicalTaskRequest(ctr)
+                 Logger[F].info("Received Classical Task") *>  submitClassicalTaskRequest(ctr, onComplete)
         }
 
-        private def submitClassicalTaskRequest(taskReq: NewClassicalTaskRequest): F[List[TaskId]] = 
+        private def submitClassicalTaskRequest(
+            taskReq: NewClassicalTaskRequest,
+            onComplete: TaskCompletion => F[Unit]
+        ): F[List[TaskId]] = 
             ID.make[F, TaskId].flatMap(taskId => {
                 val t = ClassicalTask( 
                         uuid = taskId,
@@ -114,17 +164,26 @@ object Scheduler{
                         childTasks = taskReq.childTasks,
                         createdAt = taskReq.createdAt
                 )
+                rememberCallbacks(List(t.uuid), onComplete) *>
                 rememberTask(t) *> allParentResultsAvailable(t).flatMap{ apr =>
-                    if(taskReq.parentTasks.isEmpty || apr){
+                    val readyNow = taskReq.parentTasks.isEmpty || apr
+                    registerDashboardTask(
+                        t,
+                        if (readyNow) "ready" else "waiting_on_dependencies"
+                    ) *>
+                    (if(taskReq.parentTasks.isEmpty || apr){
                         enqueueReady(List(t)) *> List(t.uuid).pure[F]
 
                     }else{
                         enqueuePending(List(t)) *> List(t.uuid).pure[F]
-                    }
+                    })
                 }
             })
 
-        private def submitNewTaskRequest(taskReq: NewQuantumTaskRequest): F[List[TaskId]] =  // TST
+        private def submitNewTaskRequest(
+            taskReq: NewQuantumTaskRequest,
+            onComplete: TaskCompletion => F[Unit]
+        ): F[List[TaskId]] =  // TST
              for{
                 devices <- Scheduler.getAvailableDevices[F](clients)
                 needsToBeCut <- requiresCutting(taskReq, devices)
@@ -150,6 +209,13 @@ object Scheduler{
                                 }
                             }
                              _ <- rememberTasks(recreatedTasks)
+                             _ <- rememberCallbacks(recreatedTasks.map(_.uuid), onComplete)
+                             _ <- recreatedTasks.traverse_(t =>
+                                registerDashboardTask(
+                                    t,
+                                    if (taskReq.parentTasks.nonEmpty) "waiting_on_dependencies" else "ready"
+                                )
+                            )
                             tids <-
                                 if (taskReq.parentTasks.nonEmpty)
                                     enqueuePendingQuantumTasksAndMaybeMerge(recreatedTasks) *> List(recreatedTasks.map(_.uuid): _*).pure[F]
@@ -168,7 +234,13 @@ object Scheduler{
                                     childTasks = taskReq.childTasks,
                                     createdAt = taskReq.createdAt
                             )
-                            rememberTask(t) *> (if(taskReq.parentTasks.nonEmpty){
+                            rememberCallbacks(List(t.uuid), onComplete) *>
+                            rememberTask(t) *> 
+                            registerDashboardTask(
+                                t,
+                                if (taskReq.parentTasks.nonEmpty) "waiting_on_dependencies" else "ready"
+                            ) *>                      
+                            (if(taskReq.parentTasks.nonEmpty){
                                 enqueuePendingQuantumTasksAndMaybeMerge(List(t)) *> 
                                  (readyTasks.get, pendingTasks.get).tupled.flatMap { case (r, p) =>
                                         Logger[F].info(s"enqueuePending: ready=${r.size}, pending=${p.size}") } *>
@@ -182,7 +254,10 @@ object Scheduler{
                     }
             } yield tids 
 
-        private def submitSynronizedTaskRequest(str: SynronizedQuantumTaskRequest): F[List[TaskId]] =  // TST
+        private def submitSynronizedTaskRequest(
+            str: SynronizedQuantumTaskRequest,
+            onComplete: TaskCompletion => F[Unit]
+        ): F[List[TaskId]] =  // TST
             for{
                 devices <- Scheduler.getAvailableDevices[F](clients)
                 cutTasks <- 
@@ -228,12 +303,19 @@ object Scheduler{
                     }
                 }
                 _ <- rememberTasks(tasks)
+                _ <- tasks.traverse_(t =>
+                    registerDashboardTask(
+                        t,
+                        if (t.parentTasks.nonEmpty) "waiting_on_dependencies" else "ready"
+                    )
+                )
                 _ <- Logger[F].info(s"Attempting Merge Sync Tasks")
                 possiblyMergedTasks <- Scheduler.attemptToMergeSyncTasks(tasks, clients, compiler, targetEstimatedFidelity) 
                 _ <- Logger[F].info(
                     s"Merge attempt: original=${tasks.size}, after=${possiblyMergedTasks.size}, " +
                     s"ids=${possiblyMergedTasks.map(_.uuid).mkString(", ")}"
                 )
+                _ <- rememberCallbacks(possiblyMergedTasks.map(_.uuid), onComplete)
                 groupId <- ID.make[F, TaskId]
                 sg = SyncronizedQuantumTaskList(
                     groupId,
@@ -320,6 +402,16 @@ object Scheduler{
                         logicalIds <- logicalIdsFor(task.uuid)
                         _ <- submittedTasks.update(
                             _ ++ logicalIds.map(tid => (bestDevice.platform, bestDevice.platformId, jobId, tid))
+                        )
+                        _ <- markDashboardSubmitted(
+                            logicalIds,
+                            provider = Some(bestDevice.platform),
+                            deviceId = Some(bestDevice.platformId),
+                            jobId = Some(jobId),
+                            note =
+                            if (logicalIds.size > 1)
+                                Some(s"Merged physical execution of ${logicalIds.size} logical tasks")
+                            else None
                         )
                     } yield ()
                 }
@@ -408,7 +500,13 @@ object Scheduler{
                     submitQuantumToProvider(device, t, t.circuit).flatMap { jobId =>
                         Logger[F].info(s"Task ${t.uuid} submitted, adding to list") *>
                         submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(device.platformId, t.circuit))) *>
-                        submittedTasks.update(_ :+ (device.platform, device.platformId, jobId, t.uuid))
+                        submittedTasks.update(_ :+ (device.platform, device.platformId, jobId, t.uuid)) *> 
+                        markDashboardSubmitted(
+                            List(t.uuid),
+                            provider = Some(device.platform),
+                            deviceId = Some(device.platformId),
+                            jobId = Some(jobId)
+                        )
                     }
                   }    
                 }
@@ -425,6 +523,7 @@ object Scheduler{
                 .drain
         
         def startRuntime: Resource[F, Unit] =
+            SchedulerDashboard.resource[F](dashboardConfig, dashboardState) *>
             Resource
                 .make {
                     (Concurrent[F].start(startScheduling), Concurrent[F].start(startFetchingResults)).tupled
@@ -443,45 +542,45 @@ object Scheduler{
                         fetchResultsFromCorrespondingProvider(
                             provider,
                             jobId,
-                            entries.map(_._4).distinct
+                            entries
                         )
                 }
-                rs <- results.get
-                //_ <- submittedTasks.update(_.filterNot { case (_, _, _, tid) => rs.contains(tid) }) //TODO Uncomment this later when you find a fix for benchmark suite
+                done <- completedTasks.get
 
                 promotable <- pendingTasks.modify { ps =>
                 val (goReady, stayPending) =
-                    ps.partition(t => Scheduler.allParentResultsAvailable(rs, t)) 
+                    ps.partition(t => Scheduler.allParentResultsAvailable(done, t)) 
                 (stayPending, goReady)
                 }
 
                 _ <- readyTasks.update(_ ++ promotable)
+                _ <- markDashboardPendingReason(promotable.map(_.uuid), "ready")
             } yield ()
         
         //TODO On Failure of job this needs to reschedule 
         private def fetchResultsFromCorrespondingProvider(
             provider: String,
             providerId: String,
-            taskIds: List[TaskId]
+            entries: List[(String, String, String, TaskId)]
         ): F[Unit] = provider match {
             case "IBM" => 
                 clients.ibm.listJobDetails(providerId).flatMap { r =>
                     r.status match {
-                    case "Completed" => taskIds.traverse_(tid => markCompleted(tid, "1"))
+                    case "Completed" => completeQuantumJob(provider, providerId, entries, "1")
                     case _           => Applicative[F].unit
                     }
                 }
             case "Braket" =>
                 clients.braket.getQuantumTask(providerId).flatMap { r =>
                     r.status match {
-                    case "COMPLETED" => taskIds.traverse_(tid => markCompleted(tid, "1"))
+                    case "COMPLETED" => completeQuantumJob(provider, providerId, entries, "1")
                     case _           => Applicative[F].unit
                     }
                 }
             case "Azure" => 
                 clients.azure.getQuantumTask(providerId).flatMap { r =>
                     r.status match {
-                        case "Succeeded" => taskIds.traverse_(tid => markCompleted(tid, "1"))
+                        case "Succeeded" => completeQuantumJob(provider, providerId, entries, "1")
                         case _           => Applicative[F].unit
                     }
                 }
@@ -533,11 +632,15 @@ object Scheduler{
         ): F[Long] =
             if (visiting.contains(taskId)) 0L.pure[F]
             else {
-                isSubmittedTask(taskId).flatMap {
+                isCompletedTask(taskId).flatMap {
                     case true => 0L.pure[F]
 
                     case false =>
-                        lookupTask(taskId).flatMap {
+                        isSubmittedTask(taskId).flatMap {
+                            case true => 0L.pure[F]
+
+                            case false =>
+                                lookupTask(taskId).flatMap {
                             case None =>
                                 Logger[F].warn(s"Missing task metadata while estimating merge sync cost, taskId=$taskId") *>
                                 0L.pure[F]
@@ -559,6 +662,7 @@ object Scheduler{
                                 sgt.tasks
                                     .traverse(q => unresolvedCompletionCost(q.uuid, device, visiting + taskId))
                                     .map(_.maxOption.getOrElse(0L))
+                                }
                         }
                 }
             }
@@ -598,13 +702,29 @@ object Scheduler{
 
         private def clamp(x: Double, lo: Double, hi: Double): Double = math.max(lo, math.min(hi, x))
 
+        private def depthsWithinTolerance(
+            group: List[QuantumTask],
+            relTol: Double
+        ): Boolean = {
+            val depths = group.map(_.depth.value.toDouble).filter(_ > 0.0)
+
+            depths match {
+                case Nil => true
+                case _ =>
+                    val minDepth = depths.min
+                    val maxDepth = depths.max
+                    ((maxDepth - minDepth) / maxDepth) <= relTol
+            }
+        }
+
         private def canMergePendingGroup(
             group: List[QuantumTask],
             devices: List[Device]
         ): F[Boolean] = {
             val mergedQubits = group.map(_.qubits.value).sum
+            val depthCompatible = depthsWithinTolerance(group, 0.30)
 
-            if (group.size < 2 || mergedQubits > mergeMaxQubits) {
+            if (group.size < 2 || mergedQubits > mergeMaxQubits || !depthCompatible) {
                 false.pure[F]
             } else {
                 val feasible = devices.filter(_.qubits >= mergedQubits)
@@ -782,6 +902,9 @@ object Scheduler{
         private def isSubmittedTask(taskId: TaskId): F[Boolean] =
             submittedTasks.get.map(_.exists { case (_, _, _, tid) => tid == taskId })
 
+        private def isCompletedTask(taskId: TaskId): F[Boolean] =
+            completedTasks.get.map(_.contains(taskId))
+
         private def lookupTask(taskId: TaskId): F[Option[Task]] =
             taskIndex.get.map(_.get(taskId))
 
@@ -799,15 +922,73 @@ object Scheduler{
 
         ////////////////////////////////////////////////////////////
         private def allParentResultsAvailable(t: Task) : F[Boolean] = 
-            results.get.map(rs => Scheduler.allParentResultsAvailable(rs, t))
+            completedTasks.get.map(done => Scheduler.allParentResultsAvailable(done, t))
 
         private def nowMillis: F[Long] =
             Clock[F].realTime.map(_.toMillis)
 
-        private def markCompleted(taskId: TaskId, value: String): F[Unit] =
+        private def markCompleted(
+            taskId: TaskId,
+            value: String,
+            provider: Option[String] = None,
+            deviceId: Option[String] = None,
+            jobId: Option[String] = None,
+            executedCircuit: Option[Circuit] = None
+        ): F[Unit] =
             nowMillis.flatMap { ts =>
-                results.update(_.updated(taskId, (value, ts)))
+                val completion = TaskCompletion(
+                    taskId = taskId,
+                    result = value,
+                    completedAtMillis = ts,
+                    provider = provider,
+                    deviceId = deviceId,
+                    jobId = jobId,
+                    executedCircuit = executedCircuit
+                )
+
+                val callbackF =
+                    taskCallbacks.modify { callbacks =>
+                        (callbacks - taskId, callbacks.get(taskId))
+                    }.flatMap {
+                        case Some(cb) =>
+                            cb(completion).handleErrorWith { e =>
+                                Logger[F].error(e)(s"Completion callback failed for task=${taskId.value}")
+                            }
+                        case None => Applicative[F].unit
+                    }
+
+                completedTasks.update(_ + taskId) *>
+                taskIndex.update(_ - taskId) *>
+                dashboardState.update(st =>
+                    SchedulerDashboard.markCompleted(st, completion, dashboardConfig.retainedCompletedTasks)
+                ) *>
+                callbackF
             }
+
+        private def completeQuantumJob(
+            provider: String,
+            jobId: String,
+            entries: List[(String, String, String, TaskId)],
+            resultValue: String
+        ): F[Unit] =
+            for {
+                jobInfoMap <- submittedJobInfo.get
+                executedCircuit = jobInfoMap.get(jobId).map(_.executedCircuit)
+                deviceId = entries.headOption.map(_._2)
+                taskIds = entries.map(_._4).distinct
+                _ <- taskIds.traverse_ { tid =>
+                    markCompleted(
+                        taskId = tid,
+                        value = resultValue,
+                        provider = Some(provider),
+                        deviceId = deviceId,
+                        jobId = Some(jobId),
+                        executedCircuit = executedCircuit
+                    )
+                }
+                _ <- submittedTasks.update(_.filterNot { case (p, _, jid, _) => p == provider && jid == jobId })
+                _ <- submittedJobInfo.update(_ - jobId)
+            } yield ()
 
         def estimateQueueTime(device: Device, task: QuantumTask) : F[Long] = {
             val windowSize = 14L
@@ -886,32 +1067,35 @@ object Scheduler{
 
         private def fakeClassicalTaskScheduler(ct: ClassicalTask): F[Unit] = {
             val computationTime = 500 + Random.nextInt(1500)
-            Temporal[F].sleep(computationTime.millis) *> 
-            // Logger[F].info(s"Ran Classical Task, tid: ${ct.uuid}") *>
+            markDashboardSubmitted(
+                List(ct.uuid),
+                provider = None,
+                deviceId = None,
+                jobId = None,
+                note = Some("Classical execution")
+            ) *>
+            Temporal[F].sleep(computationTime.millis) *>
             markCompleted(ct.uuid, s"Result of classical task ${ct.uuid.value}")
         }
 
         def getSubmittedTasks(): F[List[(String, String, String, TaskId)]] = 
             submittedTasks.get
-
-        def getResults() = 
-            results.get
     }
 
 
     private[qurator] def allParentResultsAvailable(
-        results: Map[TaskId, (String, Long)],
+        completedTasks: Set[TaskId],
         t: Task
     ): Boolean =
         t match {
             case ct: ClassicalTask =>
-                ct.parentTasks.forall(pid => results.get(pid).nonEmpty)
+                ct.parentTasks.forall(pid => completedTasks.contains(pid))
 
             case qt: QuantumTask =>
-                qt.parentTasks.forall(pid => results.get(pid).nonEmpty)
+                qt.parentTasks.forall(pid => completedTasks.contains(pid))
 
             case sgt: SyncronizedQuantumTaskList =>
-                sgt.tasks.forall(child => allParentResultsAvailable(results, child))
+                sgt.tasks.forall(child => allParentResultsAvailable(completedTasks, child))
         }
 
     

@@ -184,7 +184,6 @@ object BraketClient {
              val clientToken = id.value.toString
 
              
-
             // This must be serialized as a *string* into the action field
              val actionString: String = oProg.asJson.noSpaces
 
@@ -200,7 +199,7 @@ object BraketClient {
                 shots             = r.shots,
              )
 
-            val payload    = reqBody.toString.getBytes(StandardCharsets.UTF_8) //  THIS ISNT GOOD
+            val payload    = reqBody.toString.getBytes(StandardCharsets.UTF_8)
 
             val host         = s"braket.us-east-1.amazonaws.com"   
             val canonicalUri = "/quantum-task"

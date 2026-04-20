@@ -35,7 +35,7 @@ object IBM{
    @derive(decoder, encoder, eqv, show)
    case class BackendsResponseV2(
     devices: List[IBMBackendDevice]
-   )
+   ) extends ProviderDeviceList[IBMBackendDevice]
 
    @derive(decoder, encoder, eqv, show)
     case class IBMBackendDevice(
@@ -48,7 +48,13 @@ object IBM{
         queue_length: Int,
         performance_metrics: Option[IBMBackendDevicePerformanceMetrics],
         wait_time_seconds: Option[IBMBackendDeviceWaitTimeSeconds]
-    ){
+    ) extends ProviderDeviceSummary with ProviderDeviceDetails {
+        def platformId: String =
+            name
+
+        def isAvailable: Boolean =
+            status.name == "online"
+
         def toDevice: Device = 
             Device(
                 platformId = name,
@@ -162,7 +168,10 @@ object IBM{
         `private`: Option[Boolean],
         estimated_running_time_seconds: Option[Double],
         calibration_id: Option[String]
-    )   
+    ) extends ProviderTaskStatus {
+        def taskStatus: String =
+            status
+    }
 
 //     "usage": {
 //       "title": "Usage",
@@ -199,7 +208,10 @@ object IBM{
         session_id: Option[String],
         `private`: Option[Boolean],
         calibration_id: Option[String]
-    )
+    ) extends ProviderTaskSubmission {
+        def jobId: String =
+            id
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class SubmitJobRequestV2(

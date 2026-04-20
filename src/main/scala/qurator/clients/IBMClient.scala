@@ -16,18 +16,69 @@ import qurator.domain.IBM._
 import org.typelevel.log4cats.Logger
 import io.circe.generic.auto._
 import cats.effect.Async
+import qurator.domain.Task.QuantumTask
 import qurator.domain.calibration._
+import qurator.domain.circuit._
+import qurator.domain.device.Device
+import qurator.domain.ProviderClient
 
-trait IBMClient[F[_]] {
+trait IBMClient[F[_]] extends ProviderClient[F] {
   def fetchBearerToken: F[String]
   def fetchDeviceInformation: F[BackendsResponseV2]
+  def fetchDeviceDetails(ids: List[String]): F[List[IBMBackendDevice]]
   def submitJob(r: SubmitJobRequestV2): F[CreateJobResponseV2]
   def listJobDetails(id: String): F[JobDetailsResponseV2]
   def getJobMetrics(id: String): F[JobMetricsResponse]
   def fetchDeviceCalibration(deviceArn: String): F[DeviceCalibration]
+
+  override final def provider: String =
+    "IBM"
+
+  override final def submitTask(
+      device: Device,
+      task: QuantumTask,
+      compiled: Circuit
+  ): F[CreateJobResponseV2] = {
+    val req =
+      SubmitJobRequestV2(
+        program_id = "sampler",
+        backend = device.platformId,
+        runtime = None,
+        tags = None,
+        log_level = Some("info"),
+        cost = None,
+        session_id = None,
+        calibration_id = None,
+        params = SamplerV2Input(
+          pubs = List(compiled.toQasm)
+        )
+      )
+
+    submitJob(req)
+  }
+
+  override final def getTask(taskId: String): F[JobDetailsResponseV2] =
+    listJobDetails(taskId)
+
+  override final val completedStatuses: Set[String] =
+    Set("Completed")
 }
 
 object IBMClient {
+  def fetchAvailableDevices[F[_]: cats.Functor](
+      fetchDeviceInformation: F[BackendsResponseV2]
+  ): F[List[Device]] =
+    fetchDeviceInformation.map(_.devices.filter(_.isAvailable).map(_.toDevice))
+
+  def fetchDeviceDetails[F[_]: cats.Functor](
+      fetchDeviceInformation: F[BackendsResponseV2],
+      ids: List[String]
+  ): F[List[IBMBackendDevice]] =
+    fetchDeviceInformation.map { response =>
+      val requested = ids.toSet
+      response.devices.filter(d => requested.isEmpty || requested.contains(d.platformId))
+    }
+
   def make[F[_]: JsonDecoder: MonadCancelThrow : Logger : Async](
       cfg: IBMConfig,
       client: Client[F]
@@ -77,6 +128,12 @@ object IBMClient {
             }
           }
         }
+
+      def fetchAvailableDevices: F[List[Device]] =
+        IBMClient.fetchAvailableDevices(fetchDeviceInformation)
+
+      def fetchDeviceDetails(ids: List[String]): F[List[IBMBackendDevice]] =
+        IBMClient.fetchDeviceDetails(fetchDeviceInformation, ids)
 
        def submitJob(r: SubmitJobRequestV2): F[CreateJobResponseV2] = 
           fetchBearerToken.flatMap { token =>

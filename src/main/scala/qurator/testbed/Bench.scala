@@ -647,6 +647,8 @@ object BenchmarkHttpClients{
 
         val braket = new BraketClient[IO]{
             def fetchDeviceList: IO[BraketDeviceListResponse] = dummies.braketDeviceList
+            def fetchAvailableDevices: IO[List[Device]] =
+                BraketClient.fetchAvailableDevices(fetchDeviceList, fetchDeviceDetails)
             def fetchDeviceDetails(ids: List[String]): IO[List[BraketDeviceDetailsResponse]] = dummies.braketDeviceDetails(ids)
             def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource: String): IO[BraketCreateQuantumTaskResponse] =
                 dummies.braketSubmit(r, qasmSource)
@@ -657,6 +659,10 @@ object BenchmarkHttpClients{
         val ibm = new IBMClient[IO]{
             def fetchBearerToken: IO[String] = dummies.ibmFetchBearerToken
             def fetchDeviceInformation: IO[BackendsResponseV2] = dummies.ibmDeviceInfo
+            def fetchAvailableDevices: IO[List[Device]] =
+                IBMClient.fetchAvailableDevices(fetchDeviceInformation)
+            def fetchDeviceDetails(ids: List[String]): IO[List[IBMBackendDevice]] =
+                IBMClient.fetchDeviceDetails(fetchDeviceInformation, ids)
             def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] =  dummies.ibmSubmit(r) 
             def listJobDetails(id: String): IO[JobDetailsResponseV2] = dummies.ibmListJob(id)
             def getJobMetrics(id: String): IO[JobMetricsResponse] = dummies.ibmMetrics(id)

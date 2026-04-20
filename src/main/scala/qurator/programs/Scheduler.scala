@@ -33,6 +33,7 @@ import qurator.domain.IBM._
 import cats.Applicative
 import java.util.UUID
 import qurator.dashboard._
+import qurator.domain.ProviderClient
 
 
 final case class SubmittedJobInfo(
@@ -422,49 +423,17 @@ object Scheduler{
             task: QuantumTask,
             compiled: Circuit
         ): F[String] =
-        device.platform match {
+            clients.providerClient(device.platform) match {
+                case Some(providerClient) =>
+                    Logger[F].info(s"Submitting task ${task.uuid} to device $device via ${providerClient.provider}") *>
+                        ProviderClient.submitQuantumTask(providerClient, device, task, compiled)
 
-            case "Braket" =>
-                for {
-                    token <- UUID.randomUUID().toString.pure[F] //not needed for tests, will wire later
-                    qasmSource = "" //not needed for tests, will wire later
-                    req = BraketCreateQuantumTaskRequest(
-                        action = "braket.ir.openqasm.program",
-                        associations = None,
-                        clientToken = token,
-                        deviceArn = device.platformId,
-                        deviceParameters = "{}",
-                        shots = task.shots.value
-                    )
-                    _ <- Logger[F].info(s"Submitting task ${task.uuid} to device $device") 
-                    resp <- clients.braket.submitBraketOpenQasmTask(req, qasmSource)
-                } yield resp.quantumTaskArn
+                case None if device.platform == "Azure" =>
+                    new RuntimeException("Azure submit not wired in scheduleOneQuantumTask yet").raiseError[F, String]
 
-            case "IBM" => // To Fix
-                val req = 
-                     SubmitJobRequestV2(
-                        "sampler",
-                        device.platformId,
-                        None,
-                        None,
-                        Some("info"),
-                        None,
-                        None,
-                        None,
-                        SamplerV2Input(
-                            pubs = List(
-                                "" //transform to qasm here
-                            )
-                        )
-                    )
-                Logger[F].info(s"Submitting task ${task.uuid} to device $device") *> clients.ibm.submitJob(req).map(_.id)
-
-            case "Azure" => //Azure is not playing by the rules so we will deal with them later 
-                new RuntimeException("Azure submit not wired in scheduleOneQuantumTask yet").raiseError[F, String]
-
-            case other =>
-                new RuntimeException(s"Unknown platform=$other").raiseError[F, String]
-        }
+                case None =>
+                    new RuntimeException(s"No ProviderClient registered for platform=${device.platform}").raiseError[F, String]
+            }
 
         def getSubmittedJobInfo(): F[Map[String, SubmittedJobInfo]] =  submittedJobInfo.get
 
@@ -562,31 +531,26 @@ object Scheduler{
             provider: String,
             providerId: String,
             entries: List[(String, String, String, TaskId)]
-        ): F[Unit] = provider match {
-            case "IBM" => 
-                clients.ibm.listJobDetails(providerId).flatMap { r =>
-                    r.status match {
-                    case "Completed" => completeQuantumJob(provider, providerId, entries, "1")
-                    case _           => Applicative[F].unit
+        ): F[Unit] =
+            clients.providerClient(provider) match {
+                case Some(providerClient) =>
+                    ProviderClient.isTaskComplete(providerClient, providerId).flatMap {
+                        case true  => completeQuantumJob(provider, providerId, entries, "1")
+                        case false => Applicative[F].unit
                     }
-                }
-            case "Braket" =>
-                clients.braket.getQuantumTask(providerId).flatMap { r =>
-                    r.status match {
-                    case "COMPLETED" => completeQuantumJob(provider, providerId, entries, "1")
-                    case _           => Applicative[F].unit
-                    }
-                }
-            case "Azure" => 
-                clients.azure.getQuantumTask(providerId).flatMap { r =>
-                    r.status match {
-                        case "Succeeded" => completeQuantumJob(provider, providerId, entries, "1")
-                        case _           => Applicative[F].unit
-                    }
-                }
-        } 
 
-        //TODO Once we unify the client traits, all this pattern matching will go away 
+                case None if provider == "Azure" =>
+                    clients.azure.getQuantumTask(providerId).flatMap { r =>
+                        r.status match {
+                            case "Succeeded" => completeQuantumJob(provider, providerId, entries, "1")
+                            case _           => Applicative[F].unit
+                        }
+                    }
+
+                case None =>
+                    new RuntimeException(s"No ProviderClient registered for platform=$provider").raiseError[F, Unit]
+            }
+
         private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = {
             def bgAction(fa: F[Unit]): F[Unit] =
                 fa.onError {
@@ -600,28 +564,25 @@ object Scheduler{
             val retryPolicy: RetryPolicy[F] =
                 limitRetries[F](10) |+| exponentialBackoff[F](10.milliseconds)
 
-            device.platform match {
-                case "IBM" => 
+            clients.providerClient(device.platform) match {
+                case Some(providerClient) =>
                     val action = Retry[F]
-                        .retry(retryPolicy)(clients.ibm.submitJob(task.toIBM) *> Logger[F].info("Submitted Task to IBM"))
-                        // .adaptError {
-                        //     case e => () //TODO fallback to another device here 
-                        // }
+                        .retry(retryPolicy)(
+                            ProviderClient.submitQuantumTask(providerClient, device, task, task.circuit).void *>
+                                Logger[F].info(s"Submitted task to ${providerClient.provider}")
+                        )
                     bgAction(action)
-                case "Braket" => 
+
+                case None if device.platform == "Azure" =>
                     val action = Retry[F]
-                        .retry(retryPolicy)(clients.braket.submitBraketOpenQasmTask(task.toBraket, task.circuit.toQasm) *> Logger[F].info("Submitted Task to IBM"))
-                        // .adaptError {
-                        //     case e => ()
-                        // }
+                        .retry(retryPolicy)(
+                            clients.azure.submitJob(task.uuid.value.toString, task.toAzure) *>
+                                Logger[F].info("Submitted task to Azure")
+                        )
                     bgAction(action)
-                case "Azure" => 
-                    val action = Retry[F]
-                        .retry(retryPolicy)(clients.azure.submitJob(task.uuid.value.toString, task.toAzure) *> Logger[F].info("Submitted Task to IBM"))
-                        // .adaptError {
-                        //     case e => ()
-                        // }
-                    bgAction(action)
+
+                case None =>
+                    new RuntimeException(s"No ProviderClient registered for platform=${device.platform}").raiseError[F, Unit]
             }
         }
         
@@ -1157,26 +1118,15 @@ object Scheduler{
         
         private[qurator] def getAvailableDevices[F[_]: MonadThrow](clients: HttpClients[F]): F[List[Device]] =
             for {
-                ibmE    <- clients.ibm.fetchDeviceInformation.attempt
-                braketE <- clients.braket.fetchDeviceList.attempt
+                providerDevices <- clients.providerClients.traverse(_.fetchAvailableDevices.attempt)
                 azureE  <- clients.azure.fetchDeviceInformation.attempt
 
-                ibm = ibmE.toOption.toList.flatMap(_.devices)
-                .filter(_.status.name == "online")
-                .map(_.toDevice)
-
-                braketOnline = braketE.toOption.toList.flatMap(_.devices)
-                .filter(d => d.deviceStatus == "ONLINE" && deviceActive(d))
-
-                braketDetails <- clients.braket.fetchDeviceDetails(braketOnline.map(_.deviceArn))
-                braket = braketDetails.map(_.toDevice)
-
-                _ = println(s"Braket Devices ${braket.mkString(", ")}")
+                quantumDevices = providerDevices.flatMap(_.toOption.getOrElse(Nil))
 
                 azure = azureE.toOption.toList.flatMap(_.value)
                 .filter(_.currentAvailability == "Available")
                 .map(_.toDevice)
-            } yield ibm ++ braket ++ azure
+            } yield quantumDevices ++ azure
 
         private[qurator] def assignToFinalBuckets( 
             bucket: List[QuantumTask],
@@ -1204,7 +1154,7 @@ object Scheduler{
         }
 
 
-        private[qurator] def flattenGroup[F[_]: Monad : GenUUID : Logger](
+        private[qurator] def flattenGroup[F[_]: MonadThrow : GenUUID : Logger](
             group: List[QuantumTask], 
             devices: List[Device],
             clients: HttpClients[F],
@@ -1272,7 +1222,7 @@ object Scheduler{
                 Circuit(acc.remainingGates ++ shiftedGates, acc.qubits + b.qubits) //TODO Update this to merge gates based on slices 
             }}  
 
-            private[qurator] def estimateFidelity[F[_]: Monad](
+            private[qurator] def estimateFidelity[F[_]: MonadThrow](
                 device: Device, 
                 task: Circuit, 
                 clients: HttpClients[F],
@@ -1288,11 +1238,14 @@ object Scheduler{
             //The model is built as a product of linear terms: Fn =
             //Π(ai + bi ∗ xi), where Fn is the fidelity of job n, xi is the feature and ai and bi are the tuned coefficient ??
 
-            private def fetchDeviceCalibration[F[_]: Monad](device: Device, clients: HttpClients[F]): F[DeviceCalibration] = device.platform match {
-                case "IBM" => clients.ibm.fetchDeviceCalibration(device.platformId)
-                case "Azure" => clients.azure.fetchDeviceCalibration(device.platformId)
-                case "Braket" => clients.braket.fetchDeviceCalibration(device.platformId)
-            } 
+            private def fetchDeviceCalibration[F[_]: MonadThrow](device: Device, clients: HttpClients[F]): F[DeviceCalibration] =
+                clients.providerClient(device.platform).map(_.fetchDeviceCalibration(device.platformId)).getOrElse {
+                    if (device.platform == "Azure")
+                        clients.azure.fetchDeviceCalibration(device.platformId)
+                    else
+                        new RuntimeException(s"No ProviderClient registered for platform=${device.platform}")
+                            .raiseError[F, DeviceCalibration]
+                }
 
             private[qurator] def buildGreedySynchronizedPlan[F[_]: Monad : Logger : MonadCancelThrow](
                 orderedTasks: List[QuantumTask],

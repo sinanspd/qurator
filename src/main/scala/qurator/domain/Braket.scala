@@ -28,7 +28,7 @@ object Braket{
     case class BraketDeviceListResponse(
         devices: List[BraketDevice],
         nextToken: Option[String]
-    )
+    ) extends ProviderDeviceList[BraketDevice]
 
     @derive(decoder, encoder, eqv, show)
     case class BraketDevice(
@@ -38,7 +38,13 @@ object Braket{
         deviceStatus: String,
         deviceType: String,
         providerName: String
-    )
+    ) extends ProviderDeviceSummary {
+        def platformId: String =
+            deviceArn
+
+        def isAvailable: Boolean =
+            deviceStatus == "ONLINE" && deviceActive(this)
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class BraketDeviceDetailsResponse(
@@ -49,7 +55,10 @@ object Braket{
         providerName: String,
         deviceCapabilities: String,
         deviceQueueInfo: List[BraketDeviceQueueInfo]
-    ){
+    ) extends ProviderDeviceDetails {
+        def platformId: String =
+            deviceArn
+
         def toDevice: Device = {
             val q = decodeQubitCount(deviceCapabilities).getOrElse(0)
             Device(
@@ -108,7 +117,10 @@ object Braket{
     @derive(decoder, encoder, eqv, show)
     case class BraketCreateQuantumTaskResponse(
     quantumTaskArn: String
-    )
+    ) extends ProviderTaskSubmission {
+        def jobId: String =
+            quantumTaskArn
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class BraketOpenQasmProgram(
@@ -141,7 +153,10 @@ object Braket{
         shots: Int,
         status: String,
         tags: Option[Map[String, String]]
-    )
+    ) extends ProviderTaskStatus {
+        def taskStatus: String =
+            status
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class BraketActionMetadata(

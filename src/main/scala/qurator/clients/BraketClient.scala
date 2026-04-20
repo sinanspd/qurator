@@ -35,18 +35,59 @@ import org.typelevel.log4cats.Logger
 import qurator.domain.ID
 import qurator.domain.DeviceQueueInformation.DeviceQueueInformationId
 import io.circe.syntax._ 
+import java.util.UUID
+import qurator.domain.Task.QuantumTask
 import qurator.domain.calibration._
+import qurator.domain.circuit._
+import qurator.domain.device.Device
+import qurator.domain.ProviderClient
 
-trait BraketClient[F[_]] {
+trait BraketClient[F[_]] extends ProviderClient[F] {
+  def fetchAvailableDevices: F[List[Device]]
   def fetchDeviceList: F[BraketDeviceListResponse]
   def fetchDeviceDetails(ids: List[String]): F[List[BraketDeviceDetailsResponse]]
   def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): F[BraketCreateQuantumTaskResponse] 
   def getQuantumTask(taskId: String) : F[BraketQuantumTaskResponse]
   def fetchDeviceCalibration(deviceArn: String): F[DeviceCalibration]
+
+  override final def provider: String =
+    "Braket"
+
+  override final def submitTask(
+      device: Device,
+      task: QuantumTask,
+      compiled: Circuit
+  ): F[BraketCreateQuantumTaskResponse] = {
+    val req =
+      BraketCreateQuantumTaskRequest(
+        action = "braket.ir.openqasm.program",
+        associations = None,
+        clientToken = UUID.randomUUID().toString,
+        deviceArn = device.platformId,
+        deviceParameters = "{}",
+        shots = task.shots.value
+      )
+
+    submitBraketOpenQasmTask(req, compiled.toQasm)
+  }
+
+  override final def getTask(taskId: String): F[BraketQuantumTaskResponse] =
+    getQuantumTask(taskId)
+
+  override final val completedStatuses: Set[String] =
+    Set("COMPLETED")
 }
         
 
 object BraketClient {
+  def fetchAvailableDevices[F[_]: cats.Monad](
+      fetchDeviceList: F[BraketDeviceListResponse],
+      fetchDeviceDetails: List[String] => F[List[BraketDeviceDetailsResponse]]
+  ): F[List[Device]] =
+    fetchDeviceList
+      .flatMap(resp => fetchDeviceDetails(resp.availableDeviceIds))
+      .map(_.map(_.toDevice))
+
   def make[F[_]: Logger : JsonDecoder: MonadCancelThrow : Async : Concurrent : Hashing](
       cfg: BraketConfig,
       client: Client[F]
@@ -129,6 +170,9 @@ object BraketClient {
                     }
                 }
         }
+
+    def fetchAvailableDevices: F[List[Device]] =
+        BraketClient.fetchAvailableDevices(fetchDeviceList, fetchDeviceDetails)
 
     def getQuantumTask(taskId: String) : F[BraketQuantumTaskResponse] = {
         val region  = "us-east-1"

@@ -1886,6 +1886,10 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     val ibm = new IBMClient[IO] {
       def fetchBearerToken: IO[String] = ???
       def fetchDeviceInformation: IO[BackendsResponseV2] = ???
+      def fetchAvailableDevices: IO[List[Device]] =
+        IBMClient.fetchAvailableDevices(fetchDeviceInformation)
+      def fetchDeviceDetails(ids: List[String]): IO[List[IBMBackendDevice]] =
+        IBMClient.fetchDeviceDetails(fetchDeviceInformation, ids)
       def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] = ??? 
       def listJobDetails(id: String): IO[JobDetailsResponseV2] = ???
       def getJobMetrics(id: String): IO[JobMetricsResponse] = ???
@@ -1907,6 +1911,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
 
     val braket = new BraketClient[IO] {
       def fetchDeviceList: IO[BraketDeviceListResponse] = ???
+      def fetchAvailableDevices: IO[List[Device]] =
+        BraketClient.fetchAvailableDevices(fetchDeviceList, fetchDeviceDetails)
       def fetchDeviceDetails(ids: List[String]): IO[List[BraketDeviceDetailsResponse]] = ???
       def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): IO[BraketCreateQuantumTaskResponse] = ??? 
       def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = ???
@@ -2307,6 +2313,12 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       def fetchDeviceInformation(): IO[BackendsResponseV2] =
         ibmDevicesF
 
+      def fetchAvailableDevices: IO[List[Device]] =
+        IBMClient.fetchAvailableDevices(fetchDeviceInformation)
+
+      def fetchDeviceDetails(ids: List[String]): IO[List[IBMBackendDevice]] =
+        IBMClient.fetchDeviceDetails(fetchDeviceInformation, ids)
+
       def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
         state.update(s => s.copy(fetchOrder = s.fetchOrder :+ platformId)) *>
           ibmCalibrations.getOrElse(
@@ -2321,6 +2333,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     }
 
     val braket = new BraketClient[IO] {
+      def fetchAvailableDevices: IO[List[Device]] =
+        BraketClient.fetchAvailableDevices(fetchDeviceList, fetchDeviceDetails)
       def fetchDeviceDetails(ids: List[String]): IO[List[BraketDeviceDetailsResponse]] = 
         IO.pure(List.empty)
       def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): IO[BraketCreateQuantumTaskResponse] = ??? 

@@ -107,6 +107,48 @@ object IBM{
         p95: Int
     )
 
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendPropertiesResponse(
+        backend_name: String,
+        backend_version: Option[String],
+        last_update_date: Option[String],
+        qubits: List[List[IBMBackendNamedValue]],
+        gates: List[IBMBackendGateProperties],
+        general: Option[List[IBMBackendNamedValue]]
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendNamedValue(
+        date: Option[String],
+        name: String,
+        unit: Option[String],
+        value: Double
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendGateProperties(
+        gate: String,
+        name: String,
+        parameters: List[IBMBackendNamedValue],
+        qubits: List[Int]
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendConfigurationResponse(
+        backend_name: String,
+        backend_version: Option[String],
+        basis_gates: Option[List[String]],
+        coupling_map: Option[List[List[Int]]],
+        gates: Option[List[IBMBackendConfigurationGate]],
+        n_qubits: Option[Int]
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendConfigurationGate(
+        name: String,
+        coupling_map: List[List[Int]]
+    )
+
     def toDeviceQueueInformation(l : List[IBMBackendDevice]) =
         l.map(a => DeviceQueueInformationCreate(
             name        = a.name,

@@ -1,6 +1,8 @@
 package qurator.testbed
 
+import qurator.domain.calibration._
 import qurator.domain.circuit._
+import qurator.util.FidelityEstimator
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -317,6 +319,75 @@ object HaqaMapper {
       defaultReadoutError = roErr
     )
   }
+
+  def topologyFromCalibration(calibration: DeviceCalibration): Option[DeviceTopology] =
+    topologyOf(calibration).map(t => DeviceTopology.fromEdges(t.normalizedEdges, t.qubits))
+
+  def fromCalibration(calibration: DeviceCalibration): Option[GeneralDeviceCalibration] =
+    topologyFromCalibration(calibration).map { topology =>
+      val canonical = FidelityEstimator.normalizeCalibration(calibration)
+
+      val qubitCalibration =
+        topology.qubits.map { q =>
+          val gateStats =
+            canonical.eps1q.collect {
+              case ((qq, gate), errorRate) if qq == q =>
+                gate.toLowerCase -> GateStats(
+                  errorRate = errorRate,
+                  durationNs = canonical.dur1qNs.getOrElse(gate, canonical.dur1qAvgNs.getOrElse(0L))
+                )
+            }
+
+          val readoutError =
+            1.0 - canonical.readoutFidelity.get(q).orElse(canonical.readoutFidelityAvg).getOrElse(1.0)
+
+          q -> QubitCalibration(
+            t1Seconds = canonical.t1.get(q).orElse(canonical.t1Avg),
+            t2Seconds = canonical.t2.get(q).orElse(canonical.t2Avg),
+            readoutError = clamp01(readoutError),
+            gateStats = gateStats
+          )
+        }.toMap
+
+      val edgeCalibration =
+        topology.edges.map { edge =>
+          val key = (edge.u, edge.v)
+          val gateStats =
+            canonical.eps2q.collect {
+              case ((pair, gate), errorRate) if pair == key =>
+                gate.toLowerCase -> GateStats(
+                  errorRate = errorRate,
+                  durationNs = canonical.dur2qNs.getOrElse(gate, canonical.dur2qAvgNs.getOrElse(0L))
+                )
+            }
+
+          edge -> EdgeCalibration(gateStats)
+        }.toMap
+
+      val defaultSingle =
+        canonical.dur1qNs.keySet.map { gate =>
+          gate.toLowerCase -> GateStats(
+            errorRate = canonical.eps1qAvg.getOrElse(0.001),
+            durationNs = canonical.dur1qNs.getOrElse(gate, canonical.dur1qAvgNs.getOrElse(0L))
+          )
+        }.toMap
+
+      val defaultTwo =
+        canonical.dur2qNs.keySet.map { gate =>
+          gate.toLowerCase -> GateStats(
+            errorRate = canonical.eps2qAvg.getOrElse(0.01),
+            durationNs = canonical.dur2qNs.getOrElse(gate, canonical.dur2qAvgNs.getOrElse(0L))
+          )
+        }.toMap
+
+      GeneralDeviceCalibration(
+        qubitCalibration = qubitCalibration,
+        edgeCalibration = edgeCalibration,
+        defaultSingleQubitGateStats = defaultSingle,
+        defaultTwoQubitGateStats = defaultTwo,
+        defaultReadoutError = canonical.readoutFidelityAvg.map(fid => clamp01(1.0 - fid)).getOrElse(0.0)
+      )
+    }
 
   private final case class Region(
       nodes: Set[Int],

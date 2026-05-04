@@ -19,14 +19,12 @@ import qurator.modules.HttpApi
 import qurator.resources.MkHttpServer
 import qurator.clients.AzureQuantumClient
 import qurator.domain.IBM.SubmitJobRequestV2
-import qurator.testcircuits.BellPairTask
 import scala.annotation.meta.param
 import qurator.domain.IBM.SamplerV2Input
 import qurator.domain.IBM.SamplerV2PUB
 import qurator.programs.Scheduler
 import qurator.domain.Task._
 import qurator.domain.circuit._
-import qurator.clients.CutQCClient
 import qurator.util.CuttingStrategies
 import qurator.domain.device._
 import cats.syntax.all._
@@ -130,7 +128,6 @@ object RunBenchmarks extends IOApp.Simple {
                 .evalMap { res => 
                     val services = Services.make[IO](res.postgres)
                     val persistanceService = Services.make[IO](res.postgres).dataPersistanceService
-                    val cutqcClient =  CutQCClient.make[IO](cfg.cutqcConfig, res.client)
 
                     def mkEnv(seed: Long) =
                         for {

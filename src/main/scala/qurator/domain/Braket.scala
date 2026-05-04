@@ -181,7 +181,15 @@ object Braket{
     @derive(decoder, encoder, eqv, show)
     case class BraketParadigm(
         qubitCount: Option[Int] = None,
-        modes: Option[Int] = None 
+        modes: Option[Int] = None,
+        connectivity: Option[BraketConnectivity] = None,
+        nativeGateSet: Option[List[String]] = None
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class BraketConnectivity(
+        fullyConnected: Option[Boolean] = None,
+        connectivityGraph: Option[Map[String, List[String]]] = None
     )
 
 

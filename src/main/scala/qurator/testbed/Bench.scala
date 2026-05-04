@@ -283,11 +283,11 @@ object BenchmarkDeviceRegistry {
         Map(
             "braket-rigetti-ankaa" -> //
                 RigettiCalibration( 
-                    avg1qFidelityPct = 97.946, //
-                    readoutFidelityPct = 95.472, // 
-                    swapFidelityPct = 90.130, // 
-                    t1Seconds = 3.6387e-5, //8
-                    t2Seconds = 2.2118e-5, // 
+                    avg1qFidelityPct = 98.46233903284783, //
+                    readoutFidelityPct = 95.70731707317071, //
+                    swapFidelityPct = 89.973192441561, //
+                    t1Seconds = 3.776451788428128e-5, //
+                    t2Seconds = 2.1430702360129197e-5, //
                     swapGateDurationNs = 300,
                     readoutDurationNs = 1200,
                     oneQGateDurationNs = 40,
@@ -295,11 +295,11 @@ object BenchmarkDeviceRegistry {
                 ),
             "braket-iqm-garnet" -> //
                 IQMCalibration(
-                    t1 = 3.3829e-5,
-                    t2 = 8.925e-6, 
-                    q1fidelity = 99.296,
-                    q2fidelity = 99.884, 
-                    readoutFidelity = 97.940
+                    t1 = 3.490079494002981e-5,
+                    t2 = 8.677614628987359e-6,
+                    q1fidelity = 99.90661687868104,
+                    q2fidelity = 99.33252648664347,
+                    readoutFidelity = 97.89
                     // typicalDetectionFalsePositive = 0.02,
                     // typicalDetectionFalseNegative = 0.03,
                     // typicalVacancyError = Some(0.04),
@@ -313,20 +313,20 @@ object BenchmarkDeviceRegistry {
                 AQTCalibration(
                     t1Seconds = 1.168, 
                     t2Seconds = 0.1632,
-                    readoutFidelity = 99.740, 
+                    readoutFidelity = 99.74,
                     readoutDurationSec = 0.0015,
-                    oneQGateDurationSec = 3e-5,
-                    oneQGateFidelity = 99.978, 
+                    oneQGateDurationSec = 45e-6,
+                    oneQGateFidelity = 99.97029166666667,
                     twoQGateDurationSec = 0.000335,
-                    twoQGateFidelity = 98.500
+                    twoQGateFidelity = 98.5349
                 ),
             "braket-ionq-forte-1" ->  // 
                 IonQCalibration(
                     t1Seconds = 100,
                     t2Seconds = 1,
-                    avg1qFidelityPct = 99.93177087236276,
-                    avg2qFidelityPct = 97.41735442219582, 
-                    avgReadoutFidelity = 99.15,
+                    avg1qFidelityPct = Double.NaN,
+                    avg2qFidelityPct = 98.9,
+                    avgReadoutFidelity = 98.65,
                     oneQGateDurationSec = 130e-6,
                     twoQGateDurationSec = 970e-6,
                     readoutDurationSec = 150e-6

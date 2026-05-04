@@ -6,6 +6,33 @@ object calibration {
 
     sealed trait DeviceCalibration 
 
+    case class CalibrationTopology(
+        qubits: List[Int],
+        edges: List[(Int, Int)]
+    ) {
+        def normalizedEdges: List[(Int, Int)] =
+            edges.map { case (a, b) => if (a <= b) (a, b) else (b, a) }.distinct.sorted
+    }
+
+    case class QubitCalibrationMetrics(
+        t1Seconds: Option[Double] = None,
+        t2Seconds: Option[Double] = None,
+        oneQubitFidelity: Option[Double] = None,
+        readoutFidelity: Option[Double] = None,
+        readoutError: Option[Double] = None,
+        probMeasu0Prep1: Option[Double] = None,
+        probMeasu1Prep0: Option[Double] = None,
+        gateErrors: Map[String, Double] = Map.empty,
+        gateFidelities: Map[String, Double] = Map.empty,
+        gateDurationsNs: Map[String, Long] = Map.empty
+    )
+
+    case class EdgeCalibrationMetrics(
+        gateErrors: Map[String, Double] = Map.empty,
+        gateFidelities: Map[String, Double] = Map.empty,
+        gateDurationsNs: Map[String, Long] = Map.empty
+    )
+
     case class AQTCalibration(
         t1Seconds: Double, 
         t2Seconds: Double,
@@ -14,7 +41,11 @@ object calibration {
         oneQGateDurationSec: Double,
         oneQGateFidelity: Double, 
         twoQGateDurationSec: Double,
-        twoQGateFidelity: Double
+        twoQGateFidelity: Double,
+        topology: Option[CalibrationTopology] = None,
+        qubitMetrics: Map[Int, QubitCalibrationMetrics] = Map.empty,
+        edgeMetrics: Map[(Int, Int), EdgeCalibrationMetrics] = Map.empty,
+        updatedAt: Option[String] = None
     ) extends DeviceCalibration
 
     case class IBMCalibration(
@@ -36,7 +67,13 @@ object calibration {
         idLengthNs: Long,
         twoQGateLengthNs: Long,
         czGateLengthNs: Long,
-        rzzGateLengthNs: Long
+        rzzGateLengthNs: Long,
+        topology: Option[CalibrationTopology] = None,
+        qubitMetrics: Map[Int, QubitCalibrationMetrics] = Map.empty,
+        edgeMetrics: Map[(Int, Int), EdgeCalibrationMetrics] = Map.empty,
+        basisGates: List[String] = Nil,
+        calibrationId: Option[String] = None,
+        updatedAt: Option[String] = None
     ) extends DeviceCalibration
 
     case class IonQCalibration(
@@ -47,7 +84,11 @@ object calibration {
         avgReadoutFidelity: Double,
         oneQGateDurationSec: Double,
         twoQGateDurationSec: Double,
-        readoutDurationSec: Double
+        readoutDurationSec: Double,
+        topology: Option[CalibrationTopology] = None,
+        qubitMetrics: Map[Int, QubitCalibrationMetrics] = Map.empty,
+        edgeMetrics: Map[(Int, Int), EdgeCalibrationMetrics] = Map.empty,
+        updatedAt: Option[String] = None
     ) extends DeviceCalibration
 
     case class IQMCalibration(
@@ -55,7 +96,11 @@ object calibration {
         t2: Double, 
         q1fidelity: Double,
         q2fidelity: Double, 
-        readoutFidelity: Double
+        readoutFidelity: Double,
+        topology: Option[CalibrationTopology] = None,
+        qubitMetrics: Map[Int, QubitCalibrationMetrics] = Map.empty,
+        edgeMetrics: Map[(Int, Int), EdgeCalibrationMetrics] = Map.empty,
+        updatedAt: Option[String] = None
         // typicalDetectionFalsePositive: Double,
         // typicalDetectionFalseNegative: Double,
         // typicalVacancyError: Option[Double],     
@@ -86,8 +131,72 @@ object calibration {
         oneQGateDurationNs: Long,
         twoQGateDurationNs: Long,
         swapGateDurationNs: Long,
-        readoutDurationNs: Long
+        readoutDurationNs: Long,
+        topology: Option[CalibrationTopology] = None,
+        qubitMetrics: Map[Int, QubitCalibrationMetrics] = Map.empty,
+        edgeMetrics: Map[(Int, Int), EdgeCalibrationMetrics] = Map.empty,
+        updatedAt: Option[String] = None
     ) extends DeviceCalibration
+
+    def topologyOf(c: DeviceCalibration): Option[CalibrationTopology] =
+        c match {
+            case a: IBMCalibration =>
+                a.topology.orElse {
+                    if (a.qubits.nonEmpty || a.edges.nonEmpty) Some(CalibrationTopology(a.qubits, a.edges))
+                    else None
+                }
+            case a: AQTCalibration =>
+                a.topology
+            case a: IonQCalibration =>
+                a.topology
+            case a: IQMCalibration =>
+                a.topology
+            case a: RigettiCalibration =>
+                a.topology
+            case _ =>
+                None
+        }
+
+    def qubitMetricsOf(c: DeviceCalibration): Map[Int, QubitCalibrationMetrics] =
+        c match {
+            case a: IBMCalibration     => a.qubitMetrics
+            case a: AQTCalibration     => a.qubitMetrics
+            case a: IonQCalibration    => a.qubitMetrics
+            case a: IQMCalibration     => a.qubitMetrics
+            case a: RigettiCalibration => a.qubitMetrics
+            case _                     => Map.empty
+        }
+
+    def edgeMetricsOf(c: DeviceCalibration): Map[(Int, Int), EdgeCalibrationMetrics] =
+        c match {
+            case a: IBMCalibration =>
+                a.edgeMetrics.map { case (edge, metrics) =>
+                    val normalized = if (edge._1 <= edge._2) edge else edge.swap
+                    normalized -> metrics
+                }
+            case a: AQTCalibration =>
+                a.edgeMetrics.map { case (edge, metrics) =>
+                    val normalized = if (edge._1 <= edge._2) edge else edge.swap
+                    normalized -> metrics
+                }
+            case a: IonQCalibration =>
+                a.edgeMetrics.map { case (edge, metrics) =>
+                    val normalized = if (edge._1 <= edge._2) edge else edge.swap
+                    normalized -> metrics
+                }
+            case a: IQMCalibration =>
+                a.edgeMetrics.map { case (edge, metrics) =>
+                    val normalized = if (edge._1 <= edge._2) edge else edge.swap
+                    normalized -> metrics
+                }
+            case a: RigettiCalibration =>
+                a.edgeMetrics.map { case (edge, metrics) =>
+                    val normalized = if (edge._1 <= edge._2) edge else edge.swap
+                    normalized -> metrics
+                }
+            case _ =>
+                Map.empty
+        }
 
     case class CanonicalCalibration(
         eps1q: Map[(Int, String), Double],

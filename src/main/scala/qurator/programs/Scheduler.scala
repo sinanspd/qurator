@@ -82,19 +82,21 @@ object Scheduler{
 
 
         //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
-        //TODO 9 Fall back to other devices on failure (maybe after expontential backoff ?)
+        //TODO 1 Fall back to other devices on failure (maybe after expontential backoff ?)
+        //TODO 2 Loop back actual job data 
+        //TODO 3 add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
+        //TODO 4 batch submissions 
+        //TODO 5 We need to move some of the logic to supervisor so that the scheduler keeps running on error 
 
-        //TODO 1 Loop back actual job data 
-        //TODO 2 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO 3 for synronized tasks, can cutting be done more intelligently to isolate non-entangled parts?
-        //TODO 4 consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
-        //TODO 5 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
-        //TODO 6 batch submissions 
+        //TODO 6 consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
         //TODO 7 There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
-        //TODO 8 add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
-        //TODO 9 We need to move some of the logic to supervisor so that the scheduler keeps running on error 
+
+        //TODO 8 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+        //TODO 9 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
+
         //TODO 10 Stronger topology mapping 
         //TODO 11 Merge Cut Task Results --> change UI as well 
+
         //TODO 12 Is anything from Q-Dream useful?? 
         //TODO 13 Is anything from Qonductor useful?? 
         //TODO 14 Is anything from Pilot-Quantum useful??

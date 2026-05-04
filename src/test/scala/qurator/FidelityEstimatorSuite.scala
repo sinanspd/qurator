@@ -4,6 +4,7 @@ import cats.effect.IO
 import weaver.SimpleIOSuite
 import qurator.domain.circuit._
 import qurator.domain.calibration._
+import qurator.testbed.HaqaMapper
 import qurator.util.FidelityEstimator
 
 object FidelityEstimatorSuite extends SimpleIOSuite {
@@ -203,6 +204,141 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
         expect(out.durMeasNs.contains(333L)) and
         expect(out.dur1qAvgNs.contains(444L)) and
         expect(out.dur2qAvgNs.contains(555L))
+    )
+  }
+
+  test("normalizeCalibration IBM uses detailed qubit and edge metrics when present") {
+    val in = IBMCalibration(
+      qubits = List(0, 1),
+      edges = List(0 -> 1),
+      t1Seconds = Nil,
+      t2Seconds = Nil,
+      t1AvgSeconds = 999.0,
+      t2AvgSeconds = 999.0,
+      probMeasu0Presp1 = 0.25,
+      probMeasu1Presp0 = 0.25,
+      idError = 0.5,
+      rxError = 0.5,
+      pauliXError = 0.5,
+      czError = 0.5,
+      rzzError = 0.5,
+      readoutLengthNs = 111L,
+      singleQGateLengthNs = 222L,
+      idLengthNs = 333L,
+      twoQGateLengthNs = 444L,
+      czGateLengthNs = 555L,
+      rzzGateLengthNs = 666L,
+      qubitMetrics = Map(
+        0 -> QubitCalibrationMetrics(
+          t1Seconds = Some(10.0),
+          t2Seconds = Some(20.0),
+          probMeasu0Prep1 = Some(0.01),
+          probMeasu1Prep0 = Some(0.03),
+          gateErrors = Map("ID" -> 0.001, "SX" -> 0.002, "X" -> 0.003),
+          gateDurationsNs = Map("MEASURE" -> 1000L, "ID" -> 10L, "SX" -> 20L, "X" -> 30L)
+        ),
+        1 -> QubitCalibrationMetrics(
+          t1Seconds = Some(11.0),
+          t2Seconds = Some(21.0),
+          probMeasu0Prep1 = Some(0.02),
+          probMeasu1Prep0 = Some(0.04),
+          gateErrors = Map("ID" -> 0.004, "SX" -> 0.005, "X" -> 0.006),
+          gateDurationsNs = Map("MEASURE" -> 2000L, "ID" -> 40L, "SX" -> 50L, "X" -> 60L)
+        )
+      ),
+      edgeMetrics = Map(
+        (0, 1) -> EdgeCalibrationMetrics(
+          gateErrors = Map("ECR" -> 0.01, "RZZ" -> 0.02),
+          gateDurationsNs = Map("ECR" -> 70L, "RZZ" -> 80L)
+        )
+      )
+    )
+
+    val out = FidelityEstimator.normalizeCalibration(in)
+
+    IO.pure(
+      approxOpt(out.readoutFidelity.get(0), Some(0.98)) and
+      approxOpt(out.readoutFidelity.get(1), Some(0.97)) and
+      approxOpt(out.t1.get(0), Some(10.0)) and
+      approxOpt(out.t2.get(1), Some(21.0)) and
+      approxOpt(out.eps1q.get((0, "ID")), Some(0.001)) and
+      approxOpt(out.eps1q.get((1, "RX")), Some(0.005)) and
+      approxOpt(out.eps2q.get(((0, 1), "CX")), Some(0.01)) and
+      approxOpt(out.eps2q.get(((0, 1), "RZZ")), Some(0.02)) and
+      expect(out.durMeasNs.contains(1000L)) and
+      expect(out.dur1qNs.get("RX").contains(20L)) and
+      expect(out.dur2qNs.get("CX").contains(70L))
+    )
+  }
+
+  test("normalizeCalibration IQM expands detailed standardized metrics into canonical maps") {
+    val in = IQMCalibration(
+      t1 = 0.0,
+      t2 = 0.0,
+      q1fidelity = 0.0,
+      q2fidelity = 0.0,
+      readoutFidelity = 0.0,
+      topology = Some(CalibrationTopology(qubits = List(0, 1), edges = List(0 -> 1))),
+      qubitMetrics = Map(
+        0 -> QubitCalibrationMetrics(
+          t1Seconds = Some(1.0),
+          t2Seconds = Some(2.0),
+          oneQubitFidelity = Some(0.99),
+          readoutFidelity = Some(0.98)
+        ),
+        1 -> QubitCalibrationMetrics(
+          t1Seconds = Some(3.0),
+          t2Seconds = Some(4.0),
+          oneQubitFidelity = Some(0.97),
+          readoutFidelity = Some(0.96)
+        )
+      ),
+      edgeMetrics = Map(
+        (0, 1) -> EdgeCalibrationMetrics(
+          gateFidelities = Map("CZ" -> 0.95)
+        )
+      )
+    )
+
+    val out = FidelityEstimator.normalizeCalibration(in)
+
+    IO.pure(
+      approxOpt(out.eps1q.get((0, "X")), Some(0.01)) and
+      approxOpt(out.eps1q.get((1, "X")), Some(0.03)) and
+      approxOpt(out.eps2q.get(((0, 1), "CZ")), Some(0.05)) and
+      approxOpt(out.readoutFidelity.get(0), Some(0.98)) and
+      approxOpt(out.t1.get(1), Some(3.0)) and
+      approxOpt(out.t2Avg, Some(3.0))
+    )
+  }
+
+  test("HaqaMapper builds topology-aware calibration from provider calibration") {
+    val in = IQMCalibration(
+      t1 = 0.0,
+      t2 = 0.0,
+      q1fidelity = 0.0,
+      q2fidelity = 0.0,
+      readoutFidelity = 0.0,
+      topology = Some(CalibrationTopology(qubits = List(0, 1, 2), edges = List(0 -> 1, 1 -> 2))),
+      qubitMetrics = Map(
+        0 -> QubitCalibrationMetrics(oneQubitFidelity = Some(0.99), readoutFidelity = Some(0.98)),
+        1 -> QubitCalibrationMetrics(oneQubitFidelity = Some(0.98), readoutFidelity = Some(0.97)),
+        2 -> QubitCalibrationMetrics(oneQubitFidelity = Some(0.97), readoutFidelity = Some(0.96))
+      ),
+      edgeMetrics = Map(
+        (0, 1) -> EdgeCalibrationMetrics(gateFidelities = Map("CZ" -> 0.95)),
+        (1, 2) -> EdgeCalibrationMetrics(gateFidelities = Map("CZ" -> 0.94))
+      )
+    )
+
+    val topology = HaqaMapper.topologyFromCalibration(in)
+    val general = HaqaMapper.fromCalibration(in)
+
+    IO.pure(
+      expect(topology.exists(_.qubits == Vector(0, 1, 2))) and
+      expect(topology.exists(_.edges.map(e => (e.u, e.v)).toSet == Set((0, 1), (1, 2)))) and
+      expect(general.exists(_.qubit(0).readoutError < 0.03)) and
+      expect(general.exists(_.edge(HaqaMapper.PhysicalEdge(0, 1)).gateStats.contains("cz")))
     )
   }
 

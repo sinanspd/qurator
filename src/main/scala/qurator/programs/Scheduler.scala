@@ -82,24 +82,22 @@ object Scheduler{
 
 
         //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
-        //TODO 1 Fall back to other devices on failure (maybe after expontential backoff ?)
-        //TODO 2 Loop back actual job data 
-        //TODO 3 add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
-        //TODO 4 batch submissions 
-        //TODO 5 We need to move some of the logic to supervisor so that the scheduler keeps running on error 
+        //TODO 1 Loop back actual job data 
+        //TODO 2 add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
+        //TODO 3 batch submissions 
+        //TODO 4 We need to move some of the logic to supervisor so that the scheduler keeps running on error 
 
-        //TODO 6 consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
-        //TODO 7 There is a possibility that merging tasks early limits the devices in the syncronization stage later on. 
+        //TODO 5 consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
 
-        //TODO 8 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO 9 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
+        //TODO 6 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+        //TODO 7 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
 
-        //TODO 10 Stronger topology mapping 
-        //TODO 11 Merge Cut Task Results --> change UI as well 
+        //TODO 8 Stronger topology mapping 
+        //TODO 9 Merge Cut Task Results --> change UI as well 
 
-        //TODO 12 Is anything from Q-Dream useful?? 
-        //TODO 13 Is anything from Qonductor useful?? 
-        //TODO 14 Is anything from Pilot-Quantum useful??
+        //TODO 10 Is anything from Q-Dream useful?? 
+        //TODO 11 Is anything from Qonductor useful?? 
+        //TODO 12 Is anything from Pilot-Quantum useful??
 
 
 
@@ -362,18 +360,45 @@ object Scheduler{
             loop
         }
 
-       private def scheduleOneQuantumTask(task: QuantumTask): F[Unit] =
+       private def deviceKey(device: Device): (String, String) =
+            (device.platform, device.platformId)
+
+       private def deviceKeyString(key: (String, String)): String =
+            s"${key._1}/${key._2}"
+
+       private def scheduleOneQuantumTask(
+            task: QuantumTask,
+            blacklistedDevices: Set[(String, String)] = Set.empty
+        ): F[Unit] =
             for {
                 devices <- Scheduler.getAvailableDevices(clients)
 
                 _ <- Logger[F].info(s"Attempting to schedule quantum task ${task.uuid}")
                 _ <- Logger[F].info(s"Devices ${devices.map(d => d.platformId)}")
+                _ <-
+                    if (blacklistedDevices.nonEmpty)
+                        Logger[F].info(
+                            s"Skipping failed devices for task=${task.uuid}: ${blacklistedDevices.map(deviceKeyString).mkString(", ")}"
+                        )
+                    else Applicative[F].unit
 
-                suitableDevices = devices.filter(d => d.qubits >= task.qubits.value)
+                eligibleDevices = devices.filter(d => d.qubits >= task.qubits.value)
+                suitableDevices = eligibleDevices.filterNot(d => blacklistedDevices.contains(deviceKey(d)))
 
                 _ <- suitableDevices match {
                 case Nil =>
-                    Logger[F].warn(s"No eligible devices for task=${task.uuid}; re-enqueueing") //TODO: re-queue here for production ready ver. 
+                    if (eligibleDevices.nonEmpty && blacklistedDevices.nonEmpty) {
+                        val attempted =
+                            blacklistedDevices.map(deviceKeyString).mkString(", ")
+
+                        Logger[F].error(
+                            s"All eligible devices failed for task=${task.uuid}; attempted=$attempted"
+                        ) *>
+                            new RuntimeException(s"All eligible devices failed for task=${task.uuid}")
+                                .raiseError[F, Unit]
+                    } else {
+                        Logger[F].warn(s"No eligible devices for task=${task.uuid}")
+                    }
 
                 case ds =>
                     for {
@@ -400,22 +425,34 @@ object Scheduler{
 
                         // compiled <- ???
 
-                        jobId <- submitQuantumToProvider(bestDevice, task, task.circuit)
-                        _ <- submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(bestDevice.platformId, task.circuit)))
-                        logicalIds <- logicalIdsFor(task.uuid)
-                        _ <- submittedTasks.update(
-                            _ ++ logicalIds.map(tid => (bestDevice.platform, bestDevice.platformId, jobId, tid))
-                        )
-                        _ <- markDashboardSubmitted(
-                            logicalIds,
-                            provider = Some(bestDevice.platform),
-                            deviceId = Some(bestDevice.platformId),
-                            jobId = Some(jobId),
-                            note =
-                            if (logicalIds.size > 1)
-                                Some(s"Merged physical execution of ${logicalIds.size} logical tasks")
-                            else None
-                        )
+                        _ <- submitQuantumToProvider(bestDevice, task, task.circuit).attempt.flatMap {
+                            case Right(jobId) =>
+                                for {
+                                    _ <- submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(bestDevice.platformId, task.circuit)))
+                                    logicalIds <- logicalIdsFor(task.uuid)
+                                    _ <- submittedTasks.update(
+                                        _ ++ logicalIds.map(tid => (bestDevice.platform, bestDevice.platformId, jobId, tid))
+                                    )
+                                    _ <- markDashboardSubmitted(
+                                        logicalIds,
+                                        provider = Some(bestDevice.platform),
+                                        deviceId = Some(bestDevice.platformId),
+                                        jobId = Some(jobId),
+                                        note =
+                                        if (logicalIds.size > 1)
+                                            Some(s"Merged physical execution of ${logicalIds.size} logical tasks")
+                                        else None
+                                    )
+                                } yield ()
+
+                            case Left(e) =>
+                                val updatedBlacklist = blacklistedDevices + deviceKey(bestDevice)
+
+                                Logger[F].warn(e)(
+                                    s"Submission failed for task=${task.uuid} on device=${bestDevice.platform}/${bestDevice.platformId}; trying another device"
+                                ) *>
+                                    scheduleOneQuantumTask(task, updatedBlacklist)
+                        }
                     } yield ()
                 }
             } yield ()

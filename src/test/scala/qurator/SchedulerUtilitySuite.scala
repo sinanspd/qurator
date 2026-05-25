@@ -50,6 +50,8 @@ import qurator.domain.Braket._
 import qurator.domain.Azure._
 import qurator.testbed.FakeCompiler
 import qurator.domain.CutQC.CutQCConfig
+import qurator.domain.SubmittedJobData._
+import qurator.domain.{ProviderJobTiming, ProviderTaskStatus}
 import qurator.util.CuttingStrategies
 
 @nowarn
@@ -80,8 +82,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
 
     def getDeviceQueueInformationByPage(page: Int): IO[List[DeviceQueueInformation]] = ???
     def persistDeviceQueueInformation(l : List[DeviceQueueInformationCreate]): IO[Unit] = ???
-    def fetchQueueInformationAfterDate(date: LocalDateTime, device: String): IO[List[DeviceQueueInformation]] = 
-      cache.get.flatMap{cached => 
+    def fetchQueueInformationAfterDate(date: LocalDateTime, device: String): IO[List[DeviceQueueInformation]] =
+      cache.get.flatMap { cached =>
           cached.get(device) match {
             case Some(dqi) =>
               println(s"Found cache hit ${dqi.takeRight(1)}") 
@@ -137,6 +139,9 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       }
     def getQueueMinAfterDateForDevice(date: LocalDateTime, device: String): IO[Option[DeviceQueueInformation]] = ???
     def getQueueMaxAfterDateForDevice(date: LocalDateTime, device: String): IO[Option[DeviceQueueInformation]] = ???
+    def persistSubmittedJobData(data: SubmittedJobDataCreate): IO[Unit] = IO.unit
+    def fetchSubmittedJobDataAfterDate(date: LocalDateTime, provider: String, deviceId: String): IO[List[SubmittedJobData]] =
+      IO.pure(List.empty)
   }
 
   def routes(mkResponse: IO[Response[IO]]) =
@@ -246,7 +251,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       )
 
       actual = Scheduler.allParentResultsAvailable(
-        results = Map.empty,
+        completedTasks = Set.empty,
         t = task
       )
     } yield expect(actual)
@@ -263,7 +268,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         createdAt = LocalDateTime.now()
       )
       actual = Scheduler.allParentResultsAvailable(
-        results = Map(p1 -> ("done", 1L)),
+        completedTasks = Set(p1),
         t = task
       )
     } yield expect(!actual)
@@ -281,10 +286,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       )
 
       actual = Scheduler.allParentResultsAvailable(
-        results = Map(
-          p1 -> ("done-1", 1L),
-          p2 -> ("done-2", 1L)
-        ),
+        completedTasks = Set(p1, p2),
         t = task
       )
     } yield expect(actual)
@@ -305,7 +307,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       )
 
       actual = Scheduler.allParentResultsAvailable(
-        results = Map.empty,
+        completedTasks = Set.empty,
         t = task
       )
     } yield expect(actual)
@@ -326,7 +328,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       )
 
       actual = Scheduler.allParentResultsAvailable(
-        results = Map(p2 -> ("done", 1L)),
+        completedTasks = Set(p2),
         t = task
       )
     } yield expect(!actual)
@@ -346,11 +348,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         createdAt = LocalDateTime.now()
       )
       actual = Scheduler.allParentResultsAvailable(
-        results = Map(
-          p1 -> ("done-1", 1L),
-          p2 -> ("done-2", 2L),
-          p3 -> ("done-3", 3L)
-        ),
+        completedTasks = Set(p1, p2, p3),
         t = task
       )
     } yield expect(actual)
@@ -390,19 +388,12 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       )
 
       notReady = Scheduler.allParentResultsAvailable(
-        results = Map(
-          p1 -> ("done-1", 1L),
-          p2 -> ("done-2", 2L)
-        ),
+        completedTasks = Set(p1, p2),
         t = group
       )
 
       ready = Scheduler.allParentResultsAvailable(
-        results = Map(
-          p1 -> ("done-1", 1L),
-          p2 -> ("done-2", 2L),
-          p3 -> ("done-3", 3L)
-        ),
+        completedTasks = Set(p1, p2, p3),
         t = group
       )
     } yield expect.all(
@@ -1893,6 +1884,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] = ??? 
       def listJobDetails(id: String): IO[JobDetailsResponseV2] = ???
       def getJobMetrics(id: String): IO[JobMetricsResponse] = ???
+      def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
+        IO.pure(ProviderJobTiming(None, None))
       def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
         state.update(s => s.copy(fetchOrder = s.fetchOrder :+ platformId)) *>
           ibmByDeviceId.getOrElse(
@@ -1916,6 +1909,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       def fetchDeviceDetails(ids: List[String]): IO[List[BraketDeviceDetailsResponse]] = ???
       def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): IO[BraketCreateQuantumTaskResponse] = ??? 
       def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = ???
+      def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
+        IO.pure(ProviderJobTiming(None, None))
       def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
         IO.raiseError(new RuntimeException(s"unexpected Braket calibration fetch for $platformId"))
     }
@@ -2330,6 +2325,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] = ??? 
       def listJobDetails(id: String): IO[JobDetailsResponseV2] = ???
       def getJobMetrics(id: String): IO[JobMetricsResponse] = ???
+      def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
+        IO.pure(ProviderJobTiming(None, None))
     }
 
     val braket = new BraketClient[IO] {
@@ -2339,6 +2336,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         IO.pure(List.empty)
       def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): IO[BraketCreateQuantumTaskResponse] = ??? 
       def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = ???
+      def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
+        IO.pure(ProviderJobTiming(None, None))
       def fetchDeviceList(): IO[BraketDeviceListResponse] =
         IO.pure(BraketDeviceListResponse(
           devices = List.empty,

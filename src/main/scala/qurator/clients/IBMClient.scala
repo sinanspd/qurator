@@ -21,6 +21,10 @@ import qurator.domain.calibration._
 import qurator.domain.circuit._
 import qurator.domain.device.Device
 import qurator.domain.ProviderClient
+import qurator.domain.ProviderJobTiming
+import qurator.domain.ProviderTaskStatus
+import java.time.{Instant, LocalDateTime, OffsetDateTime, ZoneOffset, ZonedDateTime}
+import scala.util.Try
 
 trait IBMClient[F[_]] extends ProviderClient[F] {
   def fetchBearerToken: F[String]
@@ -65,6 +69,16 @@ trait IBMClient[F[_]] extends ProviderClient[F] {
 }
 
 object IBMClient {
+  private[clients] def parseTimestamp(raw: String): Option[LocalDateTime] = {
+    val parsedInstant =
+      Try(Instant.parse(raw))
+        .orElse(Try(OffsetDateTime.parse(raw).toInstant))
+        .orElse(Try(ZonedDateTime.parse(raw).toInstant))
+        .toOption
+
+    parsedInstant.map(LocalDateTime.ofInstant(_, ZoneOffset.UTC))
+  }
+
   def fetchAvailableDevices[F[_]: cats.Functor](
       fetchDeviceInformation: F[BackendsResponseV2]
   ): F[List[Device]] =
@@ -365,6 +379,14 @@ object IBMClient {
             }
           }
         }
+      }
+
+    def fetchJobTiming(taskId: String, status: ProviderTaskStatus): F[ProviderJobTiming] =
+      getJobMetrics(taskId).map { metrics =>
+        ProviderJobTiming(
+          startedAt = metrics.timestamps.running.flatMap(IBMClient.parseTimestamp),
+          completedAt = metrics.timestamps.finished.flatMap(IBMClient.parseTimestamp)
+        )
       }
 
     private def fetchBackendProperties(

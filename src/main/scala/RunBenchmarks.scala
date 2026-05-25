@@ -147,6 +147,7 @@ object RunBenchmarks extends IOApp.Simple {
                                 cuttingStrategy = dummyBackUpCutter, //CuttingStrategies.cutQC[IO](cutqcClient),
                                 targetEstimatedFidelity = 0.9,
                                 additionalOptimizationRuns = (c: Circuit) => List(c),
+                                environment = cfg.environment,
                                 compiler = compiler
                             )
                         } yield (registry, clients, compiler, scheduler)
@@ -189,4 +190,3 @@ object RunBenchmarks extends IOApp.Simple {
             }
         }
 }
-

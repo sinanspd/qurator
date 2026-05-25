@@ -43,7 +43,10 @@ import qurator.domain.calibration._
 import qurator.domain.circuit._
 import qurator.domain.device.Device
 import qurator.domain.ProviderClient
+import qurator.domain.ProviderJobTiming
+import qurator.domain.ProviderTaskStatus
 import scala.util.Try
+import java.time.{Instant, LocalDateTime, OffsetDateTime, ZoneOffset, ZonedDateTime}
 
 trait BraketClient[F[_]] extends ProviderClient[F] {
   def fetchAvailableDevices: F[List[Device]]
@@ -83,6 +86,16 @@ trait BraketClient[F[_]] extends ProviderClient[F] {
         
 
 object BraketClient {
+  private[clients] def parseTimestamp(raw: String): Option[LocalDateTime] = {
+    val parsedInstant =
+      Try(Instant.parse(raw))
+        .orElse(Try(OffsetDateTime.parse(raw).toInstant))
+        .orElse(Try(ZonedDateTime.parse(raw).toInstant))
+        .toOption
+
+    parsedInstant.map(LocalDateTime.ofInstant(_, ZoneOffset.UTC))
+  }
+
   def fetchAvailableDevices[F[_]: cats.Monad](
       fetchDeviceList: F[BraketDeviceListResponse],
       fetchDeviceDetails: List[String] => F[List[BraketDeviceDetailsResponse]]
@@ -637,6 +650,18 @@ object BraketClient {
                 }
 
     }
+
+    def fetchJobTiming(taskId: String, status: ProviderTaskStatus): F[ProviderJobTiming] =
+        status match {
+            case response: BraketQuantumTaskResponse =>
+                ProviderJobTiming(
+                    startedAt = response.startedAt.flatMap(BraketClient.parseTimestamp),
+                    completedAt = response.endedAt.flatMap(BraketClient.parseTimestamp)
+                ).pure[F]
+
+            case _ =>
+                ProviderJobTiming(None, None).pure[F]
+        }
 
     def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): F[BraketCreateQuantumTaskResponse] = 
         Logger[F].info(s"Submitting Job To Braket") *> 

@@ -18,6 +18,26 @@ import qurator.domain.CutQC.CutQCConfig
 
 object Types{
 
+    sealed trait AppEnvironment {
+        def isProduction: Boolean
+    }
+
+    object AppEnvironment {
+        case object Development extends AppEnvironment {
+            val isProduction: Boolean = false
+        }
+
+        case object Production extends AppEnvironment {
+            val isProduction: Boolean = true
+        }
+
+        def fromString(value: String): AppEnvironment =
+            value.trim.toLowerCase match {
+                case "production" | "prod" => Production
+                case _                     => Development
+            }
+    }
+
     case class PostgreSQLConfig(
         host: NonEmptyString,
         port: UserPortNumber,
@@ -39,7 +59,8 @@ object Types{
         braketConfig: BraketConfig,
         httpServerConfig: HttpServerConfig,
         azureConfig: AzureConfig,
-        cutqcConfig: CutQCConfig
+        cutqcConfig: CutQCConfig,
+        environment: AppEnvironment = AppEnvironment.Development
     )
 
     case class HttpServerConfig(

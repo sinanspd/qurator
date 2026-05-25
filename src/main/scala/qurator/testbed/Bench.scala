@@ -27,6 +27,7 @@ import qurator.testbed.IBMCalibrationInstances._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import qurator.util.QuantumTaskLoader
 import qurator.util.Qasm3Parser
+import qurator.domain.{ProviderJobTiming, ProviderTaskStatus}
 import fs2.io.file.Path
 
 
@@ -653,6 +654,8 @@ object BenchmarkHttpClients{
             def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource: String): IO[BraketCreateQuantumTaskResponse] =
                 dummies.braketSubmit(r, qasmSource)
             def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = dummies.braketGetJob(taskId)
+            def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
+                IO.pure(ProviderJobTiming(None, None))
             def fetchDeviceCalibration(deviceArn: String): IO[DeviceCalibration] = registry.calibration(deviceArn).pure[IO]
         }
 
@@ -666,6 +669,8 @@ object BenchmarkHttpClients{
             def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] =  dummies.ibmSubmit(r) 
             def listJobDetails(id: String): IO[JobDetailsResponseV2] = dummies.ibmListJob(id)
             def getJobMetrics(id: String): IO[JobMetricsResponse] = dummies.ibmMetrics(id)
+            def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
+                IO.pure(ProviderJobTiming(None, None))
             def fetchDeviceCalibration(deviceArn: String): IO[DeviceCalibration] = registry.calibration(deviceArn).pure[IO]
         }
         HttpClients.fromParts[IO](ibm, braket, azure)

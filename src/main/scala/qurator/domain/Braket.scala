@@ -152,7 +152,8 @@ object Braket{
         queueInfo: BraketDeviceQueueInfo,
         shots: Int,
         status: String,
-        tags: Option[Map[String, String]]
+        tags: Option[Map[String, String]],
+        startedAt: Option[String] = None
     ) extends ProviderTaskStatus {
         def taskStatus: String =
             status

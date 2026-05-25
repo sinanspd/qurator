@@ -91,6 +91,7 @@ object RunSyncTreeBenchmarks extends IOApp.Simple {
                 cuttingStrategy = CuttingStrategies.none[IO], //CuttingStrategies.cutQC[IO](cutqcClient),
                 targetEstimatedFidelity = 0.7,
                 additionalOptimizationRuns = (c: Circuit) => List(c),
+                environment = cfg.environment,
                 compiler = compiler
               )
 

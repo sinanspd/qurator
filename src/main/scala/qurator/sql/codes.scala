@@ -33,11 +33,13 @@ import eu.timepit.refined.generic._
 //import shop.ext.refined._
 import scala.tools.nsc.doc.base.comment.Code
 import qurator.domain.DeviceQueueInformation._
+import qurator.domain.SubmittedJobData._
 
 
 object codecs{
 
     val deviceQueueInformationId: Codec[DeviceQueueInformationId]           = uuid.imap[DeviceQueueInformationId](DeviceQueueInformationId(_))(_.value)
+    val submittedJobDataId: Codec[SubmittedJobDataId]                       = uuid.imap[SubmittedJobDataId](SubmittedJobDataId(_))(_.value)
     val deviceProvider: Codec[DeviceProvider] =
         varchar.imap[DeviceProvider](stringToDeviceProvider(_))(deviceProviderToString(_))
 

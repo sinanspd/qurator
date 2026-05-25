@@ -6,6 +6,7 @@ import qurator.domain.circuit.Circuit
 import qurator.domain.device.Device
 import cats.Functor
 import cats.syntax.all._
+import java.time.LocalDateTime
 
 trait ProviderTaskSubmission {
   def jobId: String
@@ -14,6 +15,11 @@ trait ProviderTaskSubmission {
 trait ProviderTaskStatus {
   def taskStatus: String
 }
+
+final case class ProviderJobTiming(
+    startedAt: Option[LocalDateTime],
+    completedAt: Option[LocalDateTime]
+)
 
 trait ProviderDeviceSummary {
   def platformId: String
@@ -41,6 +47,7 @@ trait ProviderClient[F[_]] {
       compiled: Circuit
   ): F[_ <: ProviderTaskSubmission]
   def getTask(taskId: String): F[_ <: ProviderTaskStatus]
+  def fetchJobTiming(taskId: String, status: ProviderTaskStatus): F[ProviderJobTiming]
   def fetchDeviceCalibration(deviceId: String): F[DeviceCalibration]
   def completedStatuses: Set[String]
 }

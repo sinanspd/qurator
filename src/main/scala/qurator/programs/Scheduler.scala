@@ -34,11 +34,16 @@ import cats.Applicative
 import java.util.UUID
 import qurator.dashboard._
 import qurator.domain.ProviderClient
+import qurator.domain.ProviderTaskStatus
+import qurator.domain.ProviderJobTiming
+import qurator.domain.SubmittedJobData._
+import qurator.Types.AppEnvironment
 
 
 final case class SubmittedJobInfo(
     deviceId: String,
-    executedCircuit: Circuit
+    executedCircuit: Circuit,
+    submittedAt: LocalDateTime
 )
 
 trait Scheduler[F[_]]{
@@ -60,6 +65,7 @@ object Scheduler{
         targetEstimatedFidelity: Double, 
         additionalOptimizationRuns: Circuit => List[Circuit],
         dashboardConfig: SchedulerDashboardConfig = SchedulerDashboardConfig(),
+        environment: AppEnvironment = AppEnvironment.Development,
         compiler: FakeCompiler[F] //abstract this
   ): F[Scheduler[F]] =
     for {
@@ -82,28 +88,29 @@ object Scheduler{
 
 
         //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
-        //TODO 1 Loop back actual job data 
-        //TODO 2 add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
-        //TODO 3 batch submissions 
-        //TODO 4 We need to move some of the logic to supervisor so that the scheduler keeps running on error 
+        //TODO 1 add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
+        //TODO 2 batch submissions 
+        //TODO 3 We need to move some of the logic to supervisor so that the scheduler keeps running on error 
 
-        //TODO 5 consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
+        //TODO 4 consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
 
-        //TODO 6 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO 7 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
+        //TODO 5 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+        //TODO 6 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
 
-        //TODO 8 Stronger topology mapping 
-        //TODO 9 Merge Cut Task Results --> change UI as well 
+        //TODO 7 Stronger topology mapping 
+        //TODO 8 Merge Cut Task Results --> change UI as well 
 
-        //TODO 10 Is anything from Q-Dream useful?? 
-        //TODO 11 Is anything from Qonductor useful?? 
-        //TODO 12 Is anything from Pilot-Quantum useful??
+        //TODO 9 Is anything from Q-Dream useful?? 
+        //TODO 10 Is anything from Qonductor useful?? 
+        //TODO 11 Is anything from Pilot-Quantum useful??
 
 
 
         private val mergeEnabled: Boolean = true
         private val mergeMaxQubits: Int = 10
         private val mergeQueueFactorMillis: Long = 3000L
+        private val productionMode: Boolean = environment.isProduction
+        private val submittedJobDataLookback: FiniteDuration = 1.hour
 
         private def registerDashboardTask(task: Task, pendingReason: String): F[Unit] =
             dashboardState.update(st => SchedulerDashboard.recordTask(st, task, pendingReason))
@@ -402,6 +409,12 @@ object Scheduler{
 
                 case ds =>
                     for {
+                        observedQueueByDevice <- observedQueueMillisByDevice(ds)
+                        observedFleetMeanQueue =
+                            observedQueueByDevice.values.flatten.toList match {
+                                case Nil => None
+                                case xs  => Some(xs.sum.toDouble / xs.size.toDouble)
+                            }
                         scored <- ds.traverse { d =>
                             (
                                 estimateFidelity(d, task.circuit, clients, compiler),
@@ -412,7 +425,9 @@ object Scheduler{
                                         pTotal = f.pTotal,
                                         queueLength = d.queueLength.toLong,
                                         transpileMillis = tMillis,
-                                        fleetMeanQueue =  ds.map(_.queueLength.toDouble).sum / ds.size.toDouble
+                                        fleetMeanQueue =  ds.map(_.queueLength.toDouble).sum / ds.size.toDouble,
+                                        observedQueueMillis = observedQueueByDevice.getOrElse(d, None),
+                                        observedFleetMeanQueueMillis = observedFleetMeanQueue
                                     )
 
                                 (d, ac, f, d.queueLength, tMillis)
@@ -425,10 +440,11 @@ object Scheduler{
 
                         // compiled <- ???
 
+                        submittedAt <- nowUtcLocalDateTime
                         _ <- submitQuantumToProvider(bestDevice, task, task.circuit).attempt.flatMap {
                             case Right(jobId) =>
                                 for {
-                                    _ <- submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(bestDevice.platformId, task.circuit)))
+                                    _ <- submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(bestDevice.platformId, task.circuit, submittedAt)))
                                     logicalIds <- logicalIdsFor(task.uuid)
                                     _ <- submittedTasks.update(
                                         _ ++ logicalIds.map(tid => (bestDevice.platform, bestDevice.platformId, jobId, tid))
@@ -482,15 +498,17 @@ object Scheduler{
                 _ <- Logger[F].info("Scheduling Syncronized Task")
                 devices <- Scheduler.getAvailableDevices(clients)
                 orderedTasks = prioritizationStrategy(s.tasks).collect{ case t: QuantumTask => t}
+                observedQueueByDevice <- observedQueueMillisByDevice(devices)
                 candidateDevicesByTask <- orderedTasks.traverse{t =>
                     val suitableDevices = devices.filter(d => d.qubits >= t.qubits.value)
-                    suitableDevices.traverse{d => 
+                    suitableDevices.traverse{d =>
                         (estimateFidelity(d, t.circuit, clients, compiler), estimateTranspilationTime(t.circuit, d.gateSet), estimateRunTime(d,t))
-                            .mapN{(f, t, run) => 
-                               val queueMillis = d.queueLength + t
+                            .mapN{(f, t, run) =>
+                               val queueMillis = observedQueueByDevice.getOrElse(d, None).getOrElse(d.queueLength.toLong) + t
                                CandidateDevice(d, fidelity = f.logPTotal, queueMillis = queueMillis, runMillis = run)
                             }
-                    }.map{cs => 
+                    }
+                    .map{cs =>
                         val possible = cs.filter(_.fidelity >= math.log(targetEstimatedFidelity))
                         if (possible.nonEmpty) possible else cs 
                     }.map(t -> _)   
@@ -505,9 +523,10 @@ object Scheduler{
                 _ <- plan.assignments.toList.traverse_{case (device, tasksOnDevice) => 
                   tasksOnDevice.traverse_{t => 
                     //submitJobWithFallback(device, t, candidateDevicesByTask.getOrElse(t, Nil))  
+                    nowUtcLocalDateTime.flatMap { submittedAt =>
                     submitQuantumToProvider(device, t, t.circuit).flatMap { jobId =>
                         Logger[F].info(s"Task ${t.uuid} submitted, adding to list") *>
-                        submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(device.platformId, t.circuit))) *>
+                        submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(device.platformId, t.circuit, submittedAt))) *>
                         submittedTasks.update(_ :+ (device.platform, device.platformId, jobId, t.uuid)) *> 
                         markDashboardSubmitted(
                             List(t.uuid),
@@ -515,6 +534,7 @@ object Scheduler{
                             deviceId = Some(device.platformId),
                             jobId = Some(jobId)
                         )
+                    }
                     }
                   }    
                 }
@@ -573,9 +593,13 @@ object Scheduler{
         ): F[Unit] =
             clients.providerClient(provider) match {
                 case Some(providerClient) =>
-                    ProviderClient.isTaskComplete(providerClient, providerId).flatMap {
-                        case true  => completeQuantumJob(provider, providerId, entries, "1")
+                    providerClient.getTask(providerId).flatMap { status =>
+                        providerClient.completedStatuses.contains(status.taskStatus) match {
+                        case true  =>
+                            persistSubmittedJobDataIfAvailable(providerClient, provider, providerId, entries, status) *>
+                                completeQuantumJob(provider, providerId, entries, "1")
                         case false => Applicative[F].unit
+                        }
                     }
 
                 case None if provider == "Azure" =>
@@ -589,6 +613,49 @@ object Scheduler{
                 case None =>
                     new RuntimeException(s"No ProviderClient registered for platform=$provider").raiseError[F, Unit]
             }
+
+        private def persistSubmittedJobDataIfAvailable(
+            providerClient: ProviderClient[F],
+            provider: String,
+            providerId: String,
+            entries: List[(String, String, String, TaskId)],
+            status: ProviderTaskStatus
+        ): F[Unit] =
+            if (!productionMode) Applicative[F].unit
+            else
+                providerClient.fetchJobTiming(providerId, status).attempt.flatMap {
+                    case Left(e) =>
+                        Logger[F].warn(e)(s"Failed to fetch provider timing for provider=$provider, job=$providerId")
+
+                    case Right(ProviderJobTiming(Some(startedAt), Some(completedAt))) =>
+                        submittedJobInfo.get.flatMap { submitted =>
+                            submitted.get(providerId) match {
+                                case Some(info) =>
+                                    dataPersistanceService.persistSubmittedJobData(
+                                        SubmittedJobDataCreate(
+                                            jobId = providerId,
+                                            provider = provider,
+                                            deviceId = info.deviceId,
+                                            submittedAt = info.submittedAt,
+                                            startedAt = startedAt,
+                                            completedAt = completedAt
+                                        )
+                                    )
+
+                                case None =>
+                                    val deviceId = entries.headOption.map(_._2).getOrElse("unknown")
+
+                                    Logger[F].warn(
+                                        s"Skipping submitted job data persistence for provider=$provider, device=$deviceId, job=$providerId; missing scheduler submit timestamp"
+                                    )
+                            }
+                        }
+
+                    case Right(_) =>
+                        Logger[F].info(
+                            s"Skipping submitted job data persistence for provider=$provider, job=$providerId; provider start/completion timestamps were incomplete"
+                        )
+                }
 
         private def submitJobWithFallback(device: Device, task: QuantumTask, candidates: List[CandidateDevice]): F[Unit] = {
             def bgAction(fa: F[Unit]): F[Unit] =
@@ -857,27 +924,51 @@ object Scheduler{
             queueLength: Long,
             transpileMillis: Long,
             fleetMeanQueue: Double,
+            observedQueueMillis: Option[Long] = None,
+            observedFleetMeanQueueMillis: Option[Double] = None,
             lightLoadQueue: Double = 500.0,
             heavyLoadQueue: Double = 10000.0,
+            lightLoadQueueMillis: Double = 1.minute.toMillis.toDouble,
+            heavyLoadQueueMillis: Double = 1.hour.toMillis.toDouble,
             transpileScaleMillis: Double = 5000.0
         ): Double = {
             val load =
-                clamp(
-                    (fleetMeanQueue - lightLoadQueue) / (heavyLoadQueue - lightLoadQueue),
-                    0.0,
-                    1.0
-                )
+                observedFleetMeanQueueMillis match {
+                    case Some(meanQueueMillis) =>
+                        clamp(
+                            (meanQueueMillis - lightLoadQueueMillis) / (heavyLoadQueueMillis - lightLoadQueueMillis),
+                            0.0,
+                            1.0
+                        )
+
+                    case None =>
+                        clamp(
+                            (fleetMeanQueue - lightLoadQueue) / (heavyLoadQueue - lightLoadQueue),
+                            0.0,
+                            1.0
+                        )
+                }
 
             val wF = 0.80 - 0.55 * load  //0.80 + 0.55  // - 0.75
             val wQ = 0.15 + 0.45 * load //0.15 - 0.45.  //0.75 + 0.75
             val wT = 1.0 - wF - wQ        
 
             val qScaled =
-                clamp(
-                    math.log1p(queueLength.toDouble) / math.log1p(heavyLoadQueue),
-                    0.0,
-                    1.0
-                )
+                observedQueueMillis match {
+                    case Some(queueMillis) =>
+                        clamp(
+                            math.log1p(queueMillis.toDouble) / math.log1p(heavyLoadQueueMillis),
+                            0.0,
+                            1.0
+                        )
+
+                    case None =>
+                        clamp(
+                            math.log1p(queueLength.toDouble) / math.log1p(heavyLoadQueue),
+                            0.0,
+                            1.0
+                        )
+                }
 
             val tScaled =
                 clamp(
@@ -926,6 +1017,37 @@ object Scheduler{
 
         private def nowMillis: F[Long] =
             Clock[F].realTime.map(_.toMillis)
+
+        private def nowUtcLocalDateTime: F[LocalDateTime] =
+            Clock[F].realTimeInstant.map(LocalDateTime.ofInstant(_, ZoneOffset.UTC))
+
+        private def submittedJobDataCutoff: F[LocalDateTime] =
+            Clock[F].realTimeInstant.map { now =>
+                LocalDateTime.ofInstant(
+                    now.minusMillis(submittedJobDataLookback.toMillis),
+                    ZoneOffset.UTC
+                )
+            }
+
+        private def observedQueueMillisForDevice(device: Device): F[Option[Long]] =
+            if (!productionMode) none[Long].pure[F]
+            else
+                for {
+                    cutoff <- submittedJobDataCutoff
+                    records <- dataPersistanceService.fetchSubmittedJobDataAfterDate(
+                        date = cutoff,
+                        provider = device.platform,
+                        deviceId = device.platformId
+                    )
+                    waits = records.flatMap(_.queueWaitMillis)
+                } yield waits match {
+                    case Nil => None
+                    case xs  => Some(xs.sum / xs.size)
+                }
+
+        private def observedQueueMillisByDevice(devices: List[Device]): F[Map[Device, Option[Long]]] =
+            if (!productionMode) devices.map(_ -> none[Long]).toMap.pure[F]
+            else devices.traverse(d => observedQueueMillisForDevice(d).map(d -> _)).map(_.toMap)
 
         private def markCompleted(
             taskId: TaskId,

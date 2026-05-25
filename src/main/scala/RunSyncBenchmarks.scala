@@ -68,6 +68,7 @@ object RunSyncBenchmarks extends IOApp.Simple {
                             cuttingStrategy = CuttingStrategies.none[IO],
                             targetEstimatedFidelity = 0.9,
                             additionalOptimizationRuns = (c: Circuit) => List(c),
+                            environment = cfg.environment,
                             compiler = compiler
                         )      
                         _ <- scheduler.startRuntime.use { _ => 
@@ -94,4 +95,3 @@ object RunSyncBenchmarks extends IOApp.Simple {
             }
         }
 }
-

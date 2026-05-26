@@ -51,7 +51,7 @@ import qurator.domain.Azure._
 import qurator.testbed.FakeCompiler
 import qurator.domain.CutQC.CutQCConfig
 import qurator.domain.SubmittedJobData._
-import qurator.domain.{ProviderJobTiming, ProviderTaskStatus}
+import qurator.domain.{ProviderJobTiming, ProviderTaskStatus, QuantumJobResult}
 import qurator.util.CuttingStrategies
 
 @nowarn
@@ -1884,6 +1884,10 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] = ??? 
       def listJobDetails(id: String): IO[JobDetailsResponseV2] = ???
       def getJobMetrics(id: String): IO[JobMetricsResponse] = ???
+      def getJobResults(id: String): IO[String] =
+        IO.pure("""{"counts":{"0":1}}""")
+      def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] =
+        getJobResults(taskId).map(raw => IBMClient.jobResultFromRaw(provider, taskId, status, raw))
       def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
         IO.pure(ProviderJobTiming(None, None))
       def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
@@ -1911,6 +1915,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = ???
       def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
         IO.pure(ProviderJobTiming(None, None))
+      def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] =
+        IO.pure(QuantumJobResult.unavailable(provider, taskId, None, "test client does not fetch Braket results"))
       def fetchDeviceCalibration(platformId: String): IO[DeviceCalibration] =
         IO.raiseError(new RuntimeException(s"unexpected Braket calibration fetch for $platformId"))
     }
@@ -2325,6 +2331,10 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] = ??? 
       def listJobDetails(id: String): IO[JobDetailsResponseV2] = ???
       def getJobMetrics(id: String): IO[JobMetricsResponse] = ???
+      def getJobResults(id: String): IO[String] =
+        IO.pure("""{"counts":{"0":1}}""")
+      def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] =
+        getJobResults(taskId).map(raw => IBMClient.jobResultFromRaw(provider, taskId, status, raw))
       def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
         IO.pure(ProviderJobTiming(None, None))
     }
@@ -2338,6 +2348,8 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = ???
       def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
         IO.pure(ProviderJobTiming(None, None))
+      def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] =
+        IO.pure(QuantumJobResult.unavailable(provider, taskId, None, "test client does not fetch Braket results"))
       def fetchDeviceList(): IO[BraketDeviceListResponse] =
         IO.pure(BraketDeviceListResponse(
           devices = List.empty,

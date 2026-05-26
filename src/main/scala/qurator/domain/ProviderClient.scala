@@ -4,7 +4,7 @@ import qurator.domain.Task.QuantumTask
 import qurator.domain.calibration.DeviceCalibration
 import qurator.domain.circuit.Circuit
 import qurator.domain.device.Device
-import cats.Functor
+import cats.{Functor, Monad}
 import cats.syntax.all._
 import java.time.LocalDateTime
 
@@ -48,6 +48,7 @@ trait ProviderClient[F[_]] {
   ): F[_ <: ProviderTaskSubmission]
   def getTask(taskId: String): F[_ <: ProviderTaskStatus]
   def fetchJobTiming(taskId: String, status: ProviderTaskStatus): F[ProviderJobTiming]
+  def fetchTaskResult(taskId: String, status: ProviderTaskStatus): F[QuantumJobResult]
   def fetchDeviceCalibration(deviceId: String): F[DeviceCalibration]
   def completedStatuses: Set[String]
 }
@@ -63,6 +64,9 @@ object ProviderClient {
 
   def getTaskStatus[F[_]: Functor](client: ProviderClient[F], taskId: String): F[String] =
     client.getTask(taskId).map(_.taskStatus)
+
+  def fetchQuantumTaskResult[F[_]: Monad](client: ProviderClient[F], taskId: String): F[QuantumJobResult] =
+    client.getTask(taskId).flatMap(status => client.fetchTaskResult(taskId, status))
 
   def isTaskComplete[F[_]: Functor](client: ProviderClient[F], taskId: String): F[Boolean] =
     getTaskStatus(client, taskId).map(client.completedStatuses.contains)

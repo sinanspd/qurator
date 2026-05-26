@@ -23,6 +23,7 @@ import qurator.domain.device.Device
 import qurator.domain.ProviderClient
 import qurator.domain.ProviderJobTiming
 import qurator.domain.ProviderTaskStatus
+import qurator.domain.QuantumJobResult
 import java.time.{Instant, LocalDateTime, OffsetDateTime, ZoneOffset, ZonedDateTime}
 import scala.util.Try
 
@@ -33,6 +34,7 @@ trait IBMClient[F[_]] extends ProviderClient[F] {
   def submitJob(r: SubmitJobRequestV2): F[CreateJobResponseV2]
   def listJobDetails(id: String): F[JobDetailsResponseV2]
   def getJobMetrics(id: String): F[JobMetricsResponse]
+  def getJobResults(id: String): F[String]
   def fetchDeviceCalibration(deviceArn: String): F[DeviceCalibration]
 
   override final def provider: String =
@@ -77,6 +79,23 @@ object IBMClient {
         .toOption
 
     parsedInstant.map(LocalDateTime.ofInstant(_, ZoneOffset.UTC))
+  }
+
+  def jobResultFromRaw(
+      provider: String,
+      taskId: String,
+      status: ProviderTaskStatus,
+      raw: String
+  ): QuantumJobResult = {
+    val deviceId = status match {
+      case response: JobDetailsResponseV2 => Some(response.backend)
+      case _                              => None
+    }
+
+    if (raw.trim.isEmpty)
+      QuantumJobResult.unavailable(provider, taskId, deviceId, "IBM returned an empty result payload")
+    else
+      QuantumJobResult.fromRawText(provider, taskId, deviceId, raw)
   }
 
   def fetchAvailableDevices[F[_]: cats.Functor](
@@ -380,6 +399,37 @@ object IBMClient {
           }
         }
       }
+
+    def getJobResults(id: String): F[String] =
+      fetchBearerToken.flatMap { token =>
+        Uri.fromString(s"https://quantum.cloud.ibm.com/api/v1/jobs/$id/results").liftTo[F].flatMap { uri =>
+          val req = GET(
+            uri,
+            Header.Raw(CaseInsensitiveString("Accept"), "application/json"),
+            Header.Raw(CaseInsensitiveString("Authorization"), s"Bearer $token"),
+            Header.Raw(CaseInsensitiveString("Service-CRN"), cfg.instanceId),
+            Header.Raw(CaseInsensitiveString("IBM-API-Version"), "2025-05-01")
+          )
+          client.run(req).use { resp =>
+            resp.status match {
+              case Status.Ok =>
+                resp.as[String]
+              case Status.NoContent =>
+                "".pure[F]
+              case other =>
+                resp.as[String].flatMap { body =>
+                  Logger[F].info(s"Status: $other, body: $body") *>
+                    MonadCancelThrow[F].raiseError(
+                      new Exception(s"Failed to fetch IBM job results for $id: $other")
+                    )
+                }
+            }
+          }
+        }
+      }
+
+    def fetchTaskResult(taskId: String, status: ProviderTaskStatus): F[QuantumJobResult] =
+      getJobResults(taskId).map(raw => IBMClient.jobResultFromRaw(provider, taskId, status, raw))
 
     def fetchJobTiming(taskId: String, status: ProviderTaskStatus): F[ProviderJobTiming] =
       getJobMetrics(taskId).map { metrics =>

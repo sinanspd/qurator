@@ -36,6 +36,7 @@ import qurator.dashboard._
 import qurator.domain.ProviderClient
 import qurator.domain.ProviderTaskStatus
 import qurator.domain.ProviderJobTiming
+import qurator.domain.QuantumJobResult
 import qurator.domain.SubmittedJobData._
 import qurator.Types.AppEnvironment
 
@@ -88,7 +89,7 @@ object Scheduler{
 
 
         //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
-        //TODO 1 add Result types (we can do this after the paper is done, dummy results for the sake of evaluation is fine for now) 
+        //TODO 1 Need callback logic
         //TODO 2 batch submissions 
         //TODO 3 We need to move some of the logic to supervisor so that the scheduler keeps running on error 
 
@@ -96,13 +97,11 @@ object Scheduler{
 
         //TODO 5 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
         //TODO 6 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
+        //TODO 7 Merge Cut Task Results --> change UI as well
 
-        //TODO 7 Stronger topology mapping 
-        //TODO 8 Merge Cut Task Results --> change UI as well 
-
-        //TODO 9 Is anything from Q-Dream useful?? 
-        //TODO 10 Is anything from Qonductor useful?? 
-        //TODO 11 Is anything from Pilot-Quantum useful??
+        //TODO 8 Is anything from Q-Dream useful??
+        //TODO 9 Is anything from Qonductor useful??
+        //TODO 10 Is anything from Pilot-Quantum useful??
 
 
 
@@ -597,7 +596,9 @@ object Scheduler{
                         providerClient.completedStatuses.contains(status.taskStatus) match {
                         case true  =>
                             persistSubmittedJobDataIfAvailable(providerClient, provider, providerId, entries, status) *>
-                                completeQuantumJob(provider, providerId, entries, "1")
+                                fetchQuantumJobResult(providerClient, provider, providerId, entries, status).flatMap { result =>
+                                    completeQuantumJob(provider, providerId, entries, result.summary, Some(result))
+                                }
                         case false => Applicative[F].unit
                         }
                     }
@@ -605,13 +606,34 @@ object Scheduler{
                 case None if provider == "Azure" =>
                     clients.azure.getQuantumTask(providerId).flatMap { r =>
                         r.status match {
-                            case "Succeeded" => completeQuantumJob(provider, providerId, entries, "1")
+                            case "Succeeded" => completeQuantumJob(provider, providerId, entries, "1", None)
                             case _           => Applicative[F].unit
                         }
                     }
 
                 case None =>
                     new RuntimeException(s"No ProviderClient registered for platform=$provider").raiseError[F, Unit]
+                }
+
+        private def fetchQuantumJobResult(
+            providerClient: ProviderClient[F],
+            provider: String,
+            providerId: String,
+            entries: List[(String, String, String, TaskId)],
+            status: ProviderTaskStatus
+        ): F[QuantumJobResult] =
+            providerClient.fetchTaskResult(providerId, status).attempt.flatMap {
+                case Right(result) => result.pure[F]
+
+                case Left(e) =>
+                    val deviceId = entries.headOption.map(_._2)
+                    Logger[F].warn(e)(s"Failed to fetch provider result for provider=$provider, job=$providerId") *>
+                        QuantumJobResult.unavailable(
+                            provider,
+                            providerId,
+                            deviceId,
+                            s"Failed to fetch provider result: ${e.getMessage}"
+                        ).pure[F]
             }
 
         private def persistSubmittedJobDataIfAvailable(
@@ -1055,7 +1077,8 @@ object Scheduler{
             provider: Option[String] = None,
             deviceId: Option[String] = None,
             jobId: Option[String] = None,
-            executedCircuit: Option[Circuit] = None
+            executedCircuit: Option[Circuit] = None,
+            quantumResult: Option[QuantumJobResult] = None
         ): F[Unit] =
             nowMillis.flatMap { ts =>
                 val completion = TaskCompletion(
@@ -1065,7 +1088,8 @@ object Scheduler{
                     provider = provider,
                     deviceId = deviceId,
                     jobId = jobId,
-                    executedCircuit = executedCircuit
+                    executedCircuit = executedCircuit,
+                    quantumResult = quantumResult
                 )
 
                 val callbackF =
@@ -1091,7 +1115,8 @@ object Scheduler{
             provider: String,
             jobId: String,
             entries: List[(String, String, String, TaskId)],
-            resultValue: String
+            resultValue: String,
+            quantumResult: Option[QuantumJobResult]
         ): F[Unit] =
             for {
                 jobInfoMap <- submittedJobInfo.get
@@ -1105,7 +1130,8 @@ object Scheduler{
                         provider = Some(provider),
                         deviceId = deviceId,
                         jobId = Some(jobId),
-                        executedCircuit = executedCircuit
+                        executedCircuit = executedCircuit,
+                        quantumResult = quantumResult
                     )
                 }
                 _ <- submittedTasks.update(_.filterNot { case (p, _, jid, _) => p == provider && jid == jobId })

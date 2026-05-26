@@ -73,7 +73,8 @@ object AWSSigner {
   basePath: String,
   rawPath: String,            
   payload: Array[Byte],
-  creds:   BraketConfig
+  creds:   BraketConfig,
+  includePayloadHashHeader: Boolean = false
 ): Map[String, String] = {
 
     val nowUtc    = ZonedDateTime.now(ZoneOffset.UTC)
@@ -86,10 +87,14 @@ object AWSSigner {
     val canonicalPath  = if(rawPath != ""){basePath + "/" + canonicalizePath(canonicalizePath(rawPath))}else{basePath}
     val canonicalQuery = ""                        //Not used but still need to be signed unfortunately
 
-    val headers = List(
+    val baseHeaders = List(
       "host"                 -> host,
       "x-amz-date"           -> amzDate
-    ).sortBy(_._1)
+    )
+
+    val headers =
+      (if (includePayloadHashHeader) baseHeaders :+ ("x-amz-content-sha256" -> sha256Hex(payloadHash)) else baseHeaders)
+        .sortBy(_._1)
 
     val canonicalHeaders =
       headers.map { case (k, v) => s"$k:${v.trim}\n" }.mkString
@@ -116,10 +121,14 @@ object AWSSigner {
     val authorization =
       s"$Algorithm Credential=${creds.accessId}/$scope, SignedHeaders=$signedHeaders, Signature=$signature"
 
-    Map(
+    val signedHeadersMap = Map(
       "host"                 -> host,
       "authorization"        -> authorization,
       "x-amz-date"           -> amzDate
     )
+
+    if (includePayloadHashHeader)
+      signedHeadersMap + ("x-amz-content-sha256" -> sha256Hex(payloadHash))
+    else signedHeadersMap
   }
 }

@@ -45,6 +45,7 @@ import qurator.domain.device.Device
 import qurator.domain.ProviderClient
 import qurator.domain.ProviderJobTiming
 import qurator.domain.ProviderTaskStatus
+import qurator.domain.QuantumJobResult
 import scala.util.Try
 import java.time.{Instant, LocalDateTime, OffsetDateTime, ZoneOffset, ZonedDateTime}
 
@@ -95,6 +96,14 @@ object BraketClient {
 
     parsedInstant.map(LocalDateTime.ofInstant(_, ZoneOffset.UTC))
   }
+
+  private[clients] def resultObjectKey(outputS3Directory: String): String = {
+    val cleaned = outputS3Directory.stripPrefix("/").stripSuffix("/")
+    if (cleaned.endsWith("results.json")) cleaned else s"$cleaned/results.json"
+  }
+
+  private[clients] def encodeS3KeyPath(key: String): String =
+    key.split("/", -1).map(AWSSigner.canonicalizePath).mkString("/")
 
   def fetchAvailableDevices[F[_]: cats.Monad](
       fetchDeviceList: F[BraketDeviceListResponse],
@@ -662,6 +671,77 @@ object BraketClient {
             case _ =>
                 ProviderJobTiming(None, None).pure[F]
         }
+
+    def fetchTaskResult(taskId: String, status: ProviderTaskStatus): F[QuantumJobResult] =
+        status match {
+            case response: BraketQuantumTaskResponse =>
+                (response.outputS3Bucket, response.outputS3Directory) match {
+                    case (Some(bucket), Some(directory)) =>
+                        fetchS3ObjectText(
+                            bucket = bucket,
+                            key = BraketClient.resultObjectKey(directory),
+                            region = regionForArn(taskId)
+                        ).map(raw =>
+                            QuantumJobResult.fromRawText(
+                                provider = provider,
+                                jobId = taskId,
+                                deviceId = Some(response.deviceArn),
+                                raw = raw
+                            )
+                        )
+
+                    case _ =>
+                        QuantumJobResult.unavailable(
+                            provider,
+                            taskId,
+                            Some(response.deviceArn),
+                            "Braket task did not include output S3 location"
+                        ).pure[F]
+                }
+
+            case _ =>
+                QuantumJobResult.unavailable(provider, taskId, None, "Unsupported Braket task status response").pure[F]
+        }
+
+    private def fetchS3ObjectText(bucket: String, key: String, region: String): F[String] = {
+        val service = "s3"
+        val host = s"$bucket.s3.$region.amazonaws.com"
+        val encodedKey = BraketClient.encodeS3KeyPath(key)
+        val payload = Array.emptyByteArray
+
+        val headers = AWSSigner.signRequest(
+            method = Method.GET,
+            region = region,
+            service = service,
+            host = host,
+            basePath = s"/$encodedKey",
+            rawPath = "",
+            payload = payload,
+            creds = cfg,
+            includePayloadHashHeader = true
+        )
+
+        val req = Request[F](
+            method = Method.GET,
+            uri = Uri.unsafeFromString(s"https://$host/$encodedKey"),
+            headers = Headers(headers.toList.map { case (k, v) => Header.Raw(CaseInsensitiveString(k), v) })
+        )
+
+        client.run(req).use { resp =>
+            resp.status match {
+                case Status.Ok =>
+                    resp.as[String]
+
+                case other =>
+                    resp.as[String].flatMap { body =>
+                        Logger[F].info(s"Status: $other, body: $body") *>
+                            MonadCancelThrow[F].raiseError(
+                                new Exception(s"Failed to fetch Braket result object s3://$bucket/$key: $other")
+                            )
+                    }
+            }
+        }
+    }
 
     def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource:   String): F[BraketCreateQuantumTaskResponse] = 
         Logger[F].info(s"Submitting Job To Braket") *> 

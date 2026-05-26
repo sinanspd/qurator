@@ -27,7 +27,7 @@ import qurator.testbed.IBMCalibrationInstances._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import qurator.util.QuantumTaskLoader
 import qurator.util.Qasm3Parser
-import qurator.domain.{ProviderJobTiming, ProviderTaskStatus}
+import qurator.domain.{ProviderJobTiming, ProviderTaskStatus, QuantumJobResult}
 import fs2.io.file.Path
 
 
@@ -656,6 +656,8 @@ object BenchmarkHttpClients{
             def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = dummies.braketGetJob(taskId)
             def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
                 IO.pure(ProviderJobTiming(None, None))
+            def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] =
+                IO.pure(QuantumJobResult.unavailable(provider, taskId, None, "benchmark client does not fetch Braket results"))
             def fetchDeviceCalibration(deviceArn: String): IO[DeviceCalibration] = registry.calibration(deviceArn).pure[IO]
         }
 
@@ -669,6 +671,10 @@ object BenchmarkHttpClients{
             def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] =  dummies.ibmSubmit(r) 
             def listJobDetails(id: String): IO[JobDetailsResponseV2] = dummies.ibmListJob(id)
             def getJobMetrics(id: String): IO[JobMetricsResponse] = dummies.ibmMetrics(id)
+            def getJobResults(id: String): IO[String] =
+                IO.pure("""{"counts":{"0":1}}""")
+            def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] =
+                getJobResults(taskId).map(raw => IBMClient.jobResultFromRaw(provider, taskId, status, raw))
             def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
                 IO.pure(ProviderJobTiming(None, None))
             def fetchDeviceCalibration(deviceArn: String): IO[DeviceCalibration] = registry.calibration(deviceArn).pure[IO]

@@ -11,6 +11,7 @@ import qurator.effects.GenUUID
 import qurator.domain.ID
 import qurator.modules.HttpClients
 import qurator.programs.Scheduler
+import qurator.domain.QuantumResult
 import java.time.LocalDateTime
 import org.typelevel.log4cats.Logger
 import qurator.util.FidelityEstimator
@@ -259,7 +260,7 @@ private def buildGroupMetric(
   }
 
 private def waitUntilAllCompleted(
-    completedRef: Ref[IO, Map[TaskId, TaskCompletion]],
+    completedRef: Ref[IO, Map[TaskId, QuantumResult]],
     expectedIds: Set[TaskId],
     pollEvery: scala.concurrent.duration.FiniteDuration
 ): IO[List[SyncSubmittedQuantum]] = {
@@ -275,8 +276,8 @@ private def waitUntilAllCompleted(
                 if (remaining.isEmpty) {
                     expectedIds.toList.traverse { taskId =>
                         seen.get(taskId) match {
-                            case Some(completion) =>
-                                completion.deviceId match {
+                            case Some(result) =>
+                                result.deviceId match {
                                     case Some(deviceId) => SyncSubmittedQuantum(taskId, deviceId).pure[IO]
                                     case None =>
                                         new RuntimeException(s"Missing deviceId in completion callback for taskId=$taskId")
@@ -306,9 +307,9 @@ private def waitUntilAllCompleted(
   ): IO[SyncBenchmarkRun] =
     for {
       t0 <- monotonicMillis
-      completedQuantumRef <- Ref.of[IO, Map[TaskId, TaskCompletion]](Map.empty)
-      onQuantumComplete = (completion: TaskCompletion) =>
-        completedQuantumRef.update(_ + (completion.taskId -> completion))
+      completedQuantumRef <- Ref.of[IO, Map[TaskId, QuantumResult]](Map.empty)
+      onQuantumComplete = (results: List[QuantumResult]) =>
+        completedQuantumRef.update(_ ++ results.flatMap(result => result.taskId.map(_ -> result)).toMap)
 
       syncTaskReqs = groups.map(g => 
         SynronizedQuantumTaskRequest(g.tasks.map(q => 

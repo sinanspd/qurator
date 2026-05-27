@@ -27,7 +27,7 @@ import qurator.testbed.IBMCalibrationInstances._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import qurator.util.QuantumTaskLoader
 import qurator.util.Qasm3Parser
-import qurator.domain.{ProviderJobTiming, ProviderTaskStatus, QuantumJobResult}
+import qurator.domain.{ProviderJobTiming, ProviderTaskStatus, QuantumJobResult, QuantumResult}
 import fs2.io.file.Path
 
 
@@ -742,7 +742,7 @@ object SchedulerBenchmarkRunner {
         targetEstimatedFidelity: Double,
         cuttingStrategy: (Circuit, List[Device]) => IO[List[Circuit]],
         additionalOptimizationRuns: Circuit => List[Circuit],
-        onQuantumComplete: TaskCompletion => IO[Unit]
+        onQuantumComplete: QuantumResult => IO[Unit]
     ): IO[List[(TaskId, QuantumTaskSpec)]] =
         for {
             npw <- LocalDateTime.now().pure[IO]
@@ -797,19 +797,19 @@ object SchedulerBenchmarkRunner {
         } yield quantumIds.zip(expectedExpanded)
 
     private def waitUntilAllCompleted(
-        completedRef: Ref[IO, Map[TaskId, TaskCompletion]],
+        completedRef: Ref[IO, Map[TaskId, QuantumResult]],
         expectedQuantumIds: Set[TaskId],
         pollEvery: scala.concurrent.duration.FiniteDuration
-    ): IO[List[TaskCompletion]] = {
-        def loop: IO[List[TaskCompletion]] =
+    ): IO[List[QuantumResult]] = {
+        def loop: IO[List[QuantumResult]] =
             completedRef.get.flatMap { seen =>
                 if (expectedQuantumIds.subsetOf(seen.keySet)) {
                     expectedQuantumIds.toList.traverse { taskId =>
                         seen.get(taskId) match {
-                            case Some(completion) => completion.pure[IO]
+                            case Some(result) => result.pure[IO]
                             case None =>
                                 new RuntimeException(s"Missing completion event for taskId=$taskId")
-                                    .raiseError[IO, TaskCompletion]
+                                    .raiseError[IO, QuantumResult]
                         }
                     }
                 } else {
@@ -817,22 +817,18 @@ object SchedulerBenchmarkRunner {
                 }
             }
 
-        if (expectedQuantumIds.isEmpty) List.empty[TaskCompletion].pure[IO]
+        if (expectedQuantumIds.isEmpty) List.empty[QuantumResult].pure[IO]
         else loop
     }
 
     private def quantumMetricsForAssignments(
-        completions: List[TaskCompletion],
+        completions: List[QuantumResult],
         registry: BenchmarkDeviceRegistry,
         clients: HttpClients[IO],
         compiler: FakeCompiler[IO]
     ): IO[List[QuantumTaskMetric]] =
           completions
-            .groupBy { completion =>
-                completion.jobId.getOrElse(
-                    throw new RuntimeException(s"Missing jobId in completion callback for taskId=${completion.taskId}")
-                )
-            }
+            .groupBy(_.jobId)
             .toList
             .traverse { case (jobId, subs) =>
                 val deviceId = subs.head.deviceId.getOrElse(
@@ -860,7 +856,9 @@ object SchedulerBenchmarkRunner {
                     )
                 } yield subs.map { sub =>
                     QuantumTaskMetric(
-                        taskId = sub.taskId,
+                        taskId = sub.taskId.getOrElse(
+                            throw new RuntimeException(s"Missing taskId in quantum result for providerJobId=$jobId")
+                        ),
                         jobId = jobId,
                         deviceId = deviceId,
                         queueWaitMillis = rec.queueWaitMillis,
@@ -886,9 +884,12 @@ object SchedulerBenchmarkRunner {
             report <- WorkloadSpecs.loadedTasks
             _ <- Logger[IO].info(s"Loaded ${report.size} task(s)")
             _ <- Logger[IO].info("Starting Scheduler Benchmark")
-            completedQuantumRef <- Ref.of[IO, Map[TaskId, TaskCompletion]](Map.empty)
-            onQuantumComplete = (completion: TaskCompletion) =>
-                completedQuantumRef.update(_ + (completion.taskId -> completion))
+            completedQuantumRef <- Ref.of[IO, Map[TaskId, QuantumResult]](Map.empty)
+            onQuantumComplete = (result: QuantumResult) =>
+                result.taskId match {
+                    case Some(taskId) => completedQuantumRef.update(_ + (taskId -> result))
+                    case None         => IO.raiseError(new RuntimeException(s"Missing taskId in quantum result for job=${result.jobId}"))
+                }
             quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _, clients, compiler, 0.9, cuttingStrategy, (c: Circuit) => List(c), onQuantumComplete)).map(_.flatten)
             expectedIds = quantumIdPairs.map(_._1).toSet
             completions <- waitUntilAllCompleted(completedQuantumRef, expectedIds, pollEvery)

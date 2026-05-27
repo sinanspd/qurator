@@ -37,6 +37,7 @@ import qurator.domain.ProviderClient
 import qurator.domain.ProviderTaskStatus
 import qurator.domain.ProviderJobTiming
 import qurator.domain.QuantumJobResult
+import qurator.domain.QuantumResult
 import qurator.domain.SubmittedJobData._
 import qurator.Types.AppEnvironment
 
@@ -49,7 +50,9 @@ final case class SubmittedJobInfo(
 
 trait Scheduler[F[_]]{
     def submitTask(taskReq: TaskRequest): F[List[TaskId]]
-    def submitTask(taskReq: TaskRequest, onComplete: TaskCompletion => F[Unit]): F[List[TaskId]]
+    def submitTask[A](taskReq: NewClassicalTaskRequest, onComplete: A => F[Unit]): F[List[TaskId]]
+    def submitTask(taskReq: NewQuantumTaskRequest, onComplete: QuantumResult => F[Unit]): F[List[TaskId]]
+    def submitTask(taskReq: SynronizedQuantumTaskRequest, onComplete: List[QuantumResult] => F[Unit]): F[List[TaskId]]
     def estimateQueueTime(device: Device, task: QuantumTask) : F[Long]
     def getSubmittedTasks(): F[List[(String, String, String, TaskId)]]
     def getSubmittedJobInfo(): F[Map[String, SubmittedJobInfo]]
@@ -58,6 +61,19 @@ trait Scheduler[F[_]]{
 }
 
 object Scheduler{
+  private sealed trait TaskContinuation[F[_]]
+
+  private object TaskContinuation {
+    final case class Classical[F[_]](run: Any => F[Unit]) extends TaskContinuation[F]
+    final case class Quantum[F[_]](run: QuantumResult => F[Unit]) extends TaskContinuation[F]
+  }
+
+  private final case class SynchronizedContinuation[F[_]](
+      taskIds: List[TaskId],
+      completed: Map[TaskId, QuantumResult],
+      run: List[QuantumResult] => F[Unit]
+  )
+
   def make[F[_]: GenUUID: Concurrent: Logger : Temporal : Background : Async](
         dataPersistanceService: DataPersistanceService[F],
         clients: HttpClients[F],
@@ -74,7 +90,9 @@ object Scheduler{
       pendingTasks     <- Ref.of[F, List[Task]](List.empty)
       submittedTasks   <- Ref.of[F, List[(String, String, String, TaskId)]](List.empty) //platform, platformId, jobId, taskId
       completedTasks   <- Ref.of[F, Set[TaskId]](Set.empty)
-      taskCallbacks    <- Ref.of[F, Map[TaskId, TaskCompletion => F[Unit]]](Map.empty)
+      taskCallbacks    <- Ref.of[F, Map[TaskId, TaskContinuation[F]]](Map.empty)
+      syncCallbacks    <- Ref.of[F, Map[TaskId, SynchronizedContinuation[F]]](Map.empty)
+      syncTaskGroups   <- Ref.of[F, Map[TaskId, TaskId]](Map.empty)
       taskIndex        <- Ref.of[F, Map[TaskId, Task]](Map.empty)
       mergedAliases    <- Ref.of[F, Map[TaskId, List[TaskId]]](Map.empty)
       submittedJobInfo <- Ref.of[F, Map[String, SubmittedJobInfo]](Map.empty)
@@ -89,19 +107,17 @@ object Scheduler{
 
 
         //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
-        //TODO 1 Need callback logic
-        //TODO 2 batch submissions 
-        //TODO 3 We need to move some of the logic to supervisor so that the scheduler keeps running on error 
+        //TODO 1 batch submissions for cut circuits 
 
-        //TODO 4 consider impact of cross talk when scheduling multiple tasks on the same device --> need topology aware mapping. Defined as avg distance between data qubits 
+        //TODO 2 better consider impact of cross talk when scheduling multiple tasks on the same device --> Defined as avg distance between data qubits
 
-        //TODO 5 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO 6 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
-        //TODO 7 Merge Cut Task Results --> change UI as well
+        //TODO 3 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+        //TODO 4 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
+        //TODO 5 Merge Cut Task Results --> change UI as well
 
-        //TODO 8 Is anything from Q-Dream useful??
-        //TODO 9 Is anything from Qonductor useful??
-        //TODO 10 Is anything from Pilot-Quantum useful??
+        //TODO 6 Is anything from Q-Dream useful??
+        //TODO 7 Is anything from Qonductor useful??
+        //TODO 8 Is anything from Pilot-Quantum useful??
 
 
 
@@ -138,30 +154,54 @@ object Scheduler{
                 )
             }
 
-        private def noopCallback(t: TaskCompletion): F[Unit] =
+        private def noopCallback[A](value: A): F[Unit] =
             Applicative[F].unit
 
-        private def rememberCallbacks(
-            taskIds: List[TaskId],
-            onComplete: TaskCompletion => F[Unit]
+        private def rememberClassicalCallback[A](
+            taskId: TaskId,
+            onComplete: A => F[Unit]
         ): F[Unit] =
-            taskCallbacks.update(_ ++ taskIds.map(_ -> onComplete).toMap)
+            taskCallbacks.update(_ + (taskId -> TaskContinuation.Classical((value: Any) => onComplete(value.asInstanceOf[A]))))
+
+        private def rememberQuantumCallbacks(
+            taskIds: List[TaskId],
+            onComplete: QuantumResult => F[Unit]
+        ): F[Unit] =
+            taskCallbacks.update(_ ++ taskIds.map(_ -> TaskContinuation.Quantum(onComplete)).toMap)
+
+        private def rememberSynchronizedCallback(
+            groupId: TaskId,
+            taskIds: List[TaskId],
+            onComplete: List[QuantumResult] => F[Unit]
+        ): F[Unit] =
+            syncCallbacks.update(_ + (groupId -> SynchronizedContinuation(taskIds, Map.empty, onComplete))) *>
+                syncTaskGroups.update(_ ++ taskIds.map(_ -> groupId).toMap)
 
         def submitTask(taskReq: TaskRequest): F[List[TaskId]] =
-            submitTask(taskReq, noopCallback)
+            taskReq match {
+                case str: SynronizedQuantumTaskRequest =>
+                    Logger[F].info("Received Synronized Task") *> submitSynronizedTaskRequest(str, noopCallback[List[QuantumResult]])
+                case ntr: NewQuantumTaskRequest =>
+                    Logger[F].info("Received Quantum Task") *> submitNewTaskRequest(ntr, noopCallback[QuantumResult])
+                case ctr: NewClassicalTaskRequest =>
+                    Logger[F].info("Received Classical Task") *> submitClassicalTaskRequest[Any](ctr, noopCallback[Any])
+            }
 
-        def submitTask(taskReq: TaskRequest, onComplete: TaskCompletion => F[Unit]): F[List[TaskId]] = taskReq match{
-            case str : SynronizedQuantumTaskRequest => 
-                Logger[F].info("Received Synronized Task") *> submitSynronizedTaskRequest(str, onComplete)
-            case ntr : NewQuantumTaskRequest => 
-                 Logger[F].info("Received Quantum Task") *>  submitNewTaskRequest(ntr, onComplete)
-            case ctr : NewClassicalTaskRequest => 
-                 Logger[F].info("Received Classical Task") *>  submitClassicalTaskRequest(ctr, onComplete)
-        }
+        def submitTask[A](taskReq: NewClassicalTaskRequest, onComplete: A => F[Unit]): F[List[TaskId]] =
+            Logger[F].info("Received Classical Task") *> submitClassicalTaskRequest(taskReq, onComplete)
 
-        private def submitClassicalTaskRequest(
+        def submitTask(taskReq: NewQuantumTaskRequest, onComplete: QuantumResult => F[Unit]): F[List[TaskId]] =
+            Logger[F].info("Received Quantum Task") *> submitNewTaskRequest(taskReq, onComplete)
+
+        def submitTask(
+            taskReq: SynronizedQuantumTaskRequest,
+            onComplete: List[QuantumResult] => F[Unit]
+        ): F[List[TaskId]] =
+            Logger[F].info("Received Synronized Task") *> submitSynronizedTaskRequest(taskReq, onComplete)
+
+        private def submitClassicalTaskRequest[A](
             taskReq: NewClassicalTaskRequest,
-            onComplete: TaskCompletion => F[Unit]
+            onComplete: A => F[Unit]
         ): F[List[TaskId]] = 
             ID.make[F, TaskId].flatMap(taskId => {
                 val t = ClassicalTask( 
@@ -171,7 +211,7 @@ object Scheduler{
                         childTasks = taskReq.childTasks,
                         createdAt = taskReq.createdAt
                 )
-                rememberCallbacks(List(t.uuid), onComplete) *>
+                rememberClassicalCallback(t.uuid, onComplete) *>
                 rememberTask(t) *> allParentResultsAvailable(t).flatMap{ apr =>
                     val readyNow = taskReq.parentTasks.isEmpty || apr
                     registerDashboardTask(
@@ -189,7 +229,7 @@ object Scheduler{
 
         private def submitNewTaskRequest(
             taskReq: NewQuantumTaskRequest,
-            onComplete: TaskCompletion => F[Unit]
+            onComplete: QuantumResult => F[Unit]
         ): F[List[TaskId]] =  // TST
              for{
                 devices <- Scheduler.getAvailableDevices[F](clients)
@@ -216,7 +256,7 @@ object Scheduler{
                                 }
                             }
                              _ <- rememberTasks(recreatedTasks)
-                             _ <- rememberCallbacks(recreatedTasks.map(_.uuid), onComplete)
+                             _ <- rememberQuantumCallbacks(recreatedTasks.map(_.uuid), onComplete)
                              _ <- recreatedTasks.traverse_(t =>
                                 registerDashboardTask(
                                     t,
@@ -241,7 +281,7 @@ object Scheduler{
                                     childTasks = taskReq.childTasks,
                                     createdAt = taskReq.createdAt
                             )
-                            rememberCallbacks(List(t.uuid), onComplete) *>
+                            rememberQuantumCallbacks(List(t.uuid), onComplete) *>
                             rememberTask(t) *> 
                             registerDashboardTask(
                                 t,
@@ -263,7 +303,7 @@ object Scheduler{
 
         private def submitSynronizedTaskRequest(
             str: SynronizedQuantumTaskRequest,
-            onComplete: TaskCompletion => F[Unit]
+            onComplete: List[QuantumResult] => F[Unit]
         ): F[List[TaskId]] =  // TST
             for{
                 devices <- Scheduler.getAvailableDevices[F](clients)
@@ -322,8 +362,8 @@ object Scheduler{
                     s"Merge attempt: original=${tasks.size}, after=${possiblyMergedTasks.size}, " +
                     s"ids=${possiblyMergedTasks.map(_.uuid).mkString(", ")}"
                 )
-                _ <- rememberCallbacks(possiblyMergedTasks.map(_.uuid), onComplete)
                 groupId <- ID.make[F, TaskId]
+                _ <- rememberSynchronizedCallback(groupId, possiblyMergedTasks.map(_.uuid), onComplete)
                 sg = SyncronizedQuantumTaskList(
                     groupId,
                     possiblyMergedTasks,
@@ -361,6 +401,10 @@ object Scheduler{
 
                     case None =>
                         Temporal[F].sleep(idleDelay) *> loop
+                }.handleErrorWith { e =>
+                    Logger[F].error(e)("Scheduler loop failed unexpectedly; continuing") *>
+                        Temporal[F].sleep(idleDelay) *>
+                        loop
                 }
 
             loop
@@ -542,10 +586,14 @@ object Scheduler{
             }yield ()
 
 
-        private def startFetchingResults(): F[Unit] =  
+        private def startFetchingResults(): F[Unit] =
             Stream
-                .repeatEval(fetchAllInProgressJobResults)
-                .metered(scala.concurrent.duration.FiniteDuration(100, "ms")) 
+                .repeatEval(
+                    fetchAllInProgressJobResults.handleErrorWith { e =>
+                        Logger[F].error(e)("Result fetch loop failed unexpectedly; continuing")
+                    }
+                )
+                .metered(scala.concurrent.duration.FiniteDuration(100, "ms"))
                 .compile
                 .drain
         
@@ -570,7 +618,11 @@ object Scheduler{
                             provider,
                             jobId,
                             entries
-                        )
+                        ).handleErrorWith { e =>
+                            Logger[F].error(e)(
+                                s"Failed to fetch completion state for provider=$provider, job=$jobId; keeping job submitted for retry"
+                            )
+                        }
                 }
                 done <- completedTasks.get
 
@@ -597,7 +649,7 @@ object Scheduler{
                         case true  =>
                             persistSubmittedJobDataIfAvailable(providerClient, provider, providerId, entries, status) *>
                                 fetchQuantumJobResult(providerClient, provider, providerId, entries, status).flatMap { result =>
-                                    completeQuantumJob(provider, providerId, entries, result.summary, Some(result))
+                                    completeQuantumJob(provider, providerId, entries, result)
                                 }
                         case false => Applicative[F].unit
                         }
@@ -606,7 +658,16 @@ object Scheduler{
                 case None if provider == "Azure" =>
                     clients.azure.getQuantumTask(providerId).flatMap { r =>
                         r.status match {
-                            case "Succeeded" => completeQuantumJob(provider, providerId, entries, "1", None)
+                            case "Succeeded" =>
+                                val result =
+                                    QuantumJobResult.unavailable(
+                                        provider,
+                                        providerId,
+                                        entries.headOption.map(_._2),
+                                        "Azure result fetching is not implemented"
+                                    )
+
+                                completeQuantumJob(provider, providerId, entries, result)
                             case _           => Applicative[F].unit
                         }
                     }
@@ -662,7 +723,11 @@ object Scheduler{
                                             startedAt = startedAt,
                                             completedAt = completedAt
                                         )
-                                    )
+                                    ).handleErrorWith { e =>
+                                        Logger[F].warn(e)(
+                                            s"Failed to persist submitted job data for provider=$provider, job=$providerId; continuing completion workflow"
+                                        )
+                                    }
 
                                 case None =>
                                     val deviceId = entries.headOption.map(_._2).getOrElse("unknown")
@@ -1071,15 +1136,15 @@ object Scheduler{
             if (!productionMode) devices.map(_ -> none[Long]).toMap.pure[F]
             else devices.traverse(d => observedQueueMillisForDevice(d).map(d -> _)).map(_.toMap)
 
-        private def markCompleted(
+        private def markCompletedRecord(
             taskId: TaskId,
             value: String,
             provider: Option[String] = None,
             deviceId: Option[String] = None,
             jobId: Option[String] = None,
             executedCircuit: Option[Circuit] = None,
-            quantumResult: Option[QuantumJobResult] = None
-        ): F[Unit] =
+            quantumResult: Option[QuantumResult] = None
+        ): F[TaskCompletion] =
             nowMillis.flatMap { ts =>
                 val completion = TaskCompletion(
                     taskId = taskId,
@@ -1092,31 +1157,94 @@ object Scheduler{
                     quantumResult = quantumResult
                 )
 
-                val callbackF =
-                    taskCallbacks.modify { callbacks =>
-                        (callbacks - taskId, callbacks.get(taskId))
-                    }.flatMap {
-                        case Some(cb) =>
-                            cb(completion).handleErrorWith { e =>
-                                Logger[F].error(e)(s"Completion callback failed for task=${taskId.value}")
-                            }
-                        case None => Applicative[F].unit
-                    }
-
                 completedTasks.update(_ + taskId) *>
                 taskIndex.update(_ - taskId) *>
                 dashboardState.update(st =>
                     SchedulerDashboard.markCompleted(st, completion, dashboardConfig.retainedCompletedTasks)
                 ) *>
-                callbackF
+                completion.pure[F]
             }
+
+        private def invokeClassicalContinuation(taskId: TaskId, value: Any): F[Unit] =
+            taskCallbacks.modify { callbacks =>
+                (callbacks - taskId, callbacks.get(taskId))
+            }.flatMap {
+                case Some(TaskContinuation.Classical(run)) =>
+                    run(value).handleErrorWith { e =>
+                        Logger[F].error(e)(s"Classical completion callback failed for task=${taskId.value}")
+                    }
+
+                case Some(TaskContinuation.Quantum(_)) =>
+                    Logger[F].warn(s"Registered quantum callback for classical task=${taskId.value}; skipping")
+
+                case None => Applicative[F].unit
+            }
+
+        private def invokeQuantumContinuation(taskId: TaskId, result: QuantumResult): F[Unit] =
+            syncTaskGroups.get.flatMap { groups =>
+                groups.get(taskId) match {
+                    case Some(groupId) =>
+                        recordSynchronizedResult(groupId, taskId, result)
+
+                    case None =>
+                        taskCallbacks.modify { callbacks =>
+                            (callbacks - taskId, callbacks.get(taskId))
+                        }.flatMap {
+                            case Some(TaskContinuation.Quantum(run)) =>
+                                run(result).handleErrorWith { e =>
+                                    Logger[F].error(e)(s"Quantum completion callback failed for task=${taskId.value}")
+                                }
+
+                            case Some(TaskContinuation.Classical(_)) =>
+                                Logger[F].warn(s"Registered classical callback for quantum task=${taskId.value}; skipping")
+
+                            case None => Applicative[F].unit
+                        }
+                }
+            }
+
+        private def recordSynchronizedResult(
+            groupId: TaskId,
+            taskId: TaskId,
+            result: QuantumResult
+        ): F[Unit] =
+            syncCallbacks.modify { groups =>
+                groups.get(groupId) match {
+                    case Some(state) =>
+                        val nextResults = state.completed + (taskId -> result)
+                        if (state.taskIds.forall(nextResults.contains)) {
+                            val orderedResults = state.taskIds.flatMap(nextResults.get)
+                            (groups - groupId, Some((state.taskIds, state.run, orderedResults)))
+                        } else {
+                            (groups + (groupId -> state.copy(completed = nextResults)), None)
+                        }
+
+                    case None =>
+                        (groups, None)
+                }
+            }.flatMap {
+                case Some((taskIds, run, results)) =>
+                    syncTaskGroups.update(_ -- taskIds) *>
+                        run(results).handleErrorWith { e =>
+                            Logger[F].error(e)(s"Synchronized quantum callback failed for group=${groupId.value}")
+                        }
+
+                case None =>
+                    syncCallbacks.get.flatMap { groups =>
+                        if (groups.contains(groupId)) Applicative[F].unit
+                        else Logger[F].warn(s"Missing synchronized callback state for group=${groupId.value}, task=${taskId.value}")
+                    }
+            }
+
+        private def completeClassicalTask(taskId: TaskId, result: Any): F[Unit] =
+            markCompletedRecord(taskId, result.toString) *>
+                invokeClassicalContinuation(taskId, result)
 
         private def completeQuantumJob(
             provider: String,
             jobId: String,
             entries: List[(String, String, String, TaskId)],
-            resultValue: String,
-            quantumResult: Option[QuantumJobResult]
+            quantumResult: QuantumResult
         ): F[Unit] =
             for {
                 jobInfoMap <- submittedJobInfo.get
@@ -1124,15 +1252,22 @@ object Scheduler{
                 deviceId = entries.headOption.map(_._2)
                 taskIds = entries.map(_._4).distinct
                 _ <- taskIds.traverse_ { tid =>
-                    markCompleted(
+                    val taskResult =
+                        quantumResult.copy(
+                            taskId = Some(tid),
+                            deviceId = quantumResult.deviceId.orElse(deviceId),
+                            executedCircuit = executedCircuit
+                        )
+
+                    markCompletedRecord(
                         taskId = tid,
-                        value = resultValue,
+                        value = taskResult.summary,
                         provider = Some(provider),
                         deviceId = deviceId,
                         jobId = Some(jobId),
                         executedCircuit = executedCircuit,
-                        quantumResult = quantumResult
-                    )
+                        quantumResult = Some(taskResult)
+                    ) *> invokeQuantumContinuation(tid, taskResult)
                 }
                 _ <- submittedTasks.update(_.filterNot { case (p, _, jid, _) => p == provider && jid == jobId })
                 _ <- submittedJobInfo.update(_ - jobId)
@@ -1223,7 +1358,7 @@ object Scheduler{
                 note = Some("Classical execution")
             ) *>
             Temporal[F].sleep(computationTime.millis) *>
-            markCompleted(ct.uuid, s"Result of classical task ${ct.uuid.value}")
+            completeClassicalTask(ct.uuid, s"Result of classical task ${ct.uuid.value}")
         }
 
         def getSubmittedTasks(): F[List[(String, String, String, TaskId)]] = 

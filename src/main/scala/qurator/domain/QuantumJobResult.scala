@@ -2,6 +2,8 @@ package qurator.domain
 
 import io.circe.{Json, JsonObject}
 import io.circe.parser.parse
+import qurator.domain.Task.TaskId
+import qurator.domain.circuit.Circuit
 
 final case class QuantumResultValue(
     name: String,
@@ -18,7 +20,9 @@ final case class QuantumJobResult(
     probabilities: Map[String, Double],
     measurements: Option[List[List[Int]]],
     resultTypes: List[QuantumResultValue],
-    raw: Json
+    raw: Json,
+    taskId: Option[TaskId] = None,
+    executedCircuit: Option[Circuit] = None
 ) {
     def summary: String =
         raw.hcursor.downField("unavailable").as[String].toOption match {

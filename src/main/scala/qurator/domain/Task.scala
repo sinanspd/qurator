@@ -76,7 +76,7 @@ object Task{
         deviceId: Option[String] = None,
         jobId: Option[String] = None,
         executedCircuit: Option[Circuit] = None,
-        quantumResult: Option[QuantumJobResult] = None
+        quantumResult: Option[QuantumResult] = None
     )
 
     sealed trait TaskRequest 

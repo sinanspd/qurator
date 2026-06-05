@@ -109,15 +109,13 @@ object Scheduler{
         //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
         //TODO 1 batch submissions for cut circuits 
 
-        //TODO 2 better consider impact of cross talk when scheduling multiple tasks on the same device --> Defined as avg distance between data qubits
+        //TODO 2 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+        //TODO 3 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
+        //TODO 4 Merge Cut Task Results --> change UI as well
 
-        //TODO 3 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO 4 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
-        //TODO 5 Merge Cut Task Results --> change UI as well
-
-        //TODO 6 Is anything from Q-Dream useful??
-        //TODO 7 Is anything from Qonductor useful??
-        //TODO 8 Is anything from Pilot-Quantum useful??
+        //TODO 5 Is anything from Q-Dream useful??
+        //TODO 6 Is anything from Qonductor useful??
+        //TODO 7 Is anything from Pilot-Quantum useful??
 
 
 

@@ -192,8 +192,33 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
      clients = testClient
   )
 
+  test("provider clients advertise batch submission support") {
+    IO.pure(expect.all(
+      testClient.ibm.supportsBatchSubmissions,
+      !testClient.braket.supportsBatchSubmissions
+    ))
+  }
+
   private def ids(n: Int): IO[List[TaskId]] =
     List.fill(n)(()).traverse(_ => ID.make[IO, TaskId])
+
+  test("weightedMajorityDevice gives larger subcircuits more weight") {
+    for {
+      List(id1, id2, id3) <- ids(3)
+      a = Device("IBM", "small-majority", 20, t1 = 0f, t2 = 0f, gateSet = List.empty)
+      b = Device("IBM", "large-minority", 20, t1 = 0f, t2 = 0f, gateSet = List.empty)
+      t1 = QuantumTask(id1, Circuit(List.empty, 2), TaskQubits(2), TaskShots(1000), TaskDepth(1), Nil, Nil, LocalDateTime.now())
+      t2 = QuantumTask(id2, Circuit(List.empty, 2), TaskQubits(2), TaskShots(1000), TaskDepth(1), Nil, Nil, LocalDateTime.now())
+      t3 = QuantumTask(id3, Circuit(List.empty, 5), TaskQubits(5), TaskShots(1000), TaskDepth(1), Nil, Nil, LocalDateTime.now())
+      selected = Scheduler.weightedMajorityDevice(
+        List(
+          (t1, a, 1.0),
+          (t2, a, 1.0),
+          (t3, b, 1.0)
+        )
+      )
+    } yield expect(selected.contains(b))
+  }
 
   test("test the test, test queue data generator"){
     val date = LocalDateTime.now()
@@ -1881,6 +1906,10 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         IBMClient.fetchAvailableDevices(fetchDeviceInformation)
       def fetchDeviceDetails(ids: List[String]): IO[List[IBMBackendDevice]] =
         IBMClient.fetchDeviceDetails(fetchDeviceInformation, ids)
+      def createSession(r: CreateSessionRequest): IO[SessionResponse] = ???
+      def getSession(id: String): IO[SessionResponse] = ???
+      def updateSession(id: String, r: UpdateSessionRequest): IO[Unit] = ???
+      def closeSession(id: String): IO[Unit] = ???
       def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] = ??? 
       def listJobDetails(id: String): IO[JobDetailsResponseV2] = ???
       def getJobMetrics(id: String): IO[JobMetricsResponse] = ???
@@ -2328,6 +2357,10 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
           )
 
       def fetchBearerToken: IO[String] = ???
+      def createSession(r: CreateSessionRequest): IO[SessionResponse] = ???
+      def getSession(id: String): IO[SessionResponse] = ???
+      def updateSession(id: String, r: UpdateSessionRequest): IO[Unit] = ???
+      def closeSession(id: String): IO[Unit] = ???
       def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] = ??? 
       def listJobDetails(id: String): IO[JobDetailsResponseV2] = ???
       def getJobMetrics(id: String): IO[JobMetricsResponse] = ???

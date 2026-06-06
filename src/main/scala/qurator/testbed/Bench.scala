@@ -668,6 +668,52 @@ object BenchmarkHttpClients{
                 IBMClient.fetchAvailableDevices(fetchDeviceInformation)
             def fetchDeviceDetails(ids: List[String]): IO[List[IBMBackendDevice]] =
                 IBMClient.fetchDeviceDetails(fetchDeviceInformation, ids)
+            def createSession(r: CreateSessionRequest): IO[SessionResponse] =
+                IO.pure(
+                    SessionResponse(
+                        id = "bench-session-1",
+                        backend_name = r.backend.orElse(r.backend_name),
+                        started_at = None,
+                        activated_at = None,
+                        closed_at = None,
+                        last_job_started = None,
+                        last_job_completed = None,
+                        interactive_ttl = r.interactive_ttl,
+                        max_ttl = r.max_ttl,
+                        active_ttl = r.active_ttl,
+                        state = Some("open"),
+                        state_reason = None,
+                        accepting_jobs = Some(true),
+                        mode = Some(r.mode),
+                        timestamps = None,
+                        user_id = None,
+                        elapsed_time = None
+                    )
+                )
+            def getSession(id: String): IO[SessionResponse] =
+                IO.pure(
+                    SessionResponse(
+                        id = id,
+                        backend_name = None,
+                        started_at = None,
+                        activated_at = None,
+                        closed_at = None,
+                        last_job_started = None,
+                        last_job_completed = None,
+                        interactive_ttl = None,
+                        max_ttl = None,
+                        active_ttl = None,
+                        state = Some("open"),
+                        state_reason = None,
+                        accepting_jobs = Some(true),
+                        mode = Some("batch"),
+                        timestamps = None,
+                        user_id = None,
+                        elapsed_time = None
+                    )
+                )
+            def updateSession(id: String, r: UpdateSessionRequest): IO[Unit] = IO.unit
+            def closeSession(id: String): IO[Unit] = IO.unit
             def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] =  dummies.ibmSubmit(r) 
             def listJobDetails(id: String): IO[JobDetailsResponseV2] = dummies.ibmListJob(id)
             def getJobMetrics(id: String): IO[JobMetricsResponse] = dummies.ibmMetrics(id)

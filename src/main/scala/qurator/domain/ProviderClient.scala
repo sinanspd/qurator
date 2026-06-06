@@ -4,6 +4,7 @@ import qurator.domain.Task.QuantumTask
 import qurator.domain.calibration.DeviceCalibration
 import qurator.domain.circuit.Circuit
 import qurator.domain.device.Device
+import cats.data.NonEmptyList
 import cats.{Functor, Monad}
 import cats.syntax.all._
 import java.time.LocalDateTime
@@ -20,6 +21,27 @@ final case class ProviderJobTiming(
     startedAt: Option[LocalDateTime],
     completedAt: Option[LocalDateTime]
 )
+
+final case class ProviderBatchTask(
+    task: QuantumTask,
+    compiled: Circuit
+)
+
+final case class ProviderBatchSubmission(
+    batchId: String,
+    submissions: List[ProviderTaskSubmission]
+) {
+  def jobIds: List[String] =
+    submissions.map(_.jobId)
+}
+
+trait ProviderBatchSubmitter[F[_]] {
+  def submitBatch(
+      device: Device,
+      tasks: NonEmptyList[ProviderBatchTask]
+  ): F[ProviderBatchSubmission]
+  def closeBatch(batchId: String): F[Unit]
+}
 
 trait ProviderDeviceSummary {
   def platformId: String
@@ -40,6 +62,10 @@ trait ProviderDeviceList[+A <: ProviderDeviceSummary] {
 
 trait ProviderClient[F[_]] {
   def provider: String
+  def batchSubmitter: Option[ProviderBatchSubmitter[F]] =
+    None
+  final def supportsBatchSubmissions: Boolean =
+    batchSubmitter.isDefined
   def fetchAvailableDevices: F[List[Device]]
   def submitTask(
       device: Device,
@@ -61,6 +87,13 @@ object ProviderClient {
       compiled: Circuit
   ): F[String] =
     client.submitTask(device, task, compiled).map(_.jobId)
+
+  def submitQuantumTaskBatch[F[_]](
+      client: ProviderClient[F],
+      device: Device,
+      tasks: NonEmptyList[ProviderBatchTask]
+  ): Option[F[ProviderBatchSubmission]] =
+    client.batchSubmitter.map(_.submitBatch(device, tasks))
 
   def getTaskStatus[F[_]: Functor](client: ProviderClient[F], taskId: String): F[String] =
     client.getTask(taskId).map(_.taskStatus)

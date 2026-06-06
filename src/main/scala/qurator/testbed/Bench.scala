@@ -22,12 +22,12 @@ import qurator.domain.IBM._
 import qurator.clients.AzureQuantumClient
 import qurator.domain.Azure._
 import qurator.clients.BraketClient
-import qurator.programs.SubmittedJobInfo
 import qurator.clients.IBMClient
 import qurator.testbed.IBMCalibrationInstances._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import qurator.util.QuantumTaskLoader
 import qurator.util.Qasm3Parser
+import qurator.domain.{ProviderJobTiming, ProviderTaskStatus, QuantumJobResult, QuantumResult}
 import fs2.io.file.Path
 
 
@@ -222,14 +222,14 @@ object BenchmarkDeviceRegistry {
                 t2 = 0f,
                 gateSet = List.empty
             ),
-            Device(
-                platform = "Braket",
-                platformId = "braket-quera-aquila",
-                qubits = 256,
-                t1 = 0f,
-                t2 = 0f,
-                gateSet = List.empty
-            ), 
+            // Device(
+            //     platform = "Braket",
+            //     platformId = "braket-quera-aquila",
+            //     qubits = 256,
+            //     t1 = 0f,
+            //     t2 = 0f,
+            //     gateSet = List.empty
+            // ), 
             Device(
                 platform = "IBM",
                 platformId = "ibm_boston",
@@ -284,11 +284,11 @@ object BenchmarkDeviceRegistry {
         Map(
             "braket-rigetti-ankaa" -> //
                 RigettiCalibration( 
-                    avg1qFidelityPct = 97.946, //
-                    readoutFidelityPct = 95.472, // 
-                    swapFidelityPct = 90.130, // 
-                    t1Seconds = 3.6387e-5, //8
-                    t2Seconds = 2.2118e-5, // 
+                    avg1qFidelityPct = 98.46233903284783, //
+                    readoutFidelityPct = 95.70731707317071, //
+                    swapFidelityPct = 89.973192441561, //
+                    t1Seconds = 3.776451788428128e-5, //
+                    t2Seconds = 2.1430702360129197e-5, //
                     swapGateDurationNs = 300,
                     readoutDurationNs = 1200,
                     oneQGateDurationNs = 40,
@@ -296,11 +296,11 @@ object BenchmarkDeviceRegistry {
                 ),
             "braket-iqm-garnet" -> //
                 IQMCalibration(
-                    t1 = 3.3829e-5,
-                    t2 = 8.925e-6, 
-                    q1fidelity = 99.296,
-                    q2fidelity = 99.884, 
-                    readoutFidelity = 97.940
+                    t1 = 3.490079494002981e-5,
+                    t2 = 8.677614628987359e-6,
+                    q1fidelity = 99.90661687868104,
+                    q2fidelity = 99.33252648664347,
+                    readoutFidelity = 97.89
                     // typicalDetectionFalsePositive = 0.02,
                     // typicalDetectionFalseNegative = 0.03,
                     // typicalVacancyError = Some(0.04),
@@ -314,20 +314,20 @@ object BenchmarkDeviceRegistry {
                 AQTCalibration(
                     t1Seconds = 1.168, 
                     t2Seconds = 0.1632,
-                    readoutFidelity = 99.740, 
+                    readoutFidelity = 99.74,
                     readoutDurationSec = 0.0015,
-                    oneQGateDurationSec = 3e-5,
-                    oneQGateFidelity = 99.978, 
+                    oneQGateDurationSec = 45e-6,
+                    oneQGateFidelity = 99.97029166666667,
                     twoQGateDurationSec = 0.000335,
-                    twoQGateFidelity = 98.500
+                    twoQGateFidelity = 98.5349
                 ),
             "braket-ionq-forte-1" ->  // 
                 IonQCalibration(
                     t1Seconds = 100,
                     t2Seconds = 1,
-                    avg1qFidelityPct = 99.93177087236276,
-                    avg2qFidelityPct = 97.41735442219582, 
-                    avgReadoutFidelity = 99.15,
+                    avg1qFidelityPct = Double.NaN,
+                    avg2qFidelityPct = 98.9,
+                    avgReadoutFidelity = 98.65,
                     oneQGateDurationSec = 130e-6,
                     twoQGateDurationSec = 970e-6,
                     readoutDurationSec = 150e-6
@@ -648,19 +648,35 @@ object BenchmarkHttpClients{
 
         val braket = new BraketClient[IO]{
             def fetchDeviceList: IO[BraketDeviceListResponse] = dummies.braketDeviceList
+            def fetchAvailableDevices: IO[List[Device]] =
+                BraketClient.fetchAvailableDevices(fetchDeviceList, fetchDeviceDetails)
             def fetchDeviceDetails(ids: List[String]): IO[List[BraketDeviceDetailsResponse]] = dummies.braketDeviceDetails(ids)
             def submitBraketOpenQasmTask(r: BraketCreateQuantumTaskRequest, qasmSource: String): IO[BraketCreateQuantumTaskResponse] =
                 dummies.braketSubmit(r, qasmSource)
             def getQuantumTask(taskId: String) : IO[BraketQuantumTaskResponse] = dummies.braketGetJob(taskId)
+            def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
+                IO.pure(ProviderJobTiming(None, None))
+            def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] =
+                IO.pure(QuantumJobResult.unavailable(provider, taskId, None, "benchmark client does not fetch Braket results"))
             def fetchDeviceCalibration(deviceArn: String): IO[DeviceCalibration] = registry.calibration(deviceArn).pure[IO]
         }
 
         val ibm = new IBMClient[IO]{
             def fetchBearerToken: IO[String] = dummies.ibmFetchBearerToken
             def fetchDeviceInformation: IO[BackendsResponseV2] = dummies.ibmDeviceInfo
+            def fetchAvailableDevices: IO[List[Device]] =
+                IBMClient.fetchAvailableDevices(fetchDeviceInformation)
+            def fetchDeviceDetails(ids: List[String]): IO[List[IBMBackendDevice]] =
+                IBMClient.fetchDeviceDetails(fetchDeviceInformation, ids)
             def submitJob(r: SubmitJobRequestV2): IO[CreateJobResponseV2] =  dummies.ibmSubmit(r) 
             def listJobDetails(id: String): IO[JobDetailsResponseV2] = dummies.ibmListJob(id)
             def getJobMetrics(id: String): IO[JobMetricsResponse] = dummies.ibmMetrics(id)
+            def getJobResults(id: String): IO[String] =
+                IO.pure("""{"counts":{"0":1}}""")
+            def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] =
+                getJobResults(taskId).map(raw => IBMClient.jobResultFromRaw(provider, taskId, status, raw))
+            def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
+                IO.pure(ProviderJobTiming(None, None))
             def fetchDeviceCalibration(deviceArn: String): IO[DeviceCalibration] = registry.calibration(deviceArn).pure[IO]
         }
         HttpClients.fromParts[IO](ibm, braket, azure)
@@ -725,7 +741,8 @@ object SchedulerBenchmarkRunner {
         compiler: FakeCompiler[IO],
         targetEstimatedFidelity: Double,
         cuttingStrategy: (Circuit, List[Device]) => IO[List[Circuit]],
-        additionalOptimizationRuns: Circuit => List[Circuit]
+        additionalOptimizationRuns: Circuit => List[Circuit],
+        onQuantumComplete: QuantumResult => IO[Unit]
     ): IO[List[(TaskId, QuantumTaskSpec)]] =
         for {
             npw <- LocalDateTime.now().pure[IO]
@@ -758,7 +775,7 @@ object SchedulerBenchmarkRunner {
                 createdAt = npw
             )
 
-            quantumIds <- scheduler.submitTask(quantumReq)
+            quantumIds <- scheduler.submitTask(quantumReq, onQuantumComplete)
 
             _ <-
                 if (quantumIds.length != expectedExpanded.length)
@@ -779,43 +796,48 @@ object SchedulerBenchmarkRunner {
             _ <- scheduler.submitTask(childReq)
         } yield quantumIds.zip(expectedExpanded)
 
-    private def waitUntilAllSubmitted(
-        scheduler: Scheduler[IO],
-        registry: BenchmarkDeviceRegistry,
+    private def waitUntilAllCompleted(
+        completedRef: Ref[IO, Map[TaskId, QuantumResult]],
         expectedQuantumIds: Set[TaskId],
         pollEvery: scala.concurrent.duration.FiniteDuration
-    ): IO[List[SubmittedQuantum]] = {
-        def loop(seen: Map[TaskId, SubmittedQuantum]): IO[List[SubmittedQuantum]] =
-            scheduler.getSubmittedTasks().flatMap { raw =>
-                val newOnes =
-                    raw.flatMap { case (_, deviceId, jobId, taskId) =>
-                        if (!expectedQuantumIds.contains(taskId)) None
-                        else Some(SubmittedQuantum(taskId, deviceId, jobId))
+    ): IO[List[QuantumResult]] = {
+        def loop: IO[List[QuantumResult]] =
+            completedRef.get.flatMap { seen =>
+                if (expectedQuantumIds.subsetOf(seen.keySet)) {
+                    expectedQuantumIds.toList.traverse { taskId =>
+                        seen.get(taskId) match {
+                            case Some(result) => result.pure[IO]
+                            case None =>
+                                new RuntimeException(s"Missing completion event for taskId=$taskId")
+                                    .raiseError[IO, QuantumResult]
+                        }
                     }
-
-                val mergedSeen = newOnes.foldLeft(seen)((acc, sq) => acc.updated(sq.taskId, sq))
-
-                if (expectedQuantumIds.subsetOf(mergedSeen.keySet)) mergedSeen.values.toList.pure[IO]
-                else Temporal[IO].sleep(pollEvery) *> loop(mergedSeen)
+                } else {
+                    Temporal[IO].sleep(pollEvery) *> loop
+                }
             }
 
-        if (expectedQuantumIds.isEmpty) List.empty[SubmittedQuantum].pure[IO]
-        else loop(Map.empty)
+        if (expectedQuantumIds.isEmpty) List.empty[QuantumResult].pure[IO]
+        else loop
     }
 
     private def quantumMetricsForAssignments(
-        assignments: List[SubmittedQuantum],
+        completions: List[QuantumResult],
         registry: BenchmarkDeviceRegistry,
         clients: HttpClients[IO],
-        compiler: FakeCompiler[IO],
-        submittedJobInfo: Map[String, SubmittedJobInfo]
+        compiler: FakeCompiler[IO]
     ): IO[List[QuantumTaskMetric]] =
-          assignments
+          completions
             .groupBy(_.jobId)
             .toList
             .traverse { case (jobId, subs) =>
-                val deviceId = subs.head.deviceId
+                val deviceId = subs.head.deviceId.getOrElse(
+                    throw new RuntimeException(s"Missing deviceId in completion callback for providerJobId=$jobId")
+                )
                 val device   = registry.device(deviceId)
+                val executedCircuit = subs.head.executedCircuit.getOrElse(
+                    throw new RuntimeException(s"Missing executedCircuit in completion callback for providerJobId=$jobId")
+                )
 
                 for {
                     rec <- registry.providerJobRecord(jobId).flatMap {
@@ -825,23 +847,18 @@ object SchedulerBenchmarkRunner {
                                 s"Missing benchmark job record for providerJobId=$jobId, device=$deviceId"
                             ).raiseError[IO, JobRecord]
                     }
-                    jobInfo <- submittedJobInfo.get(jobId) match {
-                        case Some(info) => info.pure[IO]
-                        case None =>
-                            new RuntimeException(
-                                s"Missing submitted job info for providerJobId=$jobId"
-                            ).raiseError[IO, SubmittedJobInfo]
-                    }
 
                     est <- Scheduler.estimateFidelity[IO](
                         device,
-                        jobInfo.executedCircuit,
+                        executedCircuit,
                         clients,
                         compiler
                     )
                 } yield subs.map { sub =>
                     QuantumTaskMetric(
-                        taskId = sub.taskId,
+                        taskId = sub.taskId.getOrElse(
+                            throw new RuntimeException(s"Missing taskId in quantum result for providerJobId=$jobId")
+                        ),
                         jobId = jobId,
                         deviceId = deviceId,
                         queueWaitMillis = rec.queueWaitMillis,
@@ -867,19 +884,21 @@ object SchedulerBenchmarkRunner {
             report <- WorkloadSpecs.loadedTasks
             _ <- Logger[IO].info(s"Loaded ${report.size} task(s)")
             _ <- Logger[IO].info("Starting Scheduler Benchmark")
-            quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _, clients, compiler, 0.9, cuttingStrategy, (c: Circuit) => List(c))).map(_.flatten)
-            // _ <- Logger[IO].info(s"QuantumIds: ${quantumIdPairs.mkString(", ")}")
-            specById = quantumIdPairs.toMap
+            completedQuantumRef <- Ref.of[IO, Map[TaskId, QuantumResult]](Map.empty)
+            onQuantumComplete = (result: QuantumResult) =>
+                result.taskId match {
+                    case Some(taskId) => completedQuantumRef.update(_ + (taskId -> result))
+                    case None         => IO.raiseError(new RuntimeException(s"Missing taskId in quantum result for job=${result.jobId}"))
+                }
+            quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _, clients, compiler, 0.9, cuttingStrategy, (c: Circuit) => List(c), onQuantumComplete)).map(_.flatten)
             expectedIds = quantumIdPairs.map(_._1).toSet
-            submitted <- waitUntilAllSubmitted(scheduler, registry, expectedIds, pollEvery)
-            submittedJobInfo <- scheduler.getSubmittedJobInfo()
+            completions <- waitUntilAllCompleted(completedQuantumRef, expectedIds, pollEvery)
             t1 <- monotonicMillis
             metrics <- quantumMetricsForAssignments(
-                submitted,
+                completions,
                 registry,
                 clients,
-                compiler,
-                submittedJobInfo
+                compiler
             )
         } yield BenchmarkRun(
             policyName = "scheduler",

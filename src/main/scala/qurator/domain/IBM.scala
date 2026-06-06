@@ -35,7 +35,7 @@ object IBM{
    @derive(decoder, encoder, eqv, show)
    case class BackendsResponseV2(
     devices: List[IBMBackendDevice]
-   )
+   ) extends ProviderDeviceList[IBMBackendDevice]
 
    @derive(decoder, encoder, eqv, show)
     case class IBMBackendDevice(
@@ -48,7 +48,13 @@ object IBM{
         queue_length: Int,
         performance_metrics: Option[IBMBackendDevicePerformanceMetrics],
         wait_time_seconds: Option[IBMBackendDeviceWaitTimeSeconds]
-    ){
+    ) extends ProviderDeviceSummary with ProviderDeviceDetails {
+        def platformId: String =
+            name
+
+        def isAvailable: Boolean =
+            status.name == "online"
+
         def toDevice: Device = 
             Device(
                 platformId = name,
@@ -99,6 +105,48 @@ object IBM{
         average: Int,
         p50: Int,
         p95: Int
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendPropertiesResponse(
+        backend_name: String,
+        backend_version: Option[String],
+        last_update_date: Option[String],
+        qubits: List[List[IBMBackendNamedValue]],
+        gates: List[IBMBackendGateProperties],
+        general: Option[List[IBMBackendNamedValue]]
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendNamedValue(
+        date: Option[String],
+        name: String,
+        unit: Option[String],
+        value: Double
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendGateProperties(
+        gate: String,
+        name: String,
+        parameters: List[IBMBackendNamedValue],
+        qubits: List[Int]
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendConfigurationResponse(
+        backend_name: String,
+        backend_version: Option[String],
+        basis_gates: Option[List[String]],
+        coupling_map: Option[List[List[Int]]],
+        gates: Option[List[IBMBackendConfigurationGate]],
+        n_qubits: Option[Int]
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class IBMBackendConfigurationGate(
+        name: String,
+        coupling_map: List[List[Int]]
     )
 
     def toDeviceQueueInformation(l : List[IBMBackendDevice]) =
@@ -162,7 +210,10 @@ object IBM{
         `private`: Option[Boolean],
         estimated_running_time_seconds: Option[Double],
         calibration_id: Option[String]
-    )   
+    ) extends ProviderTaskStatus {
+        def taskStatus: String =
+            status
+    }
 
 //     "usage": {
 //       "title": "Usage",
@@ -199,7 +250,10 @@ object IBM{
         session_id: Option[String],
         `private`: Option[Boolean],
         calibration_id: Option[String]
-    )
+    ) extends ProviderTaskSubmission {
+        def jobId: String =
+            id
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class SubmitJobRequestV2(

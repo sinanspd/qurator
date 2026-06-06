@@ -32,8 +32,12 @@ import io.circe.syntax._
 import qurator.domain.Azure._
 import qurator.domain.calibration._
 
+
+/**
+ * This client is a WIP. Azure doesn't expose crucial information the scheduler needs, and therefore has been dropped from the initial implementation 
+ **/ 
 trait AzureQuantumClient[F[_]] {
-   //def fetchBearerToken: F[String] //This is more secure but requires tremendous setup in Azure. Implement later.
+   //def fetchBearerToken: F[String] // This is more secure but requires tremendous setup in Azure. Implement later.
    def fetchDeviceInformation: F[AzureDeviceStatusResponse]
    def submitJob(jobId: String, jobRequest: AzureJobCreateRequest): F[AzureJobResponse]
    def getQuantumTask(jobId: String): F[AzureJobResponse]
@@ -116,7 +120,7 @@ object AzureQuantumClient {
                 }
             } 
 
-        def fetchDeviceCalibration(deviceId: String): F[DeviceCalibration] = ??? // Azure doesn't expose this, which is a big problem
+        def fetchDeviceCalibration(deviceId: String): F[DeviceCalibration] = ??? 
     }   
 }
 

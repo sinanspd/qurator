@@ -11,6 +11,7 @@ import qurator.effects.GenUUID
 import qurator.domain.ID
 import qurator.modules.HttpClients
 import qurator.programs.Scheduler
+import qurator.domain.QuantumResult
 import java.time.LocalDateTime
 import org.typelevel.log4cats.Logger
 import qurator.util.FidelityEstimator
@@ -227,23 +228,29 @@ private def expectSingleId[A](label: String, ids: List[TaskId]): IO[TaskId] =
 
 private def submitClassicalNode(
   scheduler: Scheduler[IO],
-  parents: List[TaskId]
+  parents: List[TaskId],
+  onComplete: (TaskId, String) => IO[Unit]
 ): IO[TaskId] =
-  scheduler
-    .submitTask(
+  for {
+    taskIdSignal <- Deferred[IO, TaskId]
+    ids <- scheduler.submitTask[String](
       NewClassicalTaskRequest(
         program = (),
         parentTasks = parents,
         childTasks = Nil,
         createdAt = LocalDateTime.now()
-      )
+      ),
+      (result: String) => taskIdSignal.get.flatMap(taskId => onComplete(taskId, result))
     )
-    .flatMap(ids => expectSingleId("classical node", ids))
+    taskId <- expectSingleId("classical node", ids)
+    _ <- taskIdSignal.complete(taskId).void
+  } yield taskId
 
 private def submitQuantumNode(
   scheduler: Scheduler[IO],
   spec: QuantumTaskSpec,
-  parents: List[TaskId]
+  parents: List[TaskId],
+  onComplete: QuantumResult => IO[Unit]
 ): IO[TaskId] =
   scheduler
     .submitTask(
@@ -255,23 +262,26 @@ private def submitQuantumNode(
         parentTasks = parents,
         childTasks = Nil,
         createdAt = LocalDateTime.now()
-      )
+      ),
+      onComplete
     )
     .flatMap(ids => expectSingleId("quantum node", ids))
 
 private def submitBranchToSyncParent(
   scheduler: Scheduler[IO],
   sharedRootId: TaskId,
-  stages: List[PathStage]
+  stages: List[PathStage],
+  onClassicalComplete: (TaskId, String) => IO[Unit],
+  onBranchQuantumComplete: QuantumResult => IO[Unit]
 ): IO[TaskId] =
   stages.foldLeftM(List(sharedRootId)) {
     case (currentParents, ClassicalStage) =>
-      submitClassicalNode(scheduler, currentParents).map(id => List(id))
+      submitClassicalNode(scheduler, currentParents, onClassicalComplete).map(id => List(id))
 
     case (currentParents, QuantumStage(spec)) =>
       for {
-        qId <- submitQuantumNode(scheduler, spec, currentParents)
-        cId <- submitClassicalNode(scheduler, List(qId))
+        qId <- submitQuantumNode(scheduler, spec, currentParents, onBranchQuantumComplete)
+        cId <- submitClassicalNode(scheduler, List(qId), onClassicalComplete)
       } yield List(cId)
   }.flatMap(ids => expectSingleId("branch terminal classical parent", ids))
 
@@ -287,13 +297,16 @@ final case class SubmittedSyncGroup(
 private def submitRandomTreeGroup(
   scheduler: Scheduler[IO],
   groupIndex: Int,
-  spec: RandomSyncTreeSpec
+  spec: RandomSyncTreeSpec,
+  onClassicalComplete: (TaskId, String) => IO[Unit],
+  onSyncQuantumComplete: List[QuantumResult] => IO[Unit],
+  onBranchQuantumComplete: QuantumResult => IO[Unit]
 ): IO[SubmittedSyncGroup] =
   for {
-    rootId <- submitClassicalNode(scheduler, Nil)
+    rootId <- submitClassicalNode(scheduler, Nil, onClassicalComplete)
 
     terminalParents <- spec.leaves.traverse { leaf =>
-      submitBranchToSyncParent(scheduler, rootId, leaf.preSyncStages)
+      submitBranchToSyncParent(scheduler, rootId, leaf.preSyncStages, onClassicalComplete, onBranchQuantumComplete)
     }
 
     syncReq =
@@ -313,7 +326,7 @@ private def submitRandomTreeGroup(
         cut = false
       )
 
-    syncIds <- scheduler.submitTask(syncReq)
+    syncIds <- scheduler.submitTask(syncReq, onSyncQuantumComplete)
 
     // enforce "succeeded by 1 classical task" for each synchronized quantum member
     _ <- syncIds.traverse_ { qid =>
@@ -419,12 +432,12 @@ private def buildGroupMetric(
 
 private def computeSyncCostMillis(
   parentIdsInOrder: List[List[TaskId]],
-  results: Map[TaskId, (String, Long)]
+  completions: Map[TaskId, Long]
 ): IO[Long] =
   parentIdsInOrder.traverse { pids =>
     if (pids.isEmpty) 0L.pure[IO]
     else {
-      val times = pids.flatMap(pid => results.get(pid).map(_._2))
+      val times = pids.flatMap(completions.get)
       if (times.size != pids.size) {
         new RuntimeException(
           s"Missing completion timestamp for one or more sync parents: ${pids.mkString(", ")}"
@@ -514,39 +527,39 @@ object SyncBaselinePolicy {
     }
   }
 
-private def waitUntilAllSubmitted(
-    scheduler: Scheduler[IO],
+private def waitUntilAllCompleted(
+    completedRef: Ref[IO, Map[TaskId, QuantumResult]],
     expectedIds: Set[TaskId],
     pollEvery: scala.concurrent.duration.FiniteDuration
 ): IO[List[SyncSubmittedQuantum]] = {
 
-    def loop(seen: Map[TaskId, SyncSubmittedQuantum]): IO[List[SyncSubmittedQuantum]] =
-        scheduler.getSubmittedTasks().flatMap { raw =>
-            val newlySeen: List[SyncSubmittedQuantum] =
-                raw.flatMap {
-                    case (_, platformId, _, tid) =>
-                        if (!expectedIds.contains(tid)) None
-                        else Some(SyncSubmittedQuantum(tid, platformId))
-                }
+    def loop: IO[List[SyncSubmittedQuantum]] =
+        completedRef.get.flatMap { seen =>
+            val remaining = expectedIds.diff(seen.keySet)
 
-            val mergedSeen: Map[TaskId, SyncSubmittedQuantum] =
-                newlySeen.foldLeft(seen) { (acc, sq) =>
-                    acc.updated(sq.taskId, sq)
-                }
-
-            val remaining = expectedIds.diff(mergedSeen.keySet)
-
-            // Logger[IO].info(
-            //     s"Waiting For All Submitted To Finish. Seen=${mergedSeen.keySet.size}/${expectedIds.size}. Remaining=${remaining.mkString(", ")}"
-            // ) *>
             (
-                if (remaining.isEmpty) mergedSeen.values.toList.pure[IO]
-                else Temporal[IO].sleep(pollEvery) *> loop(mergedSeen)
+                if (remaining.isEmpty) {
+                    expectedIds.toList.traverse { taskId =>
+                        seen.get(taskId) match {
+                            case Some(result) =>
+                                result.deviceId match {
+                                    case Some(deviceId) => SyncSubmittedQuantum(taskId, deviceId).pure[IO]
+                                    case None =>
+                                        new RuntimeException(s"Missing deviceId in completion callback for taskId=$taskId")
+                                            .raiseError[IO, SyncSubmittedQuantum]
+                                }
+                            case None =>
+                                new RuntimeException(s"Missing completion callback for taskId=$taskId")
+                                    .raiseError[IO, SyncSubmittedQuantum]
+                        }
+                    }
+                }
+                else Temporal[IO].sleep(pollEvery) *> loop
             )
         }
 
     if (expectedIds.isEmpty) List.empty[SyncSubmittedQuantum].pure[IO]
-    else loop(Map.empty)
+    else loop
 }
 
 def runSchedulerSyncTreeBenchmark(
@@ -559,20 +572,34 @@ def runSchedulerSyncTreeBenchmark(
 ): IO[SyncBenchmarkRun] =
   for {
     t0 <- monotonicMillis
+    completedQuantumRef <- Ref.of[IO, Map[TaskId, QuantumResult]](Map.empty)
+    completedClassicalRef <- Ref.of[IO, Map[TaskId, Long]](Map.empty)
+
+    onSyncQuantumComplete = (results: List[QuantumResult]) =>
+      completedQuantumRef.update(_ ++ results.flatMap(result => result.taskId.map(_ -> result)).toMap)
+
+    onClassicalComplete = (taskId: TaskId, _: String) =>
+      Clock[IO].realTime.map(_.toMillis).flatMap { completedAt =>
+        completedClassicalRef.update(_ + (taskId -> completedAt))
+      }
+
+    onBranchQuantumComplete = (_: QuantumResult) => IO.unit
 
     submittedGroups <- trees.zipWithIndex.traverse { case (tree, idx) =>
       submitRandomTreeGroup(
         scheduler = scheduler,
         groupIndex = idx,
-        spec = tree
+        spec = tree,
+        onClassicalComplete = onClassicalComplete,
+        onSyncQuantumComplete = onSyncQuantumComplete,
+        onBranchQuantumComplete = onBranchQuantumComplete
       )
     }
 
     expectedIds = submittedGroups.flatMap(_.expectedIds).toSet
 
-    //_ <- Logger[IO].info("Waiting For All Submitted To Finish")
-    submitted <- waitUntilAllSubmitted(
-      scheduler = scheduler,
+    submitted <- waitUntilAllCompleted(
+      completedRef = completedQuantumRef,
       expectedIds = expectedIds,
       pollEvery = pollEvery
     )
@@ -581,7 +608,7 @@ def runSchedulerSyncTreeBenchmark(
     submittedById: Map[TaskId, String] =
       submitted.map(s => s.taskId -> s.deviceId).toMap
 
-    results <- scheduler.getResults()
+    classicalCompletions <- completedClassicalRef.get
 
     groupMetrics <- submittedGroups.zip(trees).traverse { case (sg, tree) =>
       val assignmentsInOrder: List[(TaskId, String, QuantumTaskSpec)] =
@@ -593,7 +620,7 @@ def runSchedulerSyncTreeBenchmark(
       for {
         syncCost <- computeSyncCostMillis(
           parentIdsInOrder = sg.parentIdsInOrder,
-          results = results
+          completions = classicalCompletions
         )
 
         taskMetrics <- buildSubmittedTaskMetricsForGroup(

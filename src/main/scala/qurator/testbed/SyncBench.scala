@@ -11,6 +11,7 @@ import qurator.effects.GenUUID
 import qurator.domain.ID
 import qurator.modules.HttpClients
 import qurator.programs.Scheduler
+import qurator.domain.QuantumResult
 import java.time.LocalDateTime
 import org.typelevel.log4cats.Logger
 import qurator.util.FidelityEstimator
@@ -258,39 +259,42 @@ private def buildGroupMetric(
     }
   }
 
-private def waitUntilAllSubmitted(
-    scheduler: Scheduler[IO],
+private def waitUntilAllCompleted(
+    completedRef: Ref[IO, Map[TaskId, QuantumResult]],
     expectedIds: Set[TaskId],
     pollEvery: scala.concurrent.duration.FiniteDuration
 ): IO[List[SyncSubmittedQuantum]] = {
 
-    def loop(seen: Map[TaskId, SyncSubmittedQuantum]): IO[List[SyncSubmittedQuantum]] =
-        scheduler.getSubmittedTasks().flatMap { raw =>
-            val newlySeen: List[SyncSubmittedQuantum] =
-                raw.flatMap {
-                    case (_, platformId, _, tid) =>
-                        if (!expectedIds.contains(tid)) None
-                        else Some(SyncSubmittedQuantum(tid, platformId))
-                }
-
-            val mergedSeen: Map[TaskId, SyncSubmittedQuantum] =
-                newlySeen.foldLeft(seen) { (acc, sq) =>
-                    acc.updated(sq.taskId, sq)
-                }
-
-            val remaining = expectedIds.diff(mergedSeen.keySet)
+    def loop: IO[List[SyncSubmittedQuantum]] =
+        completedRef.get.flatMap { seen =>
+            val remaining = expectedIds.diff(seen.keySet)
 
             Logger[IO].info(
-                s"Waiting For All Submitted To Finish. Seen=${mergedSeen.keySet.size}/${expectedIds.size}. Remaining=${remaining.mkString(", ")}"
+                s"Waiting For All Submitted To Finish. Seen=${seen.keySet.size}/${expectedIds.size}. Remaining=${remaining.mkString(", ")}"
             ) *>
             (
-                if (remaining.isEmpty) mergedSeen.values.toList.pure[IO]
-                else Temporal[IO].sleep(pollEvery) *> loop(mergedSeen)
+                if (remaining.isEmpty) {
+                    expectedIds.toList.traverse { taskId =>
+                        seen.get(taskId) match {
+                            case Some(result) =>
+                                result.deviceId match {
+                                    case Some(deviceId) => SyncSubmittedQuantum(taskId, deviceId).pure[IO]
+                                    case None =>
+                                        new RuntimeException(s"Missing deviceId in completion callback for taskId=$taskId")
+                                            .raiseError[IO, SyncSubmittedQuantum]
+                                }
+                            case None =>
+                                new RuntimeException(s"Missing completion callback for taskId=$taskId")
+                                    .raiseError[IO, SyncSubmittedQuantum]
+                        }
+                    }
+                }
+                else Temporal[IO].sleep(pollEvery) *> loop
             )
         }
 
     if (expectedIds.isEmpty) List.empty[SyncSubmittedQuantum].pure[IO]
-    else loop(Map.empty)
+    else loop
 }
 
   def runSchedulerSyncBenchmark(
@@ -303,6 +307,9 @@ private def waitUntilAllSubmitted(
   ): IO[SyncBenchmarkRun] =
     for {
       t0 <- monotonicMillis
+      completedQuantumRef <- Ref.of[IO, Map[TaskId, QuantumResult]](Map.empty)
+      onQuantumComplete = (results: List[QuantumResult]) =>
+        completedQuantumRef.update(_ ++ results.flatMap(result => result.taskId.map(_ -> result)).toMap)
 
       syncTaskReqs = groups.map(g => 
         SynronizedQuantumTaskRequest(g.tasks.map(q => 
@@ -310,7 +317,7 @@ private def waitUntilAllSubmitted(
 
         submittedGroups <- groups.zip(syncTaskReqs).zipWithIndex.traverse {
             case ((g, req), idx) =>
-                scheduler.submitTask(req).map { ids =>
+                scheduler.submitTask(req, onQuantumComplete).map { ids =>
                 SubmittedSyncGroup(
                     groupIndex = idx,
                     coherenceBudgetMillis = g.coherenceBudgetMillis,
@@ -319,19 +326,11 @@ private def waitUntilAllSubmitted(
                 }
             }
 
-        syncSpecById: Map[TaskId, QuantumTaskSpec] =
-            submittedGroups
-                .zip(groups)
-                .flatMap { case (submittedGroup, group) =>
-                submittedGroup.expectedIds.toList.zip(group.tasks)
-                }
-                .toMap
-
       expectedIds = submittedGroups.flatMap(_.expectedIds).toSet
 
       _ <- Logger[IO].info("Waiting For All Submitted To Finish")
-      submitted <- waitUntilAllSubmitted(
-        scheduler = scheduler,
+      submitted <- waitUntilAllCompleted(
+        completedRef = completedQuantumRef,
         expectedIds = expectedIds,
         pollEvery = pollEvery
       )

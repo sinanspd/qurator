@@ -1,0 +1,124 @@
+{
+  "braketSchemaHeader": {
+    "name": "braket.device_schema.quera.quera_ahs_paradigm_properties",
+    "version": "1"
+  },
+  "qubitCount": 256,
+  "lattice": {
+    "area": {
+      "width": 0.000075,
+      "height": 0.000076
+    },
+    "geometry": {
+      "spacingRadialMin": 0.000004,
+      "spacingVerticalMin": 0.000004,
+      "positionResolution": 1e-8,
+      "numberSitesMax": 256
+    }
+  },
+  "rydberg": {
+    "c6Coefficient": 5.42e-24,
+    "rydbergGlobal": {
+      "rabiFrequencyRange": [
+        0,
+        15800000
+      ],
+      "rabiFrequencyResolution": 400,
+      "rabiFrequencySlewRateMax": 400000000000000,
+      "detuningRange": [
+        -125000000,
+        125000000
+      ],
+      "detuningResolution": 0.2,
+      "detuningSlewRateMax": 6000000000000000,
+      "phaseRange": [
+        -99,
+        99
+      ],
+      "phaseResolution": 5e-7,
+      "timeResolution": 1e-9,
+      "timeDeltaMin": 5e-8,
+      "timeMin": 0,
+      "timeMax": 0.00002
+    },
+    "rydbergLocal": {
+      "detuningRange": [
+        -125000000,
+        0
+      ],
+      "detuningSlewRateMax": 2500000000000000,
+      "siteCoefficientRange": [
+        0,
+        1
+      ],
+      "numberLocalDetuningSitesMax": 256,
+      "spacingRadialMin": 0.000004,
+      "timeResolution": 1e-9,
+      "timeDeltaMin": 5e-8
+    }
+  },
+  "performance": {
+    "lattice": {
+      "positionErrorAbs": 2.25e-7,
+      "sitePositionError": 1e-7,
+      "atomPositionError": 2e-7,
+      "fillingErrorTypical": 0.008,
+      "fillingErrorWorst": 0.05,
+      "vacancyErrorTypical": 0.001,
+      "vacancyErrorWorst": 0.005,
+      "atomLossProbabilityTypical": 0.005,
+      "atomLossProbabilityWorst": 0.01,
+      "atomCaptureProbabilityTypical": 0.001,
+      "atomCaptureProbabilityWorst": 0.002,
+      "atomDetectionErrorFalsePositiveTypical": 0.001,
+      "atomDetectionErrorFalsePositiveWorst": 0.005,
+      "atomDetectionErrorFalseNegativeTypical": 0.001,
+      "atomDetectionErrorFalseNegativeWorst": 0.005
+    },
+    "rydberg": {
+      "rydbergGlobal": {
+        "rabiFrequencyErrorRel": 0.03,
+        "rabiFrequencyGlobalErrorRel": 0.02,
+        "rabiFrequencyInhomogeneityRel": 0.02,
+        "groundDetectionError": 0.05,
+        "rydbergDetectionError": 0.1,
+        "groundPrepError": 0.01,
+        "rydbergPrepErrorBest": 0.05,
+        "rydbergPrepErrorWorst": 0.07,
+        "T1Single": 0.000075,
+        "T1Ensemble": 0.000075,
+        "T2StarSingle": 0.000005,
+        "T2StarEnsemble": 0.00000475,
+        "T2EchoSingle": 0.000008,
+        "T2EchoEnsemble": 0.000007,
+        "T2RabiSingle": 0.000008,
+        "T2RabiEnsemble": 0.000007,
+        "T2BlockadedRabiSingle": 0.000008,
+        "T2BlockadedRabiEnsemble": 0.000007,
+        "detuningError": 1000000,
+        "detuningInhomogeneity": 1000000,
+        "rabiAmplitudeRampCorrection": [
+          {
+            "rampTime": 5e-8,
+            "rabiCorrection": 0.92
+          },
+          {
+            "rampTime": 7.5e-8,
+            "rabiCorrection": 0.97
+          },
+          {
+            "rampTime": 1e-7,
+            "rabiCorrection": 1
+          }
+        ]
+      },
+      "rydbergLocal": {
+        "detuningErrorRms": 0.02,
+        "siteCoefficientErrorRms": 0.1,
+        "errorRateIncoherentBright": 36000,
+        "errorRateIncoherentDark": 720,
+        "crosstalk": 0.02
+      }
+    }
+  }
+}

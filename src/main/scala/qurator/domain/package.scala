@@ -14,6 +14,7 @@ import qurator.domain.Braket._
 import io.circe.parser.decode
 
 package object domain {
+  type QuantumResult = QuantumJobResult
   
   implicit val deviceProviderDecoder: Decoder[DeviceProvider] =
     deriveEnumerationDecoder[DeviceProvider]

@@ -103,6 +103,17 @@ object Scheduler{
         def dashboardUrl: String =
             SchedulerDashboard.dashboardUrl(dashboardConfig)
 
+        //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
+        //TODO 1 batch submissions for cut circuits 
+
+        //TODO 2 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+        //TODO 3 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
+        //TODO 4 Merge Cut Task Results --> change UI 
+
+        //TODO 5 Is anything from Q-Dream useful??
+        //TODO 6 Is anything from Qonductor useful??
+        //TODO 7 Is anything from Pilot-Quantum useful??
+
         private val idleDelay: FiniteDuration = 250.millis
         private val mergeEnabled: Boolean = true
         private val mergeMaxQubits: Int = 10

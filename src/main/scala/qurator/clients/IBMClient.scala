@@ -1,6 +1,7 @@
 package qurator.clients
 
 
+import cats.Monad
 import cats.effect.MonadCancelThrow
 import cats.syntax.all._
 import eu.timepit.refined.auto._
@@ -16,11 +17,15 @@ import qurator.domain.IBM._
 import org.typelevel.log4cats.Logger
 import io.circe.generic.auto._
 import cats.effect.Async
+import cats.data.NonEmptyList
 import qurator.domain.Task.QuantumTask
 import qurator.domain.calibration._
 import qurator.domain.circuit._
 import qurator.domain.device.Device
 import qurator.domain.ProviderClient
+import qurator.domain.ProviderBatchSubmission
+import qurator.domain.ProviderBatchSubmitter
+import qurator.domain.ProviderBatchTask
 import qurator.domain.ProviderJobTiming
 import qurator.domain.ProviderTaskStatus
 import qurator.domain.QuantumJobResult
@@ -31,6 +36,10 @@ trait IBMClient[F[_]] extends ProviderClient[F] {
   def fetchBearerToken: F[String]
   def fetchDeviceInformation: F[BackendsResponseV2]
   def fetchDeviceDetails(ids: List[String]): F[List[IBMBackendDevice]]
+  def createSession(r: CreateSessionRequest): F[SessionResponse]
+  def getSession(id: String): F[SessionResponse]
+  def updateSession(id: String, r: UpdateSessionRequest): F[Unit]
+  def closeSession(id: String): F[Unit]
   def submitJob(r: SubmitJobRequestV2): F[CreateJobResponseV2]
   def listJobDetails(id: String): F[JobDetailsResponseV2]
   def getJobMetrics(id: String): F[JobMetricsResponse]
@@ -44,24 +53,16 @@ trait IBMClient[F[_]] extends ProviderClient[F] {
       device: Device,
       task: QuantumTask,
       compiled: Circuit
-  ): F[CreateJobResponseV2] = {
-    val req =
-      SubmitJobRequestV2(
-        program_id = "sampler",
-        backend = device.platformId,
-        runtime = None,
-        tags = None,
-        log_level = Some("info"),
-        cost = None,
-        session_id = None,
-        calibration_id = None,
-        params = SamplerV2Input(
-          pubs = List(compiled.toQasm)
-        )
-      )
+  ): F[CreateJobResponseV2] =
+    submitJob(IBMClient.samplerJobRequest(device, task, compiled, sessionId = None))
 
-    submitJob(req)
-  }
+  final def submitTaskInSession(
+      device: Device,
+      task: QuantumTask,
+      compiled: Circuit,
+      sessionId: String
+  ): F[CreateJobResponseV2] =
+    submitJob(IBMClient.samplerJobRequest(device, task, compiled, sessionId = Some(sessionId)))
 
   override final def getTask(taskId: String): F[JobDetailsResponseV2] =
     listJobDetails(taskId)
@@ -71,6 +72,60 @@ trait IBMClient[F[_]] extends ProviderClient[F] {
 }
 
 object IBMClient {
+  private[clients] def batchSubmitter[F[_]: Monad](
+      client: IBMClient[F]
+  ): ProviderBatchSubmitter[F] =
+    new ProviderBatchSubmitter[F] {
+      def submitBatch(
+          device: Device,
+          tasks: NonEmptyList[ProviderBatchTask]
+      ): F[ProviderBatchSubmission] =
+        client.createSession(IBMClient.batchSessionRequest(device)).flatMap { session =>
+          tasks.toList
+            .traverse { batchTask =>
+              client.submitTaskInSession(
+                device = device,
+                task = batchTask.task,
+                compiled = batchTask.compiled,
+                sessionId = session.id
+              )
+            }
+            .map(submissions => ProviderBatchSubmission(session.id, submissions))
+        }
+
+      def closeBatch(batchId: String): F[Unit] =
+        client.closeSession(batchId)
+    }
+
+  private[clients] def batchSessionRequest(device: Device): CreateSessionRequest =
+    CreateSessionRequest(
+      mode = "batch",
+      backend = Some(device.platformId),
+      max_ttl = Some(28800),
+      interactive_ttl = Some(1),
+      active_ttl = Some(28800)
+    )
+
+  private[clients] def samplerJobRequest(
+      device: Device,
+      task: QuantumTask,
+      compiled: Circuit,
+      sessionId: Option[String]
+  ): SubmitJobRequestV2 =
+    SubmitJobRequestV2(
+      program_id = "sampler",
+      backend = device.platformId,
+      runtime = None,
+      tags = None,
+      log_level = Some("info"),
+      cost = None,
+      session_id = sessionId,
+      calibration_id = None,
+      params = SamplerV2Input(
+        pubs = List(compiled.toQasm)
+      )
+    )
+
   private[clients] def parseTimestamp(raw: String): Option[LocalDateTime] = {
     val parsedInstant =
       Try(Instant.parse(raw))
@@ -275,6 +330,9 @@ object IBMClient {
       client: Client[F]
   ): IBMClient[F] =
     new IBMClient[F] with Http4sClientDsl[F] {
+      override val batchSubmitter: Option[ProviderBatchSubmitter[F]] =
+        Some(IBMClient.batchSubmitter(this))
+
       def fetchBearerToken: F[String] = 
         Uri.fromString("https://iam.cloud.ibm.com/identity/token").liftTo[F].flatMap { uri =>
           val req = POST(
@@ -325,6 +383,126 @@ object IBMClient {
 
       def fetchDeviceDetails(ids: List[String]): F[List[IBMBackendDevice]] =
         IBMClient.fetchDeviceDetails(fetchDeviceInformation, ids)
+
+      def createSession(r: CreateSessionRequest): F[SessionResponse] =
+        fetchBearerToken.flatMap { token =>
+          val req = Request[F](
+            method = Method.POST,
+            uri = Uri.unsafeFromString("https://quantum.cloud.ibm.com/api/v1/sessions")
+          ).withHeaders(
+              Headers(
+                Header.Raw(CaseInsensitiveString("Accept"), "application/json"),
+                Header.Raw(CaseInsensitiveString("Authorization"), s"Bearer $token"),
+                Header.Raw(CaseInsensitiveString("Service-CRN"), cfg.instanceId),
+                Header.Raw(CaseInsensitiveString("IBM-API-Version"), "2025-05-01")
+              )
+            )
+            .withEntity(r)
+
+          client.run(req).use { resp =>
+            resp.status match {
+              case Status.Ok =>
+                resp.asJsonDecode[SessionResponse]
+              case other =>
+                resp.as[String].flatMap { body =>
+                  Logger[F].info(s"Status: $other, body: $body") *>
+                    MonadCancelThrow[F].raiseError(
+                      new Exception(s"Failed to create IBM session: $other")
+                    )
+                }
+            }
+          }
+        }
+
+      def getSession(id: String): F[SessionResponse] =
+        fetchBearerToken.flatMap { token =>
+          Uri.fromString(s"https://quantum.cloud.ibm.com/api/v1/sessions/$id").liftTo[F].flatMap { uri =>
+            val req = GET(
+              uri,
+              Header.Raw(CaseInsensitiveString("Accept"), "application/json"),
+              Header.Raw(CaseInsensitiveString("Authorization"), s"Bearer $token"),
+              Header.Raw(CaseInsensitiveString("Service-CRN"), cfg.instanceId),
+              Header.Raw(CaseInsensitiveString("IBM-API-Version"), "2025-05-01")
+            )
+
+            client.run(req).use { resp =>
+              resp.status match {
+                case Status.Ok =>
+                  resp.asJsonDecode[SessionResponse]
+                case other =>
+                  resp.as[String].flatMap { body =>
+                    Logger[F].info(s"Status: $other, body: $body") *>
+                      MonadCancelThrow[F].raiseError(
+                        new Exception(s"Failed to fetch IBM session $id: $other")
+                      )
+                  }
+              }
+            }
+          }
+        }
+
+      def updateSession(id: String, r: UpdateSessionRequest): F[Unit] =
+        fetchBearerToken.flatMap { token =>
+          Uri.fromString(s"https://quantum.cloud.ibm.com/api/v1/sessions/$id").liftTo[F].flatMap { uri =>
+            val req = Request[F](
+              method = Method.PATCH,
+              uri = uri
+            ).withHeaders(
+                Headers(
+                  Header.Raw(CaseInsensitiveString("Accept"), "application/json"),
+                  Header.Raw(CaseInsensitiveString("Authorization"), s"Bearer $token"),
+                  Header.Raw(CaseInsensitiveString("Service-CRN"), cfg.instanceId),
+                  Header.Raw(CaseInsensitiveString("IBM-API-Version"), "2025-05-01")
+                )
+              )
+              .withEntity(r)
+
+            client.run(req).use { resp =>
+              resp.status match {
+                case Status.NoContent =>
+                  ().pure[F]
+                case other =>
+                  resp.as[String].flatMap { body =>
+                    Logger[F].info(s"Status: $other, body: $body") *>
+                      MonadCancelThrow[F].raiseError(
+                        new Exception(s"Failed to update IBM session $id: $other")
+                      )
+                  }
+              }
+            }
+          }
+        }
+
+      def closeSession(id: String): F[Unit] =
+        fetchBearerToken.flatMap { token =>
+          Uri.fromString(s"https://quantum.cloud.ibm.com/api/v1/sessions/$id/close").liftTo[F].flatMap { uri =>
+            val req = Request[F](
+              method = Method.DELETE,
+              uri = uri
+            ).withHeaders(
+                Headers(
+                  Header.Raw(CaseInsensitiveString("Accept"), "application/json"),
+                  Header.Raw(CaseInsensitiveString("Authorization"), s"Bearer $token"),
+                  Header.Raw(CaseInsensitiveString("Service-CRN"), cfg.instanceId),
+                  Header.Raw(CaseInsensitiveString("IBM-API-Version"), "2025-05-01")
+                )
+              )
+
+            client.run(req).use { resp =>
+              resp.status match {
+                case Status.NoContent =>
+                  ().pure[F]
+                case other =>
+                  resp.as[String].flatMap { body =>
+                    Logger[F].info(s"Status: $other, body: $body") *>
+                      MonadCancelThrow[F].raiseError(
+                        new Exception(s"Failed to close IBM session $id: $other")
+                      )
+                  }
+              }
+            }
+          }
+        }
 
        def submitJob(r: SubmitJobRequestV2): F[CreateJobResponseV2] = 
           fetchBearerToken.flatMap { token =>

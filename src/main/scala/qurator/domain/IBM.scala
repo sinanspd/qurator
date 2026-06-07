@@ -244,6 +244,48 @@ object IBM{
     )
 
     @derive(decoder, encoder, eqv, show)
+    case class CreateSessionRequest(
+        mode: String,
+        backend: Option[String] = None,
+        backend_name: Option[String] = None,
+        max_ttl: Option[Int] = None,
+        interactive_ttl: Option[Int] = None,
+        active_ttl: Option[Int] = None
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class UpdateSessionRequest(
+        accepting_jobs: Boolean
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class SessionTimestamp(
+        status: String,
+        timestamp: String
+    )
+
+    @derive(decoder, encoder, eqv, show)
+    case class SessionResponse(
+        id: String,
+        backend_name: Option[String],
+        started_at: Option[String],
+        activated_at: Option[String],
+        closed_at: Option[String],
+        last_job_started: Option[String],
+        last_job_completed: Option[String],
+        interactive_ttl: Option[Int],
+        max_ttl: Option[Int],
+        active_ttl: Option[Int],
+        state: Option[String],
+        state_reason: Option[String],
+        accepting_jobs: Option[Boolean],
+        mode: Option[String],
+        timestamps: Option[List[SessionTimestamp]],
+        user_id: Option[String],
+        elapsed_time: Option[Double]
+    )
+
+    @derive(decoder, encoder, eqv, show)
     case class CreateJobResponseV2(
         id: String, 
         backend: String, 

@@ -1,5 +1,6 @@
 package qurator.programs
 
+import cats.data.NonEmptyList
 import cats.MonadThrow
 import cats.effect._
 import cats.syntax.all._
@@ -34,6 +35,8 @@ import cats.Applicative
 import java.util.UUID
 import qurator.dashboard._
 import qurator.domain.ProviderClient
+import qurator.domain.ProviderBatchSubmission
+import qurator.domain.ProviderBatchTask
 import qurator.domain.ProviderTaskStatus
 import qurator.domain.ProviderJobTiming
 import qurator.domain.QuantumJobResult
@@ -74,6 +77,28 @@ object Scheduler{
       run: List[QuantumResult] => F[Unit]
   )
 
+  private final case class QuantumDeviceScore(
+      device: Device,
+      assignmentCoefficient: Double,
+      logFidelity: Double,
+      queueLength: Int,
+      transpileMillis: Long
+  )
+
+  private final case class BatchDeviceChoice(
+      device: Device,
+      weightedVotes: Int,
+      weightedScore: Double
+  )
+
+  private final case class QuantumSubmissionFailed(
+      device: Device,
+      cause: Throwable
+  ) extends RuntimeException(
+      s"Submission failed on ${device.platform}/${device.platformId}: ${cause.getMessage}",
+      cause
+  )
+
   def make[F[_]: GenUUID: Concurrent: Logger : Temporal : Background : Async](
         dataPersistanceService: DataPersistanceService[F],
         clients: HttpClients[F],
@@ -83,18 +108,21 @@ object Scheduler{
         additionalOptimizationRuns: Circuit => List[Circuit],
         dashboardConfig: SchedulerDashboardConfig = SchedulerDashboardConfig(),
         environment: AppEnvironment = AppEnvironment.Development,
-        compiler: FakeCompiler[F] //abstract this
+        compiler: FakeCompiler[F], //abstract this
+        batchSubmissionsEnabled: Boolean = true
   ): F[Scheduler[F]] =
     for {
       readyTasks       <- Ref.of[F, List[Task]](List.empty)
       pendingTasks     <- Ref.of[F, List[Task]](List.empty)
       submittedTasks   <- Ref.of[F, List[(String, String, String, TaskId)]](List.empty) //platform, platformId, jobId, taskId
+      submittedBatches <- Ref.of[F, Map[(String, String), Set[String]]](Map.empty) //provider, batchId -> jobIds
       completedTasks   <- Ref.of[F, Set[TaskId]](Set.empty)
       taskCallbacks    <- Ref.of[F, Map[TaskId, TaskContinuation[F]]](Map.empty)
       syncCallbacks    <- Ref.of[F, Map[TaskId, SynchronizedContinuation[F]]](Map.empty)
       syncTaskGroups   <- Ref.of[F, Map[TaskId, TaskId]](Map.empty)
       taskIndex        <- Ref.of[F, Map[TaskId, Task]](Map.empty)
       mergedAliases    <- Ref.of[F, Map[TaskId, List[TaskId]]](Map.empty)
+      cutTaskGroups    <- Ref.of[F, Map[TaskId, TaskId]](Map.empty) //cut task id -> cut group id
       submittedJobInfo <- Ref.of[F, Map[String, SubmittedJobInfo]](Map.empty)
       dashboardState   <- Ref.of[F, SchedulerDashboardState](SchedulerDashboardState.empty)
       _ <- Logger[F].info("Creating The Scheduler")    
@@ -109,6 +137,7 @@ object Scheduler{
         private val mergeQueueFactorMillis: Long = 3000L
         private val productionMode: Boolean = environment.isProduction
         private val submittedJobDataLookback: FiniteDuration = 1.hour
+        private val batchSubmissionsEnabledFlag: Boolean = batchSubmissionsEnabled
 
         private def registerDashboardTask(task: Task, pendingReason: String): F[Unit] =
             dashboardState.update(st => SchedulerDashboard.recordTask(st, task, pendingReason))
@@ -224,6 +253,7 @@ object Scheduler{
                             cut <- cuttingStrategy(taskReq.circuit, devices)
                             _ <- Logger[F].info(s"Cut length ${cut.length}")
                             optimized = cut.flatMap(additionalOptimizationRuns(_))
+                            cutGroupId <- ID.make[F, TaskId]
                             recreatedTasks <- optimized.traverse { c =>
                                 ID.make[F, TaskId].map { taskId =>
                                     QuantumTask(
@@ -239,6 +269,7 @@ object Scheduler{
                                 }
                             }
                              _ <- rememberTasks(recreatedTasks)
+                             _ <- rememberCutGroup(cutGroupId, recreatedTasks)
                              _ <- rememberQuantumCallbacks(recreatedTasks.map(_.uuid), onComplete)
                              _ <- recreatedTasks.traverse_(t =>
                                 registerDashboardTask(
@@ -399,6 +430,48 @@ object Scheduler{
        private def deviceKeyString(key: (String, String)): String =
             s"${key._1}/${key._2}"
 
+       private def observedFleetMeanQueueMillis(
+            observedQueueByDevice: Map[Device, Option[Long]]
+        ): Option[Double] =
+            observedQueueByDevice.values.flatten.toList match {
+                case Nil => None
+                case xs  => Some(xs.sum.toDouble / xs.size.toDouble)
+            }
+
+       private def scoreQuantumDevices(
+            task: QuantumTask,
+            devices: List[Device],
+            observedQueueByDevice: Map[Device, Option[Long]],
+            observedFleetMeanQueue: Option[Double]
+        ): F[List[QuantumDeviceScore]] =
+            devices.traverse { d =>
+                (
+                    estimateFidelity(d, task.circuit, clients, compiler),
+                    estimateTranspilationTime(task.circuit, d.gateSet)
+                ).mapN { (f, tMillis) =>
+                    val ac =
+                        getAssignmentCoefficient(
+                            pTotal = f.pTotal,
+                            queueLength = d.queueLength.toLong,
+                            transpileMillis = tMillis,
+                            fleetMeanQueue = devices.map(_.queueLength.toDouble).sum / devices.size.toDouble,
+                            observedQueueMillis = observedQueueByDevice.getOrElse(d, None),
+                            observedFleetMeanQueueMillis = observedFleetMeanQueue
+                        )
+
+                    QuantumDeviceScore(
+                        device = d,
+                        assignmentCoefficient = ac,
+                        logFidelity = f.logPTotal,
+                        queueLength = d.queueLength,
+                        transpileMillis = tMillis
+                    )
+                }
+            }
+
+       private def bestQuantumDeviceScore(scores: List[QuantumDeviceScore]): QuantumDeviceScore =
+            scores.maxBy(s => (s.assignmentCoefficient, s.logFidelity, -s.queueLength, -s.transpileMillis))
+
        private def scheduleOneQuantumTask(
             task: QuantumTask,
             blacklistedDevices: Set[(String, String)] = Set.empty
@@ -436,56 +509,26 @@ object Scheduler{
                 case ds =>
                     for {
                         observedQueueByDevice <- observedQueueMillisByDevice(ds)
-                        observedFleetMeanQueue =
-                            observedQueueByDevice.values.flatten.toList match {
-                                case Nil => None
-                                case xs  => Some(xs.sum.toDouble / xs.size.toDouble)
-                            }
-                        scored <- ds.traverse { d =>
-                            (
-                                estimateFidelity(d, task.circuit, clients, compiler),
-                                estimateTranspilationTime(task.circuit, d.gateSet)
-                            ).mapN { (f, tMillis) =>
-                                val ac =
-                                    getAssignmentCoefficient(
-                                        pTotal = f.pTotal,
-                                        queueLength = d.queueLength.toLong,
-                                        transpileMillis = tMillis,
-                                        fleetMeanQueue =  ds.map(_.queueLength.toDouble).sum / ds.size.toDouble,
-                                        observedQueueMillis = observedQueueByDevice.getOrElse(d, None),
-                                        observedFleetMeanQueueMillis = observedFleetMeanQueue
-                                    )
-
-                                (d, ac, f, d.queueLength, tMillis)
-                            }
-                        }
-
-                        best = scored.maxBy { case (_, ac, f, q, t) => (ac, f.logPTotal, -q, -t) }
+                        observedFleetMeanQueue = observedFleetMeanQueueMillis(observedQueueByDevice)
+                        scored <- scoreQuantumDevices(task, ds, observedQueueByDevice, observedFleetMeanQueue)
+                        best = bestQuantumDeviceScore(scored)
                         _ <- Logger[F].info(s"Picked Device Coefficient: $best")
-                        (bestDevice, _, _, _, _) = best
+                        bestDevice = best.device
 
                         // compiled <- ???
 
                         submittedAt <- nowUtcLocalDateTime
-                        _ <- submitQuantumToProvider(bestDevice, task, task.circuit).attempt.flatMap {
-                            case Right(jobId) =>
-                                for {
-                                    _ <- submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(bestDevice.platformId, task.circuit, submittedAt)))
-                                    logicalIds <- logicalIdsFor(task.uuid)
-                                    _ <- submittedTasks.update(
-                                        _ ++ logicalIds.map(tid => (bestDevice.platform, bestDevice.platformId, jobId, tid))
-                                    )
-                                    _ <- markDashboardSubmitted(
-                                        logicalIds,
-                                        provider = Some(bestDevice.platform),
-                                        deviceId = Some(bestDevice.platformId),
-                                        jobId = Some(jobId),
-                                        note =
-                                        if (logicalIds.size > 1)
-                                            Some(s"Merged physical execution of ${logicalIds.size} logical tasks")
-                                        else None
-                                    )
-                                } yield ()
+                        _ <- submitSelectedQuantumTasks(bestDevice, task, submittedAt, devices, blacklistedDevices).attempt.flatMap {
+                            case Right(_) =>
+                                Applicative[F].unit
+
+                            case Left(QuantumSubmissionFailed(failedDevice, cause)) =>
+                                val updatedBlacklist = blacklistedDevices + deviceKey(failedDevice)
+
+                                Logger[F].warn(cause)(
+                                    s"Submission failed for task=${task.uuid} on device=${failedDevice.platform}/${failedDevice.platformId}; trying another device"
+                                ) *>
+                                    scheduleOneQuantumTask(task, updatedBlacklist)
 
                             case Left(e) =>
                                 val updatedBlacklist = blacklistedDevices + deviceKey(bestDevice)
@@ -498,6 +541,227 @@ object Scheduler{
                     } yield ()
                 }
             } yield ()
+
+        private def readyCutBatchCandidates(seed: QuantumTask): F[Option[NonEmptyList[QuantumTask]]] =
+            cutTaskGroups.get.flatMap { groups =>
+                groups.get(seed.uuid) match {
+                    case None =>
+                        none[NonEmptyList[QuantumTask]].pure[F]
+
+                    case Some(groupId) =>
+                        readyTasks.modify { ready =>
+                            val readySiblings =
+                                ready.collect {
+                                    case qt: QuantumTask if groups.get(qt.uuid).contains(groupId) => qt
+                                }
+
+                            val batchTasks = seed :: readySiblings
+                            val canBatch =
+                                batchTasks.size > 1
+
+                            if (canBatch) {
+                                (ready, NonEmptyList.fromList(batchTasks))
+                            } else {
+                                (ready, none[NonEmptyList[QuantumTask]])
+                            }
+                        }
+                }
+            }
+
+        private def removeReadyQuantumTasks(tasks: List[QuantumTask]): F[Unit] = {
+            val taskIds = tasks.map(_.uuid).toSet
+            readyTasks.update(_.filterNot(t => taskIds.contains(t.uuid)))
+        }
+
+        private def batchCapableDevicesFor(
+            tasks: NonEmptyList[QuantumTask],
+            devices: List[Device],
+            blacklistedDevices: Set[(String, String)]
+        ): List[Device] =
+            devices.filter { d =>
+                !blacklistedDevices.contains(deviceKey(d)) &&
+                    tasks.toList.forall(_.qubits.value <= d.qubits) &&
+                    clients.providerClient(d.platform).exists(_.supportsBatchSubmissions)
+            }
+
+        private def chooseWeightedBatchDevice(
+            tasks: NonEmptyList[QuantumTask],
+            devices: List[Device],
+            blacklistedDevices: Set[(String, String)]
+        ): F[Option[BatchDeviceChoice]] = {
+            val candidates = batchCapableDevicesFor(tasks, devices, blacklistedDevices)
+
+            candidates match {
+                case Nil =>
+                    none[BatchDeviceChoice].pure[F]
+
+                case ds =>
+                    for {
+                        observedQueueByDevice <- observedQueueMillisByDevice(ds)
+                        observedFleetMeanQueue = observedFleetMeanQueueMillis(observedQueueByDevice)
+                        bestScores <- tasks.toList.traverse { t =>
+                            scoreQuantumDevices(t, ds, observedQueueByDevice, observedFleetMeanQueue)
+                                .map(scores => (t, bestQuantumDeviceScore(scores)))
+                        }
+                        selectedDevice = Scheduler.weightedMajorityDevice(
+                            bestScores.map { case (t, score) =>
+                                (t, score.device, score.assignmentCoefficient)
+                            }
+                        )
+                        choice = selectedDevice.flatMap { d =>
+                            val deviceScores = bestScores.collect { case (t, score) if score.device == d => (t, score) }
+                            val weightedVotes = deviceScores.map { case (t, _) => t.qubits.value }.sum
+                            val weightedScore = deviceScores.map { case (t, score) => score.assignmentCoefficient * t.qubits.value.toDouble }.sum
+
+                            Some(BatchDeviceChoice(d, weightedVotes, weightedScore))
+                        }
+                        _ <- choice.traverse_ { c =>
+                            Logger[F].info(
+                                s"Picked batch device ${c.device.platform}/${c.device.platformId} for ${tasks.size} cut subcircuits " +
+                                    s"with qubit-weighted votes=${c.weightedVotes}, weightedScore=${c.weightedScore}"
+                            )
+                        }
+                    } yield choice
+            }
+        }
+
+        private def submitSelectedQuantumTasks(
+            device: Device,
+            task: QuantumTask,
+            submittedAt: LocalDateTime,
+            availableDevices: List[Device],
+            blacklistedDevices: Set[(String, String)]
+        ): F[Unit] =
+            if (!batchSubmissionsEnabledFlag) submitSingleSelectedQuantumTask(device, task, submittedAt)
+            else
+                readyCutBatchCandidates(task).flatMap {
+                    case Some(batchTasks) =>
+                        chooseWeightedBatchDevice(batchTasks, availableDevices, blacklistedDevices).flatMap {
+                            case Some(choice) =>
+                                clients.providerClient(choice.device.platform) match {
+                                    case Some(providerClient) if providerClient.supportsBatchSubmissions =>
+                                        val siblings = batchTasks.tail
+
+                                        removeReadyQuantumTasks(siblings) *>
+                                            submitQuantumBatchToProvider(providerClient, choice.device, batchTasks).attempt.flatMap {
+                                                case Right(batch) =>
+                                                    registerSubmittedQuantumBatch(choice.device, batchTasks, batch, submittedAt)
+
+                                                case Left(e) =>
+                                                    Logger[F].warn(e)(
+                                                        s"Batch submission failed for cut task=${task.uuid} on device=${choice.device.platform}/${choice.device.platformId}; re-queueing siblings"
+                                                    ) *>
+                                                        enqueueReady(siblings.map(identity[Task])) *>
+                                                        QuantumSubmissionFailed(choice.device, e).raiseError[F, Unit]
+                                            }
+
+                                    case None =>
+                                        submitSingleSelectedQuantumTask(device, task, submittedAt)
+
+                                    case Some(_) =>
+                                        submitSingleSelectedQuantumTask(device, task, submittedAt)
+                                }
+
+                            case None =>
+                                submitSingleSelectedQuantumTask(device, task, submittedAt)
+                        }
+
+                    case None =>
+                        submitSingleSelectedQuantumTask(device, task, submittedAt)
+                }
+
+        private def submitSingleSelectedQuantumTask(
+            device: Device,
+            task: QuantumTask,
+            submittedAt: LocalDateTime
+        ): F[Unit] =
+            submitQuantumToProvider(device, task, task.circuit).flatMap { jobId =>
+                registerSubmittedQuantumJob(
+                    device = device,
+                    task = task,
+                    jobId = jobId,
+                    submittedAt = submittedAt,
+                    note = None
+                )
+            }
+
+        private def submitQuantumBatchToProvider(
+            providerClient: ProviderClient[F],
+            device: Device,
+            tasks: NonEmptyList[QuantumTask]
+        ): F[ProviderBatchSubmission] = {
+            val batchTasks =
+                tasks.map(task => ProviderBatchTask(task, task.circuit))
+
+            ProviderClient.submitQuantumTaskBatch(providerClient, device, batchTasks) match {
+                case Some(submit) =>
+                    Logger[F].info(
+                        s"Submitting ${tasks.size} cut subcircuits as a batch to device $device via ${providerClient.provider}"
+                    ) *> submit
+
+                case None =>
+                    new RuntimeException(s"Provider ${providerClient.provider} does not support batch submissions")
+                        .raiseError[F, ProviderBatchSubmission]
+            }
+        }
+
+        private def registerSubmittedQuantumJob(
+            device: Device,
+            task: QuantumTask,
+            jobId: String,
+            submittedAt: LocalDateTime,
+            note: Option[String]
+        ): F[Unit] =
+            for {
+                _ <- submittedJobInfo.update(_ + (jobId -> SubmittedJobInfo(device.platformId, task.circuit, submittedAt)))
+                logicalIds <- logicalIdsFor(task.uuid)
+                _ <- submittedTasks.update(
+                    _ ++ logicalIds.map(tid => (device.platform, device.platformId, jobId, tid))
+                )
+                dashboardNote =
+                    note.orElse(
+                        if (logicalIds.size > 1)
+                            Some(s"Merged physical execution of ${logicalIds.size} logical tasks")
+                        else None
+                    )
+                _ <- markDashboardSubmitted(
+                    logicalIds,
+                    provider = Some(device.platform),
+                    deviceId = Some(device.platformId),
+                    jobId = Some(jobId),
+                    note = dashboardNote
+                )
+            } yield ()
+
+        private def registerSubmittedQuantumBatch(
+            device: Device,
+            tasks: NonEmptyList[QuantumTask],
+            batch: ProviderBatchSubmission,
+            submittedAt: LocalDateTime
+        ): F[Unit] = {
+            val taskList = tasks.toList
+            val submissions = batch.submissions
+
+            if (taskList.size != submissions.size) {
+                new RuntimeException(
+                    s"Provider ${device.platform} returned ${submissions.size} submissions for ${taskList.size} batched tasks"
+                ).raiseError[F, Unit]
+            } else {
+                val taskJobs = taskList.zip(submissions).map { case (t, submission) => (t, submission.jobId) }
+                val note = Some(s"Batch execution ${batch.batchId} of ${taskList.size} cut subcircuits")
+
+                submittedBatches.update(_ + ((device.platform, batch.batchId) -> taskJobs.map(_._2).toSet)) *>
+                    taskJobs.traverse_ { case (batchTask, jobId) =>
+                        registerSubmittedQuantumJob(
+                            device = device,
+                            task = batchTask,
+                            jobId = jobId,
+                            submittedAt = submittedAt,
+                            note = note
+                        )
+                    }
+            }
+        }
 
         private def submitQuantumToProvider(
             device: Device,
@@ -607,6 +871,7 @@ object Scheduler{
                             )
                         }
                 }
+                _ <- closeCompletedSubmittedBatches
                 done <- completedTasks.get
 
                 promotable <- pendingTasks.modify { ps =>
@@ -619,6 +884,35 @@ object Scheduler{
                 _ <- markDashboardPendingReason(promotable.map(_.uuid), "ready")
             } yield ()
         
+        private def closeCompletedSubmittedBatches: F[Unit] =
+            for {
+                inFlight <- submittedTasks.get.map(_.map(_._3).toSet)
+                batches <- submittedBatches.get
+                completed = batches.collect {
+                    case (key, jobIds) if jobIds.forall(jobId => !inFlight.contains(jobId)) => key
+                }.toList
+                _ <- completed.traverse_ { case key @ (provider, batchId) =>
+                    clients.providerClient(provider).flatMap(_.batchSubmitter) match {
+                        case Some(batchSubmitter) =>
+                            batchSubmitter.closeBatch(batchId).attempt.flatMap {
+                                case Right(_) =>
+                                    Logger[F].info(s"Closed completed provider batch provider=$provider, batch=$batchId") *>
+                                        submittedBatches.update(_ - key)
+
+                                case Left(e) =>
+                                    Logger[F].warn(e)(
+                                        s"Failed to close completed provider batch provider=$provider, batch=$batchId; will retry"
+                                    )
+                            }
+
+                        case None =>
+                            Logger[F].warn(
+                                s"Dropping completed provider batch provider=$provider, batch=$batchId; provider has no batch close support"
+                            ) *> submittedBatches.update(_ - key)
+                    }
+                }
+            } yield ()
+
         //TODO On Failure of job this needs to reschedule 
         private def fetchResultsFromCorrespondingProvider(
             provider: String,
@@ -1057,6 +1351,9 @@ object Scheduler{
         private def rememberTasks(ts: List[Task]): F[Unit] =
             taskIndex.update(_ ++ ts.map(t => t.uuid -> t).toMap)
 
+        private def rememberCutGroup(groupId: TaskId, tasks: List[QuantumTask]): F[Unit] =
+            cutTaskGroups.update(_ ++ tasks.map(t => t.uuid -> groupId).toMap)
+
         private def logicalIdsFor(taskId: TaskId): F[List[TaskId]] =
             mergedAliases.get.map(_.getOrElse(taskId, List(taskId)))
 
@@ -1142,6 +1439,7 @@ object Scheduler{
 
                 completedTasks.update(_ + taskId) *>
                 taskIndex.update(_ - taskId) *>
+                cutTaskGroups.update(_ - taskId) *>
                 dashboardState.update(st =>
                     SchedulerDashboard.markCompleted(st, completion, dashboardConfig.retainedCompletedTasks)
                 ) *>
@@ -1347,6 +1645,22 @@ object Scheduler{
         def getSubmittedTasks(): F[List[(String, String, String, TaskId)]] = 
             submittedTasks.get
     }
+
+
+    private[qurator] def weightedMajorityDevice(
+        choices: List[(QuantumTask, Device, Double)]
+    ): Option[Device] =
+        choices
+            .groupBy { case (_, device, _) => device }
+            .toList
+            .sortBy { case (device, votes) =>
+                val weightedVotes = votes.map { case (task, _, _) => task.qubits.value }.sum
+                val weightedScore = votes.map { case (task, _, score) => task.qubits.value.toDouble * score }.sum
+
+                (weightedVotes, weightedScore, device.qubits, -device.queueLength, device.platform, device.platformId)
+            }
+            .lastOption
+            .map(_._1)
 
 
     private[qurator] def allParentResultsAvailable(

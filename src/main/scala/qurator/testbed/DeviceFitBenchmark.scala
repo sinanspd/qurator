@@ -12,10 +12,7 @@ import qurator.domain.calibration._
 import qurator.domain.circuit._
 import qurator.domain.device.Device
 import qurator.testbed.HaqaMapper.DeviceTopology
-import qurator.util.{FidelityEstimator, HaloCircuitMerger, QuantumTaskLoader, QuantumTaskLoadWarning}
-import qurator.util.HaloCircuitMerger.ProcessInstruction
-import qurator.util.HaloCircuitMerger.ProcessInstruction.Op
-import qurator.util.HaloCircuitMerger.VirtualQubitRef.Data
+import qurator.util.{CircuitProcessConverter, FidelityEstimator, HaloCircuitMerger, QuantumTaskLoader, QuantumTaskLoadWarning}
 
 import scala.collection.mutable
 
@@ -185,58 +182,7 @@ object DeviceFitBenchmark {
     )
 
   def processFromCircuit(circuit: Circuit): HaloCircuitMerger.ProcessCircuit =
-    HaloCircuitMerger.ProcessCircuit(
-      dataQubits = circuit.qubits,
-      helperQubits = 0,
-      instructions = circuit.remainingGates.flatMap(processInstructionFromGate).toVector,
-      name = circuit.name
-    )
-
-  private def processInstructionFromGate(gate: Gate): List[ProcessInstruction] =
-    gate match {
-      case X(q)        => List(Op("x", refs = Vector(Data(q))))
-      case Y(q)        => List(Op("y", refs = Vector(Data(q))))
-      case Z(q)        => List(Op("z", refs = Vector(Data(q))))
-      case H(q)        => List(Op("h", refs = Vector(Data(q))))
-      case S(q)        => List(Op("s", refs = Vector(Data(q))))
-      case SDG(q)      => List(Op("sdg", refs = Vector(Data(q))))
-      case T(q)        => List(Op("t", refs = Vector(Data(q))))
-      case TDG(q)      => List(Op("tdg", refs = Vector(Data(q))))
-      case SX(q)       => List(Op("sx", refs = Vector(Data(q))))
-      case SXDG(q)     => List(Op("sxdg", refs = Vector(Data(q))))
-      case Id(q)       => List(Op("id", refs = Vector(Data(q))))
-      case Phase(t, q) => List(Op("p", params = Vector(t), refs = Vector(Data(q))))
-      case RX(t, q)    => List(Op("rx", params = Vector(t), refs = Vector(Data(q))))
-      case RY(t, q)    => List(Op("ry", params = Vector(t), refs = Vector(Data(q))))
-      case RZ(t, q)    => List(Op("rz", params = Vector(t), refs = Vector(Data(q))))
-      case U(t, p, l, q) =>
-        List(Op("u", params = Vector(t, p, l), refs = Vector(Data(q))))
-      case U2(p, l, q) =>
-        List(Op("u2", params = Vector(p, l), refs = Vector(Data(q))))
-      case U3(t, p, l, q) =>
-        List(Op("u3", params = Vector(t, p, l), refs = Vector(Data(q))))
-      case CX(c, t)       => List(Op("cx", refs = Vector(Data(c), Data(t))))
-      case CY(c, t)       => List(Op("cy", refs = Vector(Data(c), Data(t))))
-      case CZ(c, t)       => List(Op("cz", refs = Vector(Data(c), Data(t))))
-      case CH(c, t)       => List(Op("ch", refs = Vector(Data(c), Data(t))))
-      case Swap(a, b)     => List(Op("swap", refs = Vector(Data(a), Data(b))))
-      case CP(c, t, q)    => List(Op("cp", params = Vector(t), refs = Vector(Data(c), Data(q))))
-      case CRX(c, t, q)   => List(Op("crx", params = Vector(t), refs = Vector(Data(c), Data(q))))
-      case CRY(c, t, q)   => List(Op("cry", params = Vector(t), refs = Vector(Data(c), Data(q))))
-      case CRZ(c, t, q)   => List(Op("crz", params = Vector(t), refs = Vector(Data(c), Data(q))))
-      case CU(c, t, p, l, q) =>
-        List(Op("cu", params = Vector(t, p, l), refs = Vector(Data(c), Data(q))))
-      case CCX(a, b, t) =>
-        List(Op("ccx", refs = Vector(Data(a), Data(b), Data(t))))
-      case Measure(q) =>
-        List(ProcessInstruction.Measure(Data(q)))
-      case Reset(q) =>
-        List(ProcessInstruction.Reset(Data(q)))
-      case GPhase(_) =>
-        Nil
-      case NamedGate(name, params, qubits) =>
-        List(Op(name, params = params, refs = qubits.map(Data(_))))
-    }
+    CircuitProcessConverter.liveIntervalProcessFromCircuit(circuit)
 
   private def fetchTargets(
       clients: List[ProviderClient[IO]],
@@ -322,9 +268,9 @@ object DeviceFitBenchmark {
       settings: Settings
   ): IO[IterationResult] = {
     val processes = prefix.map(_.process)
-    val requiredDataQubits = processes.iterator.map(_.dataQubits).sum
+    val minimumRequiredQubits = minimumRequiredPhysicalQubits(processes)
     val candidates =
-      targets.filter(_.topology.qubits.size >= requiredDataQubits)
+      targets.filter(_.topology.qubits.size >= minimumRequiredQubits)
 
     candidates.traverse(target => attemptDeviceFit(processes, target, settings.haloConfig)).map { attempts =>
       val successful = attempts.flatten
@@ -333,7 +279,7 @@ object DeviceFitBenchmark {
 
       IterationResult(
         circuitsMerged = prefix.size,
-        mappedQubits = successful.map(_.mappedQubits).maxOption.getOrElse(requiredDataQubits),
+        mappedQubits = successful.map(_.mappedQubits).maxOption.getOrElse(minimumRequiredQubits),
         accommodatingDevices = successful.size,
         minEstimatedFidelity = minAttempt.map(_.estimatedFidelity),
         minEstimatedFidelityDevice = minAttempt.map(_.target.label),
@@ -664,6 +610,9 @@ object DeviceFitBenchmark {
 
   private def usedQubits(circuit: Circuit): Set[Int] =
     circuit.remainingGates.iterator.flatMap(gateQubits).toSet
+
+  private def minimumRequiredPhysicalQubits(processes: Vector[HaloCircuitMerger.ProcessCircuit]): Int =
+    processes.iterator.map(CircuitProcessConverter.maxInstructionWidth).maxOption.getOrElse(0)
 
   private def parTraverseN[A, B](values: List[A], parallelism: Int)(f: A => IO[B]): IO[List[B]] =
     values.parTraverseN(math.max(1, parallelism))(f)

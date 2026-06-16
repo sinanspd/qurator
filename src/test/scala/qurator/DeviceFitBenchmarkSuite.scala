@@ -2,10 +2,12 @@ package qurator
 
 import cats.effect.IO
 import qurator.domain.circuit._
+import qurator.testbed.HaqaMapper.DeviceTopology
 import qurator.testbed.DeviceFitBenchmark
+import qurator.util.HaloCircuitMerger
 import qurator.util.HaloCircuitMerger.ProcessInstruction
 import qurator.util.HaloCircuitMerger.ProcessInstruction.Op
-import qurator.util.HaloCircuitMerger.VirtualQubitRef.Data
+import qurator.util.HaloCircuitMerger.VirtualQubitRef.Helper
 import weaver.SimpleIOSuite
 
 import java.nio.charset.StandardCharsets
@@ -39,7 +41,7 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
     )
   }
 
-  test("processFromCircuit preserves gate operands as HALO data references") {
+  test("processFromCircuit converts QASM wires into live-interval dynamic refs") {
     val circuit =
       Circuit(
         List(
@@ -56,17 +58,82 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
     val process = DeviceFitBenchmark.processFromCircuit(circuit)
 
     IO.pure(
-      expect(process.dataQubits == 2) and
-      expect(process.helperQubits == 0) and
+      expect(process.dataQubits == 0) and
+      expect(process.helperQubits == 2) and
       expect(
         process.instructions == Vector(
-          Op("h", refs = Vector(Data(0))),
-          Op("cx", refs = Vector(Data(0), Data(1))),
-          Op("crz", params = Vector("pi/4"), refs = Vector(Data(1), Data(0))),
-          ProcessInstruction.Measure(Data(1)),
-          ProcessInstruction.Reset(Data(0))
+          Op("h", refs = Vector(Helper(0))),
+          Op("cx", refs = Vector(Helper(0), Helper(1))),
+          Op("crz", params = Vector("pi/4"), refs = Vector(Helper(1), Helper(0))),
+          ProcessInstruction.Measure(Helper(1)),
+          ProcessInstruction.Release(Vector(1)),
+          ProcessInstruction.Reset(Helper(0)),
+          ProcessInstruction.Release(Vector(0))
         )
       )
+    )
+  }
+
+  test("processFromCircuit releases a dynamic ref after reset before later reuse") {
+    val circuit =
+      Circuit(
+        List(
+          H(0),
+          Reset(0),
+          X(0),
+          Measure(0)
+        ),
+        qubits = 1,
+        name = "reset-segment"
+      )
+
+    val process = DeviceFitBenchmark.processFromCircuit(circuit)
+
+    IO.pure(
+      expect(
+        process.instructions == Vector(
+          Op("h", refs = Vector(Helper(0))),
+          ProcessInstruction.Reset(Helper(0)),
+          ProcessInstruction.Release(Vector(0)),
+          Op("x", refs = Vector(Helper(0))),
+          ProcessInstruction.Measure(Helper(0)),
+          ProcessInstruction.Release(Vector(0))
+        )
+      )
+    )
+  }
+
+  test("live-interval process can reuse one physical qubit for non-overlapping logical wires") {
+    val circuit =
+      Circuit(
+        List(
+          H(0),
+          Measure(0),
+          X(1),
+          Measure(1)
+        ),
+        qubits = 2,
+        name = "sequential-wires"
+      )
+
+    val process = DeviceFitBenchmark.processFromCircuit(circuit)
+    val topology = DeviceTopology.fromEdges(Nil, List(0))
+    val attempt = HaloCircuitMerger.mergeProcesses(Vector(process), topology)
+    val plan = attempt.toOption.get
+    val usedPhysicals = plan.deviceCircuit.remainingGates.flatMap {
+      case H(q) => List(q)
+      case X(q) => List(q)
+      case Measure(q) => List(q)
+      case Reset(q) => List(q)
+      case _ => Nil
+    }.toSet
+
+    IO.pure(
+      expect(attempt.isRight) and
+      expect(usedPhysicals == Set(0)) and
+      expect(plan.partitions.head.measurementBitIndices == Vector(0, 1)) and
+      expect(plan.partitions.head.measuredRefs == Vector(Helper(0), Helper(1))) and
+      expect(plan.helperAssignments.map(_.physicalQubit).distinct == Vector(0))
     )
   }
 

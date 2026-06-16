@@ -213,7 +213,7 @@ object HaloCircuitMerger {
         val placements = placeDataQubits(analyses, topology, metrics, config, readoutModel)
 
         validatePlacements(analyses, placements, metrics)
-          .flatMap(_ => scheduleProcesses(processes, placements, topology, metrics, analyses))
+          .flatMap(_ => scheduleProcesses(processes, placements, topology, metrics, analyses, config, readoutModel))
       }
     }
   }
@@ -285,11 +285,15 @@ object HaloCircuitMerger {
   private final case class ProcessAnalysis(
       processIndex: Int,
       dataQubits: Int,
+      helperQubits: Int,
       dataInteractionWeights: Map[(Int, Int), Int],
       helperTouchWeights: Vector[Double],
       dataHelperWeights: Map[(Int, Int), Int],
+      helperInteractionWeights: Map[(Int, Int), Int],
       importance: Vector[Double],
-      measuredDataQubits: Set[Int]
+      helperImportance: Vector[Double],
+      measuredDataQubits: Set[Int],
+      measuredHelperQubits: Set[Int]
   ) {
     def dataWeight(a: Int, b: Int): Int =
       dataInteractionWeights.getOrElse(normalizePair(a, b), 0)
@@ -297,8 +301,17 @@ object HaloCircuitMerger {
     def helperWeight(dataQubit: Int): Double =
       helperTouchWeights.lift(dataQubit).getOrElse(0.0)
 
+    def helperInteractionWeight(a: Int, b: Int): Int =
+      helperInteractionWeights.getOrElse(normalizePair(a, b), 0)
+
     def isMeasured(dataQubit: Int): Boolean =
       measuredDataQubits.contains(dataQubit)
+
+    def isMeasured(ref: VirtualQubitRef): Boolean =
+      ref match {
+        case Data(idx) => measuredDataQubits.contains(idx)
+        case Helper(idx) => measuredHelperQubits.contains(idx)
+      }
   }
 
   private final case class ReadoutModel(
@@ -408,13 +421,19 @@ object HaloCircuitMerger {
     val dataWeights = mutable.Map.empty[(Int, Int), Int].withDefaultValue(0)
     val helperWeights = Array.fill(process.dataQubits)(0.0)
     val dataHelperWeights = mutable.Map.empty[(Int, Int), Int].withDefaultValue(0)
+    val helperInteractionWeights = mutable.Map.empty[(Int, Int), Int].withDefaultValue(0)
     val importance = Array.fill(process.dataQubits)(0.0)
+    val helperImportance = Array.fill(process.helperQubits)(0.0)
     val measuredDataQubits = mutable.Set.empty[Int]
+    val measuredHelperQubits = mutable.Set.empty[Int]
 
     process.instructions.foreach {
       case Op(_, _, refs) =>
         refs.collect { case Data(idx) => idx }.distinct.foreach { dq =>
           importance(dq) += 0.05
+        }
+        refs.collect { case Helper(idx) => idx }.distinct.foreach { hq =>
+          helperImportance(hq) += 0.05
         }
 
         val pairs = refs.distinct.combinations(2).collect { case Vector(a, b) => (a, b) }.toVector
@@ -434,6 +453,13 @@ object HaloCircuitMerger {
             helperWeights(d) += 1.0
             dataHelperWeights.update((d, h), dataHelperWeights((d, h)) + 1)
             importance(d) += 0.50
+            helperImportance(h) += 0.50
+
+          case (Helper(a), Helper(b)) =>
+            val key = normalizePair(a, b)
+            helperInteractionWeights.update(key, helperInteractionWeights(key) + 1)
+            helperImportance(a) += 1.0
+            helperImportance(b) += 1.0
 
           case _ =>
             ()
@@ -443,6 +469,10 @@ object HaloCircuitMerger {
         importance(idx) += 0.25
         measuredDataQubits += idx
 
+      case ProcessInstruction.Measure(Helper(idx)) =>
+        helperImportance(idx) += 0.25
+        measuredHelperQubits += idx
+
       case _ =>
         ()
     }
@@ -450,11 +480,15 @@ object HaloCircuitMerger {
     ProcessAnalysis(
       processIndex = processIndex,
       dataQubits = process.dataQubits,
+      helperQubits = process.helperQubits,
       dataInteractionWeights = dataWeights.toMap,
       helperTouchWeights = helperWeights.toVector,
       dataHelperWeights = dataHelperWeights.toMap,
+      helperInteractionWeights = helperInteractionWeights.toMap,
       importance = importance.toVector,
-      measuredDataQubits = measuredDataQubits.toSet
+      helperImportance = helperImportance.toVector,
+      measuredDataQubits = measuredDataQubits.toSet,
+      measuredHelperQubits = measuredHelperQubits.toSet
     )
   }
 
@@ -472,40 +506,44 @@ object HaloCircuitMerger {
     val placedSeeds = mutable.ArrayBuffer.empty[Int]
 
     processOrder.foreach { analysis =>
-      val logicalOrder = (0 until analysis.dataQubits).toVector.sortBy(q => (-analysis.importance(q), q))
-      val seedLogical = logicalOrder.headOption.getOrElse(0)
-      val seedPhysical =
-        chooseSeed(topology, usedPhysical.toSet, placedSeeds.toVector, analysis, seedLogical, metrics, config, readoutModel)
+      if (analysis.dataQubits <= 0) {
+        placementByProcess(analysis.processIndex) = Vector.empty
+      } else {
+        val logicalOrder = (0 until analysis.dataQubits).toVector.sortBy(q => (-analysis.importance(q), q))
+        val seedLogical = logicalOrder.headOption.getOrElse(0)
+        val seedPhysical =
+          chooseSeed(topology, usedPhysical.toSet, placedSeeds.toVector, analysis, seedLogical, metrics, config, readoutModel)
 
-      val assigned = mutable.Map(seedLogical -> seedPhysical)
-      usedPhysical += seedPhysical
-      placedSeeds += seedPhysical
+        val assigned = mutable.Map(seedLogical -> seedPhysical)
+        usedPhysical += seedPhysical
+        placedSeeds += seedPhysical
 
-      logicalOrder.tail.foreach { logicalQubit =>
-        val bestPhysical =
-          topology.qubits.iterator
-            .filterNot(usedPhysical.contains)
-            .minBy { candidate =>
-              placementScore(
-                processIndex = analysis.processIndex,
-                logicalQubit = logicalQubit,
-                candidate = candidate,
-                assignedWithinProcess = assigned.toMap,
-                placements = placementByProcess.toVector,
-                analyses = analyses,
-                topology = topology,
-                metrics = metrics,
-                config = config,
-                readoutModel = readoutModel
-              )
-            }
+        logicalOrder.tail.foreach { logicalQubit =>
+          val bestPhysical =
+            topology.qubits.iterator
+              .filterNot(usedPhysical.contains)
+              .minBy { candidate =>
+                placementScore(
+                  processIndex = analysis.processIndex,
+                  logicalQubit = logicalQubit,
+                  candidate = candidate,
+                  assignedWithinProcess = assigned.toMap,
+                  placements = placementByProcess.toVector,
+                  analyses = analyses,
+                  topology = topology,
+                  metrics = metrics,
+                  config = config,
+                  readoutModel = readoutModel
+                )
+              }
 
-        assigned(logicalQubit) = bestPhysical
-        usedPhysical += bestPhysical
+          assigned(logicalQubit) = bestPhysical
+          usedPhysical += bestPhysical
+        }
+
+        placementByProcess(analysis.processIndex) =
+          Vector.tabulate(analysis.dataQubits)(logical => assigned(logical))
       }
-
-      placementByProcess(analysis.processIndex) =
-        Vector.tabulate(analysis.dataQubits)(logical => assigned(logical))
     }
 
     greedyLocalImprove(analyses, topology, metrics, placementByProcess.toVector, config, readoutModel)
@@ -835,7 +873,9 @@ object HaloCircuitMerger {
       dataPlacements: Vector[Vector[Int]],
       topology: DeviceTopology,
       metrics: TopologyMetrics,
-      analyses: Vector[ProcessAnalysis]
+      analyses: Vector[ProcessAnalysis],
+      config: Config,
+      readoutModel: ReadoutModel
   ): Either[MergeError, MergePlan] = {
     val emitted = mutable.ArrayBuffer.empty[Gate]
     val freeHelpers = mutable.Set.empty[Int] ++ topology.qubits.filterNot(dataPlacements.iterator.flatMap(identity).toSet)
@@ -870,27 +910,86 @@ object HaloCircuitMerger {
         processIndex: Int,
         helperIndex: Int,
         candidate: Int,
-        currentDataRefs: Vector[Int]
+        currentRefs: Vector[VirtualQubitRef]
     ): Double = {
       val analysis = analyses(processIndex)
-      val weightedPartners =
+      val currentAssignments = helperAssignmentsByProcess(processIndex).toMap
+      val currentDataRefs = currentRefs.collect { case Data(idx) => idx }.distinct
+      val currentHelperRefs = currentRefs.collect { case Helper(idx) => idx }.distinct.filterNot(_ == helperIndex)
+
+      val weightedDataPartners =
         analysis.dataHelperWeights.collect {
           case ((dataIdx, hIdx), weight) if hIdx == helperIndex =>
             metrics.dist(dataPlacements(processIndex)(dataIdx), candidate).map(_.toDouble * weight.toDouble).getOrElse(1e6)
         }.toVector
 
-      if (weightedPartners.nonEmpty) weightedPartners.sum
-      else if (currentDataRefs.nonEmpty) {
-        currentDataRefs.iterator
-          .flatMap(dataIdx => metrics.dist(dataPlacements(processIndex)(dataIdx), candidate))
-          .map(_.toDouble)
+      val weightedHelperPartners =
+        currentAssignments.iterator.collect {
+          case (otherHelper, physical) if otherHelper != helperIndex =>
+            val graphWeight = analysis.helperInteractionWeight(helperIndex, otherHelper)
+            val immediateWeight = if (currentHelperRefs.contains(otherHelper)) 1 else 0
+            val weight = math.max(graphWeight, immediateWeight).toDouble
+            if (weight <= 0.0) 0.0
+            else metrics.dist(physical, candidate).map(_.toDouble * weight).getOrElse(1e6)
+        }.toVector
+
+      val immediateDataPartners =
+        currentDataRefs.flatMap { dataIdx =>
+          dataPlacements(processIndex).lift(dataIdx).flatMap { physical =>
+            metrics.dist(physical, candidate).map(_.toDouble)
+          }
+        }
+
+      val partnerCost =
+        if (weightedDataPartners.nonEmpty || weightedHelperPartners.exists(_ > 0.0))
+          weightedDataPartners.sum + weightedHelperPartners.sum
+        else if (immediateDataPartners.nonEmpty)
+          immediateDataPartners.sum
+        else {
+          val existingProcessPhysicals =
+            dataPlacements(processIndex) ++ currentAssignments.values.toVector
+          if (existingProcessPhysicals.nonEmpty)
+            existingProcessPhysicals.iterator.flatMap(phys => metrics.dist(phys, candidate)).map(_.toDouble).sum
+          else 0.0
+        }
+
+      val centralityReward =
+        topology.qubits.iterator
+          .filterNot(_ == candidate)
+          .flatMap(other => metrics.dist(candidate, other).map(dist => 1.0 / (1.0 + dist.toDouble)))
           .sum
-      } else {
-        dataPlacements(processIndex).iterator
-          .flatMap(phys => metrics.dist(phys, candidate))
-          .map(_.toDouble)
-          .sum
-      }
+
+      val measuredReadoutCost =
+        if (analysis.isMeasured(Helper(helperIndex))) readoutModel.error(candidate) else 0.0
+
+      val measuredCrosstalkCost =
+        if (!analysis.isMeasured(Helper(helperIndex)) || config.measurementCrosstalkWeight <= 0.0) 0.0
+        else {
+          val measuredDataPhysicals =
+            dataPlacements.iterator.zipWithIndex.flatMap { case (placement, idx) =>
+              analyses(idx).measuredDataQubits.iterator.flatMap(q => placement.lift(q))
+            }
+
+          val measuredHelperPhysicals =
+            helperAssignmentsByProcess.iterator.zipWithIndex.flatMap { case (assignments, idx) =>
+              assignments.iterator.collect {
+                case (helper, physical)
+                    if (idx != processIndex || helper != helperIndex) &&
+                      analyses(idx).measuredHelperQubits.contains(helper) =>
+                  physical
+              }
+            }
+
+          (measuredDataPhysicals ++ measuredHelperPhysicals)
+            .map(other => measurementProximityPenalty(candidate, other, metrics, readoutModel, config))
+            .sum
+        }
+
+      partnerCost +
+        config.measurementReadoutWeight * measuredReadoutCost +
+        config.measurementCrosstalkWeight * measuredCrosstalkCost -
+        0.10 * topology.degree.getOrElse(candidate, 0).toDouble -
+        0.02 * centralityReward
     }
 
     def ensureHelpers(
@@ -900,13 +999,12 @@ object HaloCircuitMerger {
       val currentAssignments = helperAssignmentsByProcess(processIndex)
       val helperRefs = refs.collect { case Helper(idx) => idx }.distinct
       val missingHelpers = helperRefs.filterNot(currentAssignments.contains)
-      val dataRefs = refs.collect { case Data(idx) => idx }.distinct
 
       if (missingHelpers.size > freeHelpers.size) {
         Left(MergeError.DeadlockedOnHelpers(processIndex, missingHelpers, freeHelpers.size))
       } else {
         missingHelpers.foreach { helperIndex =>
-          val chosen = freeHelpers.minBy(phys => scoreHelperCandidate(processIndex, helperIndex, phys, dataRefs))
+          val chosen = freeHelpers.minBy(phys => scoreHelperCandidate(processIndex, helperIndex, phys, refs))
           freeHelpers -= chosen
           currentAssignments.update(helperIndex, chosen)
           helperStarts.update((processIndex, helperIndex), emitted.size)

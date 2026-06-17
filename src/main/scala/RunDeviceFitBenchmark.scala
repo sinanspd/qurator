@@ -33,6 +33,17 @@ object RunDeviceFitBenchmark extends IOApp {
           settings = DeviceFitBenchmark.Settings(qasmFolder = folder)
         )
       }
+      _ <- Logger[IO].info(
+        s"Device fit benchmark loaded ${report.loadedCircuits} circuits and ${report.targets.size} usable device targets"
+      )
+      _ <-
+        if (report.targets.isEmpty)
+          Logger[IO].warn("No usable device targets were discovered; all benchmark fidelity rows will be undefined")
+        else IO.unit
+      _ <-
+        if (report.rows.nonEmpty && report.rows.forall(_.accommodatingDevices == 0))
+          Logger[IO].warn("Every benchmark row has zero accommodating devices; check preceding target/failure warnings")
+        else IO.unit
       _ <- report.parseWarnings.traverse_ { warning =>
         Logger[IO].warn(s"${warning.file}: ${warning.message}")
       }
@@ -44,8 +55,8 @@ object RunDeviceFitBenchmark extends IOApp {
     IO.delay {
       val candidates =
         arg.toList ++
-          sys.env.get("QURATOR_DEVICE_FIT_QASM_FOLDER").toList ++
-          List("mqtext", "mqt")
+          sys.env.get("QURATOR_DEVICE_FIT_QASM_FOLDER").toList //++
+          //List("mqtext", "mqt")
 
       candidates
         .map(raw => Path(raw))

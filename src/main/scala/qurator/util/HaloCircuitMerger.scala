@@ -195,6 +195,19 @@ object HaloCircuitMerger {
   ): Either[MergeError, MergePlan] =
     mergeProcesses(processes, topology, config, ReadoutModel.empty)
 
+  def mergeProcesses(
+      processes: Vector[ProcessCircuit],
+      topology: DeviceTopology,
+      calibration: DeviceCalibration,
+      config: Config
+  ): Either[MergeError, MergePlan] =
+    mergeProcesses(
+      processes,
+      topology,
+      config,
+      ReadoutModel.fromCalibration(calibration, topology.qubits.toSet)
+    )
+
   private def mergeProcesses(
       processes: Vector[ProcessCircuit],
       topology: DeviceTopology,

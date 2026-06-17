@@ -22,7 +22,7 @@ import qurator.domain.CutQC.CutQCConfig
 object Config{
 
     def load[F[_] : Async] : F[AppConfig] = 
-        (env("IBM_INSTANCE_ID").as[NonEmptyString],
+        (env("IBM_SERVICE_CRN").as[NonEmptyString].or(env("IBM_INSTANCE_ID").as[NonEmptyString]),
          env("IBM_API_KEY").as[NonEmptyString].secret,
          env("SC_POSTGRES_PASSWORD").as[NonEmptyString].secret,
          env("AWS_ACCESS_ID").as[NonEmptyString],

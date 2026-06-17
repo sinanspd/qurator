@@ -15,6 +15,7 @@ import qurator.testbed.HaqaMapper.DeviceTopology
 import qurator.util.{CircuitProcessConverter, FidelityEstimator, HaloCircuitMerger, QuantumTaskLoader, QuantumTaskLoadWarning}
 
 import scala.collection.mutable
+import scala.util.control.NonFatal
 
 object DeviceFitBenchmark {
 
@@ -61,6 +62,14 @@ object DeviceFitBenchmark {
       mappedQubits: Int,
       estimatedFidelity: Double
   )
+
+  final case class DeviceFitFailure(
+      targetLabel: String,
+      stage: String,
+      reason: String
+  ) {
+    def summary: String = s"$targetLabel/$stage: $reason"
+  }
 
   final case class IterationResult(
       circuitsMerged: Int,
@@ -215,7 +224,7 @@ object DeviceFitBenchmark {
           IO.pure(None)
 
       case Right(calibration) =>
-        HaqaMapper.topologyFromCalibration(calibration) match {
+        topologyForDevice(device, calibration) match {
           case None =>
             logger.warn(s"Calibration for ${device.platform}/${device.platformId} does not expose a topology; skipping device") *>
               IO.pure(None)
@@ -245,6 +254,29 @@ object DeviceFitBenchmark {
         }
     }
 
+  private def topologyForDevice(device: Device, calibration: DeviceCalibration): Option[DeviceTopology] =
+    HaqaMapper.topologyFromCalibration(calibration)
+      .orElse(allToAllTopologyFor(device, calibration))
+
+  private def allToAllTopologyFor(device: Device, calibration: DeviceCalibration): Option[DeviceTopology] =
+    calibration match {
+      case _: IonQCalibration if device.qubits > 0 =>
+        Some(completeTopology(device.qubits))
+      case _: AQTCalibration if device.qubits > 0 =>
+        Some(completeTopology(device.qubits))
+      case _ =>
+        None
+    }
+
+  private def completeTopology(qubits: Int): DeviceTopology = {
+    val labels = 0 until qubits
+    val edges =
+      labels.flatMap { a =>
+        ((a + 1) until qubits).map(b => a -> b)
+      }
+    DeviceTopology.fromEdges(edges, labels)
+  }
+
   private def runIterations(
       partitions: Vector[DepthPartition],
       targets: Vector[DeviceTarget],
@@ -266,18 +298,28 @@ object DeviceFitBenchmark {
       prefix: Vector[PreparedCircuit],
       targets: Vector[DeviceTarget],
       settings: Settings
-  ): IO[IterationResult] = {
+  )(implicit logger: Logger[IO]): IO[IterationResult] = {
     val processes = prefix.map(_.process)
     val minimumRequiredQubits = minimumRequiredPhysicalQubits(processes)
     val candidates =
       targets.filter(_.topology.qubits.size >= minimumRequiredQubits)
 
-    candidates.traverse(target => attemptDeviceFit(processes, target, settings.haloConfig)).map { attempts =>
-      val successful = attempts.flatten
+    val candidateLog =
+      if (candidates.isEmpty) {
+        val largest = targets.map(_.topology.qubits.size).maxOption.getOrElse(0)
+        logger.warn(
+          s"No devices can fit ${prefix.size} merged circuits requiring at least $minimumRequiredQubits live qubits; " +
+            s"largest fetched topology has $largest qubits"
+        )
+      } else IO.unit
+
+    candidateLog *> candidates.traverse(target => attemptDeviceFit(processes, target, settings.haloConfig)).flatMap { attempts =>
+      val failures = attempts.collect { case Left(failure) => failure }
+      val successful = attempts.collect { case Right(success) => success }
       val minAttempt = successful.sortBy(_.estimatedFidelity).headOption
       val maxAttempt = successful.sortBy(_.estimatedFidelity).lastOption
 
-      IterationResult(
+      val result = IterationResult(
         circuitsMerged = prefix.size,
         mappedQubits = successful.map(_.mappedQubits).maxOption.getOrElse(minimumRequiredQubits),
         accommodatingDevices = successful.size,
@@ -286,6 +328,16 @@ object DeviceFitBenchmark {
         maxEstimatedFidelity = maxAttempt.map(_.estimatedFidelity),
         maxEstimatedFidelityDevice = maxAttempt.map(_.target.label)
       )
+
+      val failureLog =
+        if (successful.isEmpty && failures.nonEmpty) {
+          logger.warn(
+            s"No devices fit ${prefix.size} merged circuits requiring at least $minimumRequiredQubits live qubits. " +
+              s"Top failure reasons: ${summarizeFailures(failures)}"
+          )
+        } else IO.unit
+
+      failureLog.as(result)
     }
   }
 
@@ -293,19 +345,37 @@ object DeviceFitBenchmark {
       processes: Vector[HaloCircuitMerger.ProcessCircuit],
       target: DeviceTarget,
       haloConfig: HaloCircuitMerger.Config
-  ): IO[Option[DeviceFitAttempt]] =
+  ): IO[Either[DeviceFitFailure, DeviceFitAttempt]] =
     IO.delay {
-      HaloCircuitMerger.mergeProcesses(processes, target.calibration, haloConfig).toOption.flatMap { haloPlan =>
-        compilePlacedCircuit(haloPlan.deviceCircuit, target.topology, target.gateSet).toOption.map { compiled =>
-          val estimate = FidelityEstimator.score(estimatorCompatibleCircuit(compiled), target.canonicalCalibration)
-          DeviceFitAttempt(
-            target = target,
-            haloPlan = haloPlan,
-            compiledCircuit = compiled,
-            mappedQubits = usedQubits(compiled).size,
-            estimatedFidelity = estimate.pTotal
-          )
-        }
+      HaloCircuitMerger.mergeProcesses(processes, target.topology, target.calibration, haloConfig) match {
+        case Left(error) =>
+          Left(DeviceFitFailure(target.label, "merge", error.message))
+
+        case Right(haloPlan) =>
+          compilePlacedCircuit(haloPlan.deviceCircuit, target.topology, target.gateSet) match {
+            case Left(reason) =>
+              Left(DeviceFitFailure(target.label, "compile", reason))
+
+            case Right(compiled) =>
+              try {
+                val estimate = FidelityEstimator.score(estimatorCompatibleCircuit(compiled), target.canonicalCalibration)
+                if (estimate.pTotal.isNaN || estimate.pTotal.isInfinite)
+                  Left(DeviceFitFailure(target.label, "fidelity", s"non-finite pTotal=${estimate.pTotal}"))
+                else
+                  Right(
+                    DeviceFitAttempt(
+                      target = target,
+                      haloPlan = haloPlan,
+                      compiledCircuit = compiled,
+                      mappedQubits = usedQubits(compiled).size,
+                      estimatedFidelity = estimate.pTotal
+                    )
+                  )
+              } catch {
+                case NonFatal(error) =>
+                  Left(DeviceFitFailure(target.label, "fidelity", error.getMessage))
+              }
+          }
       }
     }
 
@@ -343,6 +413,8 @@ object DeviceFitBenchmark {
       case CCX(a, b, t) => List(CX(a, t), CX(b, t))
       case Reset(q) => List(RZ("0", q))
       case GPhase(_) => Nil
+      case NamedGate(name, params, qubits) if name.equalsIgnoreCase("rzz") && qubits.size == 2 =>
+        List(CRZ(qubits(0), params.headOption.getOrElse("0"), qubits(1)))
       case NamedGate(_, _, qubits) =>
         qubits.distinct.toList match {
           case q :: Nil => List(RZ("0", q))
@@ -516,6 +588,7 @@ object DeviceFitBenchmark {
       case "u2" => Some(U2("0", "0", 0))
       case "u3" => Some(U3("0", "0", "0", 0))
       case "cx" | "ecr" => Some(CX(0, 1))
+      case "rzz" => Some(NamedGate("rzz", Vector("0"), Vector(0, 1)))
       case "cy" => Some(CY(0, 1))
       case "cz" => Some(CZ(0, 1))
       case "ch" => Some(CH(0, 1))
@@ -612,7 +685,7 @@ object DeviceFitBenchmark {
     circuit.remainingGates.iterator.flatMap(gateQubits).toSet
 
   private def minimumRequiredPhysicalQubits(processes: Vector[HaloCircuitMerger.ProcessCircuit]): Int =
-    processes.iterator.map(CircuitProcessConverter.maxInstructionWidth).maxOption.getOrElse(0)
+    CircuitProcessConverter.peakLiveQubits(processes)
 
   private def parTraverseN[A, B](values: List[A], parallelism: Int)(f: A => IO[B]): IO[List[B]] =
     values.parTraverseN(math.max(1, parallelism))(f)
@@ -624,4 +697,15 @@ object DeviceFitBenchmark {
     if (value.exists(ch => ch == ',' || ch == '"' || ch == '\n' || ch == '\r'))
       "\"" + value.replace("\"", "\"\"") + "\""
     else value
+
+  private def summarizeFailures(failures: Vector[DeviceFitFailure]): String =
+    failures
+      .groupBy(failure => failure.stage -> failure.reason)
+      .toVector
+      .sortBy { case (_, grouped) => -grouped.size }
+      .take(5)
+      .map { case ((stage, reason), grouped) =>
+        s"$stage x${grouped.size}: $reason"
+      }
+      .mkString("; ")
 }

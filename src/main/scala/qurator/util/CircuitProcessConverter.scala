@@ -59,6 +59,53 @@ object CircuitProcessConverter {
   def maxInstructionWidth(process: ProcessCircuit): Int =
     process.instructions.iterator.map(_.refs.distinct.size).maxOption.getOrElse(0)
 
+  def peakLiveQubits(processes: Vector[ProcessCircuit]): Int = {
+    val activeHelpers =
+      processes.map(_ => mutable.Set.empty[Int]).toArray
+    val pointers = Array.fill(processes.size)(0)
+    val finished = Array.fill(processes.size)(false)
+    val staticDataQubits = processes.iterator.map(_.dataQubits).sum
+
+    def liveQubits: Int =
+      staticDataQubits + activeHelpers.iterator.map(_.size).sum
+
+    var peak = liveQubits
+
+    while (finished.contains(false)) {
+      var progressed = false
+
+      processes.indices.foreach { processIndex =>
+        if (!finished(processIndex)) {
+          val process = processes(processIndex)
+
+          if (pointers(processIndex) >= process.instructions.size) {
+            activeHelpers(processIndex).clear()
+            finished(processIndex) = true
+            progressed = true
+          } else {
+            process.instructions(pointers(processIndex)) match {
+              case ProcessInstruction.Release(helperIndices) =>
+                helperIndices.foreach(activeHelpers(processIndex).remove)
+
+              case instruction =>
+                instruction.refs.collect { case Helper(idx) => idx }.foreach(activeHelpers(processIndex).add)
+                peak = math.max(peak, liveQubits)
+            }
+
+            pointers(processIndex) += 1
+            progressed = true
+          }
+        }
+      }
+
+      if (!progressed) {
+        return peak
+      }
+    }
+
+    peak
+  }
+
   def gateQubits(gate: Gate): Vector[Int] =
     gate match {
       case X(q) => Vector(q)

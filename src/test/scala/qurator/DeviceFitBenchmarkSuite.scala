@@ -3,6 +3,7 @@ package qurator
 import cats.effect.IO
 import org.typelevel.log4cats.noop.NoOpLogger
 import qurator.domain.Task.QuantumTask
+import qurator.domain.Braket._
 import qurator.domain.calibration._
 import qurator.domain.circuit._
 import qurator.domain.device.Device
@@ -14,11 +15,45 @@ import qurator.util.HaloCircuitMerger
 import qurator.util.HaloCircuitMerger.ProcessInstruction
 import qurator.util.HaloCircuitMerger.ProcessInstruction.Op
 import qurator.util.HaloCircuitMerger.VirtualQubitRef.Helper
+import io.circe.parser.decode
 import weaver.SimpleIOSuite
 
 import java.nio.charset.StandardCharsets
 
 object DeviceFitBenchmarkSuite extends SimpleIOSuite {
+
+  test("Braket device discovery tolerates null summary capabilities") {
+    val payload =
+      """{
+        |  "devices": [
+        |    {
+        |      "deviceArn": "arn:aws:braket:::device/qpu/d-wave/Advantage_system3",
+        |      "deviceName": "Advantage_system3.2",
+        |      "providerName": "D-Wave Systems",
+        |      "deviceType": "QPU",
+        |      "deviceStatus": "RETIRED",
+        |      "deviceCapabilities": null
+        |    },
+        |    {
+        |      "deviceArn": "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet",
+        |      "deviceName": "Garnet",
+        |      "providerName": "IQM",
+        |      "deviceType": "QPU",
+        |      "deviceStatus": "ONLINE",
+        |      "deviceCapabilities": "{}"
+        |    }
+        |  ],
+        |  "nextToken": null
+        |}""".stripMargin
+
+    val decoded = decode[BraketDeviceListResponse](payload)
+
+    IO.pure(
+      expect(decoded.exists(_.devices.size == 2)) and
+      expect(decoded.exists(_.devices.head.deviceCapabilities == "")) and
+      expect(decoded.exists(_.devices(1).platformId.contains("iqm/Garnet")))
+    )
+  }
 
   test("partitionBySimilarDepth groups by tolerance and orders circuits by qubit count") {
     def prepared(name: String, qubits: Int, depth: Int): DeviceFitBenchmark.PreparedCircuit =

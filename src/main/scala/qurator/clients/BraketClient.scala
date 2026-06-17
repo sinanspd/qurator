@@ -110,8 +110,16 @@ object BraketClient {
       fetchDeviceDetails: List[String] => F[List[BraketDeviceDetailsResponse]]
   ): F[List[Device]] =
     fetchDeviceList
-      .flatMap(resp => fetchDeviceDetails(resp.availableDeviceIds))
-      .map(_.map(_.toDevice))
+      .flatMap(resp => fetchDeviceDetails(resp.devices.filter(isOnlineQpu).map(_.platformId).distinct))
+      .map(_.filter(isOnlineQpu).map(_.toDevice))
+
+  private def isOnlineQpu(device: BraketDevice): Boolean =
+    device.deviceStatus.equalsIgnoreCase("ONLINE") &&
+      !device.deviceType.equalsIgnoreCase("SIMULATOR")
+
+  private def isOnlineQpu(device: BraketDeviceDetailsResponse): Boolean =
+    device.deviceStatus.equalsIgnoreCase("ONLINE") &&
+      !device.deviceType.equalsIgnoreCase("SIMULATOR")
 
   private val PreferredOneQubitFidelityTypes: List[String] =
     List(
@@ -538,14 +546,53 @@ object BraketClient {
   ): BraketClient[F] =
     new BraketClient[F] with Http4sClientDsl[F] {
 
-    def fetchDeviceList: F[BraketDeviceListResponse] = {
+    def fetchDeviceList: F[BraketDeviceListResponse] =
+        cfg.regions.distinct.traverse { region =>
+            fetchDeviceListForRegion(region).attempt.flatMap {
+                case Right(response) =>
+                    Logger[F].info(s"Fetched ${response.devices.size} Braket device summaries from $region") *>
+                        response.pure[F]
+
+                case Left(error) =>
+                    Logger[F].warn(error)(s"Failed to fetch Braket devices from $region; skipping region") *>
+                        BraketDeviceListResponse(Nil, None).pure[F]
+            }
+        }.map { responses =>
+            BraketDeviceListResponse(
+                devices = responses.flatMap(_.devices).distinctBy(_.deviceArn),
+                nextToken = None
+            )
+        }
+
+    private def fetchDeviceListForRegion(region: String): F[BraketDeviceListResponse] = {
+        def loop(nextToken: Option[String]): F[List[BraketDevice]] =
+            fetchDeviceListPage(region, nextToken).flatMap { page =>
+                page.nextToken match {
+                    case Some(token) =>
+                        loop(Some(token)).map(page.devices ++ _)
+
+                    case None =>
+                        page.devices.pure[F]
+                }
+            }
+
+        loop(None).map(devices => BraketDeviceListResponse(devices, None))
+    }
+
+    private def fetchDeviceListPage(region: String, nextToken: Option[String]): F[BraketDeviceListResponse] = {
         val service   = "braket"
-        val host      = s"braket.us-east-1.amazonaws.com"
+        val host      = s"braket.$region.amazonaws.com"
         val uri       = Uri.unsafeFromString(s"https://$host/devices")
-        val payloadS  = s"""{"filters": [],"maxResults": 100}"""
+        val payloadS  =
+            Json.obj(
+                (List(
+                    "filters" -> Json.arr(),
+                    "maxResults" -> Json.fromInt(100)
+                ) ++ nextToken.toList.map(token => "nextToken" -> Json.fromString(token))): _*
+            ).noSpaces
         val payload   = payloadS.getBytes(StandardCharsets.UTF_8)
 
-        val signed = AWSSigner.signRequest(Method.POST, "us-east-1", service, host, "/devices", "", payload, cfg)
+        val signed = AWSSigner.signRequest(Method.POST, region, service, host, "/devices", "", payload, cfg)
         
         val rawHeaders: List[Header.Raw] =
             signed.toList.map { case (k, v) => Header.Raw(CaseInsensitiveString(k), v) }

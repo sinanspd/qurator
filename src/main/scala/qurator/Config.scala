@@ -27,6 +27,7 @@ object Config{
          env("SC_POSTGRES_PASSWORD").as[NonEmptyString].secret,
          env("AWS_ACCESS_ID").as[NonEmptyString],
          env("AWS_API_SECRET").as[NonEmptyString].secret,
+         env("BRAKET_REGIONS").as[String].map(parseBraketRegions).default(BraketConfig.defaultRegions),
          env("AZURE_RESOURCE_GROUP").as[NonEmptyString],
          env("AZURE_SUB_ID").as[NonEmptyString],
          env("AZURE_WORKSPACE").as[NonEmptyString],
@@ -41,6 +42,7 @@ object Config{
             pgPassword,
             awsaccessid,
             awsapisecret,
+            braketRegions,
             azureResource,
             azureSubId,
             azureWorkspace,
@@ -69,7 +71,8 @@ object Config{
                 ),
                 BraketConfig(
                     accessId = awsaccessid,
-                    apiSecret = awsapisecret
+                    apiSecret = awsapisecret,
+                    regions = braketRegions
                 ),
                 HttpServerConfig(
                     host = host"0.0.0.0",
@@ -91,4 +94,12 @@ object Config{
                 environment = AppEnvironment.fromString(environment)
             )
         }}.load[F]
+
+    private def parseCsvList(value: String): List[String] =
+        value.split(",").iterator.map(_.trim).filter(_.nonEmpty).toList.distinct
+
+    private def parseBraketRegions(value: String): List[String] = {
+        val regions = parseCsvList(value)
+        if (regions.nonEmpty) regions else BraketConfig.defaultRegions
+    }
 }

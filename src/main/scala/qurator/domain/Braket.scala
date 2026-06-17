@@ -12,6 +12,7 @@ import derevo.cats._
 import derevo.circe.magnolia.{ decoder, encoder }
 import derevo.derive
 import io.estatico.newtype.macros.newtype
+import io.circe.Decoder
 import qurator.domain.DeviceQueueInformation._
 import java.time.LocalDateTime
 import scala.util.Try
@@ -21,8 +22,14 @@ object Braket{
 
     case class BraketConfig(
         accessId: NonEmptyString,
-        apiSecret: Secret[NonEmptyString]
+        apiSecret: Secret[NonEmptyString],
+        regions: List[String] = BraketConfig.defaultRegions
     )
+
+    object BraketConfig {
+        val defaultRegions: List[String] =
+            List("us-east-1", "us-west-1", "us-west-2", "eu-west-2", "eu-north-1").distinct
+    }
 
     @derive(decoder, encoder, eqv, show)
     case class BraketDeviceListResponse(
@@ -30,7 +37,7 @@ object Braket{
         nextToken: Option[String]
     ) extends ProviderDeviceList[BraketDevice]
 
-    @derive(decoder, encoder, eqv, show)
+    @derive(encoder, eqv, show)
     case class BraketDevice(
         deviceArn: String,
         deviceName: String,
@@ -44,6 +51,27 @@ object Braket{
 
         def isAvailable: Boolean =
             deviceStatus == "ONLINE" && deviceActive(this)
+    }
+
+    object BraketDevice {
+        implicit val braketDeviceDecoder: Decoder[BraketDevice] =
+            Decoder.instance { cursor =>
+                for {
+                    deviceArn <- cursor.downField("deviceArn").as[String]
+                    deviceName <- cursor.downField("deviceName").as[String]
+                    deviceCapabilities <- cursor.downField("deviceCapabilities").as[Option[String]].map(_.getOrElse(""))
+                    deviceStatus <- cursor.downField("deviceStatus").as[String]
+                    deviceType <- cursor.downField("deviceType").as[String]
+                    providerName <- cursor.downField("providerName").as[String]
+                } yield BraketDevice(
+                    deviceArn = deviceArn,
+                    deviceName = deviceName,
+                    deviceCapabilities = deviceCapabilities,
+                    deviceStatus = deviceStatus,
+                    deviceType = deviceType,
+                    providerName = providerName
+                )
+            }
     }
 
     @derive(decoder, encoder, eqv, show)

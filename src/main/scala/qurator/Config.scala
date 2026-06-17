@@ -32,8 +32,24 @@ object Config{
          env("AZURE_WORKSPACE").as[NonEmptyString],
          env("AZURE_QUANTUM_API_KEY").as[NonEmptyString].secret,
          env("CUTQC_BASE_URI").as[NonEmptyString].default("http://localhost:8000"),
+         env("QURATOR_DEVICE_FIT_QASM_FOLDER").as[NonEmptyString].option,
+         env("QURATOR_DEVICE_FIT_OUTPUT").as[NonEmptyString].option,
          env("QURATOR_ENV").as[String].default("development")
-        ).parMapN{(ibmInstanceId, ibmAPIkey, pgPassword, awsaccessid, awsapisecret, azureResource, azureSubId, azureWorkspace, azureApiKey, cutqcBaseUri, environment) => {
+        ).parMapN{(
+            ibmInstanceId,
+            ibmAPIkey,
+            pgPassword,
+            awsaccessid,
+            awsapisecret,
+            azureResource,
+            azureSubId,
+            azureWorkspace,
+            azureApiKey,
+            cutqcBaseUri,
+            deviceFitQasmFolder,
+            deviceFitOutput,
+            environment
+        ) => {
             AppConfig(
                 PostgreSQLConfig(
                     host = "qurator.cjy4iumyuob7.us-east-1.rds.amazonaws.com", 
@@ -67,6 +83,10 @@ object Config{
                 ),
                 CutQCConfig(
                     baseUri = cutqcBaseUri
+                ),
+                deviceFitConfig = DeviceFitConfig(
+                    qasmFolder = deviceFitQasmFolder,
+                    output = deviceFitOutput
                 ),
                 environment = AppEnvironment.fromString(environment)
             )

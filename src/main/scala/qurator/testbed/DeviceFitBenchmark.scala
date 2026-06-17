@@ -14,7 +14,6 @@ import qurator.domain.device.Device
 import qurator.testbed.HaqaMapper.DeviceTopology
 import qurator.util.{CircuitProcessConverter, FidelityEstimator, HaloCircuitMerger, QuantumTaskLoader, QuantumTaskLoadWarning}
 
-import scala.collection.mutable
 import scala.util.control.NonFatal
 
 object DeviceFitBenchmark {
@@ -152,26 +151,35 @@ object DeviceFitBenchmark {
     val sorted =
       circuits.sortBy(c => (c.depth, c.qubits, c.name))
 
-    val grouped = mutable.ArrayBuffer.empty[DepthPartition]
-    var current = Vector.empty[PreparedCircuit]
-    var anchorDepth = 0
+    final case class PartitionAcc(
+        completed: Vector[DepthPartition],
+        current: Vector[PreparedCircuit],
+        anchorDepth: Option[Int]
+    )
 
-    sorted.foreach { circuit =>
-      if (current.isEmpty) {
-        current = Vector(circuit)
-        anchorDepth = circuit.depth
-      } else if (withinDepthTolerance(circuit.depth, anchorDepth, tolerance)) {
-        current = current :+ circuit
-      } else {
-        grouped += DepthPartition(sortPartitionCircuits(current))
-        current = Vector(circuit)
-        anchorDepth = circuit.depth
+    val grouped = sorted.foldLeft(PartitionAcc(Vector.empty, Vector.empty, None)) { (acc, circuit) =>
+      acc.anchorDepth match {
+        case None =>
+          acc.copy(current = Vector(circuit), anchorDepth = Some(circuit.depth))
+
+        case Some(anchorDepth) if withinDepthTolerance(circuit.depth, anchorDepth, tolerance) =>
+          acc.copy(current = acc.current :+ circuit)
+
+        case Some(_) =>
+          PartitionAcc(
+            completed = acc.completed :+ DepthPartition(sortPartitionCircuits(acc.current)),
+            current = Vector(circuit),
+            anchorDepth = Some(circuit.depth)
+          )
       }
     }
 
-    if (current.nonEmpty) grouped += DepthPartition(sortPartitionCircuits(current))
+    val partitions =
+      if (grouped.current.nonEmpty)
+        grouped.completed :+ DepthPartition(sortPartitionCircuits(grouped.current))
+      else grouped.completed
 
-    grouped.toVector.sortBy(p => (p.minQubits, p.totalQubits, p.minDepth, p.maxDepth))
+    partitions.sortBy(p => (p.minQubits, p.totalQubits, p.minDepth, p.maxDepth))
   }
 
   private def sortPartitionCircuits(circuits: Vector[PreparedCircuit]): Vector[PreparedCircuit] =

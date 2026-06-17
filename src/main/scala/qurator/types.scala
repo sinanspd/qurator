@@ -52,6 +52,11 @@ object Types{
       idleTimeInPool: FiniteDuration
     )
 
+    case class DeviceFitConfig(
+      qasmFolder: Option[NonEmptyString] = None,
+      output: Option[NonEmptyString] = None
+    )
+
     case class AppConfig(
         postgreSQL: Types.PostgreSQLConfig,
         ibmCredentials: IBMConfig,
@@ -60,6 +65,7 @@ object Types{
         httpServerConfig: HttpServerConfig,
         azureConfig: AzureConfig,
         cutqcConfig: CutQCConfig,
+        deviceFitConfig: DeviceFitConfig = DeviceFitConfig(),
         environment: AppEnvironment = AppEnvironment.Development
     )
 

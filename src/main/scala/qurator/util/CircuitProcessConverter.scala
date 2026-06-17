@@ -7,7 +7,7 @@ import qurator.util.HaloCircuitMerger.ProcessInstruction.Op
 import qurator.util.HaloCircuitMerger.VirtualQubitRef
 import qurator.util.HaloCircuitMerger.VirtualQubitRef.{Data, Helper}
 
-import scala.collection.mutable
+import scala.annotation.tailrec
 
 object CircuitProcessConverter {
 
@@ -22,36 +22,38 @@ object CircuitProcessConverter {
   def liveIntervalProcessFromCircuit(circuit: Circuit): ProcessCircuit = {
     val qubits = logicalQubits(circuit)
     val gates = circuit.remainingGates.toVector
-    val remainingUses = Array.fill(qubits)(0)
+    val initialRemainingUses =
+      gates
+        .flatMap(gate => gateQubits(gate).distinct)
+        .filter(q => q >= 0 && q < qubits)
+        .groupMapReduce(identity)(_ => 1)(_ + _)
 
-    gates.foreach { gate =>
-      gateQubits(gate).distinct.foreach { q =>
-        if (q >= 0 && q < qubits) remainingUses(q) += 1
+    val (_, instructions) =
+      gates.foldLeft(initialRemainingUses -> Vector.empty[ProcessInstruction]) {
+        case ((remainingUses, emitted), gate) =>
+          val gateInstructions = instructionsFromGate(gate, Helper(_)).toVector
+          val touched = gateQubits(gate).distinct.filter(q => q >= 0 && q < qubits)
+          val nextRemainingUses =
+            touched.foldLeft(remainingUses) { (acc, q) =>
+              acc.updated(q, acc.getOrElse(q, 0) - 1)
+            }
+
+          val releasable =
+            touched.filter { q =>
+              nextRemainingUses.getOrElse(q, 0) == 0 || isResetOf(gate, q)
+            }.sorted
+
+          val releaseInstructions =
+            if (releasable.nonEmpty) Vector(ProcessInstruction.Release(releasable.toVector))
+            else Vector.empty
+
+          nextRemainingUses -> (emitted ++ gateInstructions ++ releaseInstructions)
       }
-    }
-
-    val instructions = mutable.ArrayBuffer.empty[ProcessInstruction]
-
-    gates.foreach { gate =>
-      instructions ++= instructionsFromGate(gate, Helper(_))
-
-      val touched = gateQubits(gate).distinct.filter(q => q >= 0 && q < qubits)
-      touched.foreach(q => remainingUses(q) -= 1)
-
-      val releasable =
-        touched.filter { q =>
-          remainingUses(q) == 0 || isResetOf(gate, q)
-        }.sorted
-
-      if (releasable.nonEmpty) {
-        instructions += ProcessInstruction.Release(releasable.toVector)
-      }
-    }
 
     ProcessCircuit(
       dataQubits = 0,
       helperQubits = qubits,
-      instructions = instructions.toVector,
+      instructions = instructions,
       name = circuit.name
     )
   }
@@ -60,50 +62,78 @@ object CircuitProcessConverter {
     process.instructions.iterator.map(_.refs.distinct.size).maxOption.getOrElse(0)
 
   def peakLiveQubits(processes: Vector[ProcessCircuit]): Int = {
-    val activeHelpers =
-      processes.map(_ => mutable.Set.empty[Int]).toArray
-    val pointers = Array.fill(processes.size)(0)
-    val finished = Array.fill(processes.size)(false)
     val staticDataQubits = processes.iterator.map(_.dataQubits).sum
 
-    def liveQubits: Int =
-      staticDataQubits + activeHelpers.iterator.map(_.size).sum
+    final case class LiveState(
+        activeHelpers: Vector[Set[Int]],
+        pointers: Vector[Int],
+        finished: Vector[Boolean],
+        peak: Int
+    ) {
+      def liveQubits: Int =
+        staticDataQubits + activeHelpers.iterator.map(_.size).sum
+    }
 
-    var peak = liveQubits
+    def stepProcess(state: LiveState, processIndex: Int): (LiveState, Boolean) =
+      if (state.finished(processIndex)) {
+        state -> false
+      } else {
+        val process = processes(processIndex)
+        val pointer = state.pointers(processIndex)
 
-    while (finished.contains(false)) {
-      var progressed = false
-
-      processes.indices.foreach { processIndex =>
-        if (!finished(processIndex)) {
-          val process = processes(processIndex)
-
-          if (pointers(processIndex) >= process.instructions.size) {
-            activeHelpers(processIndex).clear()
-            finished(processIndex) = true
-            progressed = true
-          } else {
-            process.instructions(pointers(processIndex)) match {
+        if (pointer >= process.instructions.size) {
+          state.copy(
+            activeHelpers = state.activeHelpers.updated(processIndex, Set.empty),
+            finished = state.finished.updated(processIndex, true)
+          ) -> true
+        } else {
+          val nextActiveHelpers =
+            process.instructions(pointer) match {
               case ProcessInstruction.Release(helperIndices) =>
-                helperIndices.foreach(activeHelpers(processIndex).remove)
+                state.activeHelpers(processIndex) -- helperIndices
 
               case instruction =>
-                instruction.refs.collect { case Helper(idx) => idx }.foreach(activeHelpers(processIndex).add)
-                peak = math.max(peak, liveQubits)
+                state.activeHelpers(processIndex) ++ instruction.refs.collect { case Helper(idx) => idx }
             }
 
-            pointers(processIndex) += 1
-            progressed = true
+          val withActive =
+            state.copy(
+              activeHelpers = state.activeHelpers.updated(processIndex, nextActiveHelpers),
+              pointers = state.pointers.updated(processIndex, pointer + 1)
+            )
+
+          val nextPeak =
+            process.instructions(pointer) match {
+              case ProcessInstruction.Release(_) => withActive.peak
+              case _ => math.max(withActive.peak, withActive.liveQubits)
           }
+
+          withActive.copy(peak = nextPeak) -> true
         }
       }
 
-      if (!progressed) {
-        return peak
+    @tailrec
+    def loop(state: LiveState): LiveState = {
+      if (state.finished.forall(identity)) state
+      else {
+        val (nextState, progressed) =
+          processes.indices.foldLeft(state -> false) { case ((acc, progressed), processIndex) =>
+            val (updated, stepProgressed) = stepProcess(acc, processIndex)
+            updated -> (progressed || stepProgressed)
+          }
+
+        if (!progressed) nextState else loop(nextState)
       }
     }
 
-    peak
+    val initial = LiveState(
+      activeHelpers = processes.map(_ => Set.empty[Int]),
+      pointers = processes.map(_ => 0),
+      finished = processes.map(_ => false),
+      peak = staticDataQubits
+    )
+
+    loop(initial).peak
   }
 
   def gateQubits(gate: Gate): Vector[Int] =

@@ -17,9 +17,9 @@ object RunDeviceFitBenchmark extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] =
     for {
-      folder <- resolveQasmFolder(args.headOption)
-      output <- resolveOutputPath(args.lift(1))
       cfg <- Config.load[IO]
+      folder <- resolveQasmFolder(args.headOption, cfg.deviceFitConfig.qasmFolder.map(_.value))
+      output <- resolveOutputPath(args.lift(1), cfg.deviceFitConfig.output.map(_.value))
       _ <- Logger[IO].info(s"Running device fit benchmark with QASM folder: $folder")
       report <- MkHttpClient[IO].newEmber(cfg.httpClientConfig).use { client =>
         val clients: List[ProviderClient[IO]] =
@@ -51,12 +51,12 @@ object RunDeviceFitBenchmark extends IOApp {
       _ <- IO.println(s"Wrote ${report.rows.size} device fit benchmark rows to $output")
     } yield ExitCode.Success
 
-  private def resolveQasmFolder(arg: Option[String]): IO[Path] =
+  private def resolveQasmFolder(arg: Option[String], configured: Option[String]): IO[Path] =
     IO.delay {
       val candidates =
         arg.toList ++
-          sys.env.get("QURATOR_DEVICE_FIT_QASM_FOLDER").toList //++
-          //List("mqtext", "mqt")
+          configured.toList ++
+          List("mqtext", "mqt")
 
       candidates
         .map(raw => Path(raw))
@@ -64,11 +64,11 @@ object RunDeviceFitBenchmark extends IOApp {
         .getOrElse(Path(candidates.headOption.getOrElse("mqt")))
     }
 
-  private def resolveOutputPath(arg: Option[String]): IO[Path] =
+  private def resolveOutputPath(arg: Option[String], configured: Option[String]): IO[Path] =
     IO.delay {
       Path(
         arg
-          .orElse(sys.env.get("QURATOR_DEVICE_FIT_OUTPUT"))
+          .orElse(configured)
           .getOrElse("device_fit_benchmark.csv")
       )
     }

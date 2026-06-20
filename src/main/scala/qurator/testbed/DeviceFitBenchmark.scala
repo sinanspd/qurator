@@ -71,6 +71,7 @@ object DeviceFitBenchmark {
   }
 
   final case class IterationResult(
+      depthGroup: Int,
       circuitsMerged: Int,
       mappedQubits: Int,
       accommodatingDevices: Int,
@@ -81,6 +82,7 @@ object DeviceFitBenchmark {
   ) {
     def csvLine: String =
       List(
+        depthGroup.toString,
         circuitsMerged.toString,
         mappedQubits.toString,
         accommodatingDevices.toString,
@@ -103,7 +105,7 @@ object DeviceFitBenchmark {
   }
 
   val csvHeader: String =
-    "circuits_merged,mapped_qubits,accommodating_devices,min_estimated_fidelity,min_device,max_estimated_fidelity,max_device"
+    "depth_group,circuits_merged,mapped_qubits,accommodating_devices,min_estimated_fidelity,min_device,max_estimated_fidelity,max_device"
 
   def writeCsv(report: Report, output: Path): IO[Unit] =
     output.parent.traverse_(Files[IO].createDirectories) *>
@@ -298,11 +300,12 @@ object DeviceFitBenchmark {
         logger.info(
           s"Benchmarking depth partition $partitionIndex with ${prefix.size} merged circuits and ${prefix.map(_.qubits).sum} data qubits"
         ) *>
-          summarizePrefix(prefix, targets, settings)
+          summarizePrefix(partition.minDepth, prefix, targets, settings)
       }
     }.map(_.flatten)
 
   private def summarizePrefix(
+      depthGroup: Int,
       prefix: Vector[PreparedCircuit],
       targets: Vector[DeviceTarget],
       settings: Settings
@@ -328,6 +331,7 @@ object DeviceFitBenchmark {
       val maxAttempt = successful.sortBy(_.estimatedFidelity).lastOption
 
       val result = IterationResult(
+        depthGroup = depthGroup,
         circuitsMerged = prefix.size,
         mappedQubits = successful.map(_.mappedQubits).maxOption.getOrElse(minimumRequiredQubits),
         accommodatingDevices = successful.size,
@@ -421,6 +425,10 @@ object DeviceFitBenchmark {
       case CCX(a, b, t) => List(CX(a, t), CX(b, t))
       case Reset(q) => List(RZ("0", q))
       case GPhase(_) => Nil
+      case NamedGate(name, _, qubits) if isIonQOneQubitNativeGate(name) && qubits.size == 1 =>
+        List(RX("pi", qubits.head))
+      case NamedGate(name, params, qubits) if isIonQTwoQubitNativeGate(name) && qubits.size == 2 =>
+        List(CRZ(qubits(0), params.headOption.getOrElse("0"), qubits(1)))
       case NamedGate(name, params, qubits) if name.equalsIgnoreCase("rzz") && qubits.size == 2 =>
         List(CRZ(qubits(0), params.headOption.getOrElse("0"), qubits(1)))
       case NamedGate(_, _, qubits) =>
@@ -437,6 +445,8 @@ object DeviceFitBenchmark {
       gateSet: List[Gate]
   ): Either[String, Circuit] = {
     val supportedGateKinds = gateSet.iterator.map(gateKind).toSet
+    if (isIonQNativeGateSet(supportedGateKinds)) compileIonQNativeCircuit(circuit, topology)
+    else {
 
     def route(gate: Gate): Either[String, List[Gate]] =
       gate match {
@@ -456,7 +466,97 @@ object DeviceFitBenchmark {
         name = if (circuit.name.nonEmpty) s"${circuit.name}_device_fit" else "device_fit_compiled"
       )
     }
+    }
   }
+
+  private def compileIonQNativeCircuit(
+      circuit: Circuit,
+      topology: DeviceTopology
+  ): Either[String, Circuit] =
+    circuit.remainingGates.traverse { gate =>
+      val qs = gateQubits(gate).distinct
+      if (qs.size == 2 && topology.shortestPath(qs(0), qs(1), _ => 1.0).isEmpty)
+        Left(s"No path between physical qubits ${qs(0)} and ${qs(1)}")
+      else Right(lowerIonQNativeGate(gate))
+    }.map { gates =>
+      Circuit(
+        remainingGates = gates.flatten,
+        qubits = topology.maxPhysicalIndex + 1,
+        name = if (circuit.name.nonEmpty) s"${circuit.name}_ionq_native_device_fit" else "ionq_native_device_fit"
+      )
+    }
+
+  private def lowerIonQNativeGate(gate: Gate): List[Gate] =
+    gate match {
+      case X(q) => List(gpi(q, "0"))
+      case Y(q) => List(gpi(q, "0.25"))
+      case Z(_) => Nil
+      case H(q) => genericIonQSingle(q)
+      case S(_) | SDG(_) | T(_) | TDG(_) | Id(_) | Phase(_, _) | RZ(_, _) | GPhase(_) => Nil
+      case SX(q) => List(gpi2(q, "0"))
+      case SXDG(q) => List(gpi2(q, "0.5"))
+      case RX(theta, q) => ionQEquatorialRotation(theta, q, "0")
+      case RY(theta, q) => ionQEquatorialRotation(theta, q, "0.25")
+      case U(_, _, _, q) => genericIonQSingle(q)
+      case U2(_, _, q) => genericIonQSingle(q)
+      case U3(_, _, _, q) => genericIonQSingle(q)
+      case CX(c, t) => ionQCx(c, t)
+      case CY(c, t) => genericIonQSingle(t) ++ ionQCx(c, t) ++ genericIonQSingle(t)
+      case CZ(c, t) => List(zz(c, t, "pi/2"))
+      case CH(c, t) => genericIonQSingle(t) ++ ionQCx(c, t) ++ genericIonQSingle(t)
+      case Swap(a, b) => ionQCx(a, b) ++ ionQCx(b, a) ++ ionQCx(a, b)
+      case CP(c, theta, t) => List(zz(c, t, theta))
+      case CRZ(c, theta, t) => List(zz(c, t, theta))
+      case CRX(c, _, t) => ionQCx(c, t) ++ genericIonQSingle(t) ++ ionQCx(c, t)
+      case CRY(c, _, t) => ionQCx(c, t) ++ genericIonQSingle(t) ++ ionQCx(c, t)
+      case CU(c, _, _, _, t) => genericIonQSingle(t) ++ ionQCx(c, t) ++ genericIonQSingle(t) ++ ionQCx(c, t) ++ genericIonQSingle(t)
+      case CCX(a, b, t) => ionQCx(a, t) ++ ionQCx(b, t) ++ ionQCx(a, t) ++ ionQCx(b, t) ++ ionQCx(a, t) ++ ionQCx(b, t)
+      case Measure(q) => List(Measure(q))
+      case Reset(q) => List(Reset(q))
+      case NamedGate(name, params, qubits) if isIonQOneQubitNativeGate(name) && qubits.size == 1 =>
+        List(NamedGate(name.toLowerCase, params, qubits))
+      case NamedGate(name, params, qubits) if isIonQTwoQubitNativeGate(name) && qubits.size == 2 =>
+        List(NamedGate("zz", params, qubits))
+      case NamedGate(name, params, qubits) if name.equalsIgnoreCase("rzz") && qubits.size == 2 =>
+        List(zz(qubits(0), qubits(1), params.headOption.getOrElse("0")))
+      case NamedGate(_, _, qubits) =>
+        qubits.distinct.toList match {
+          case q :: Nil => genericIonQSingle(q)
+          case a :: b :: _ => List(zz(a, b, "pi/2"))
+          case Nil => Nil
+        }
+    }
+
+  private def ionQCx(control: Int, target: Int): List[Gate] =
+    genericIonQSingle(target) ++ List(zz(control, target, "pi/2")) ++ genericIonQSingle(target)
+
+  private def genericIonQSingle(q: Int): List[Gate] =
+    List(gpi2(q, "0"), gpi(q, "0"), gpi2(q, "0"))
+
+  private def ionQEquatorialRotation(theta: String, q: Int, phase: String): List[Gate] =
+    normalizedAngle(theta) match {
+      case "0" | "0.0" => Nil
+      case "pi" | "+pi" => List(gpi(q, phase))
+      case "-pi" => List(gpi(q, addHalfTurn(phase)))
+      case "pi/2" | "+pi/2" => List(gpi2(q, phase))
+      case "-pi/2" => List(gpi2(q, addHalfTurn(phase)))
+      case _ => genericIonQSingle(q)
+    }
+
+  private def normalizedAngle(theta: String): String =
+    theta.toLowerCase.replace(" ", "").replace("*", "")
+
+  private def addHalfTurn(phase: String): String =
+    if (phase == "0") "0.5" else s"($phase + 0.5)"
+
+  private def gpi(q: Int, phase: String): Gate =
+    NamedGate("gpi", Vector(phase), Vector(q))
+
+  private def gpi2(q: Int, phase: String): Gate =
+    NamedGate("gpi2", Vector(phase), Vector(q))
+
+  private def zz(a: Int, b: Int, theta: String): Gate =
+    NamedGate("zz", Vector(theta), Vector(a, b))
 
   private def routeTwoQubitGate(
       gate: Gate,
@@ -597,6 +697,9 @@ object DeviceFitBenchmark {
       case "u3" => Some(U3("0", "0", "0", 0))
       case "cx" | "ecr" => Some(CX(0, 1))
       case "rzz" => Some(NamedGate("rzz", Vector("0"), Vector(0, 1)))
+      case "gpi" => Some(NamedGate("gpi", Vector("0"), Vector(0)))
+      case "gpi2" => Some(NamedGate("gpi2", Vector("0"), Vector(0)))
+      case "zz" => Some(NamedGate("zz", Vector("0"), Vector(0, 1)))
       case "cy" => Some(CY(0, 1))
       case "cz" => Some(CZ(0, 1))
       case "ch" => Some(CH(0, 1))
@@ -651,6 +754,17 @@ object DeviceFitBenchmark {
 
   private def supports(kind: String, supportedGateKinds: Set[String]): Boolean =
     supportedGateKinds.isEmpty || supportedGateKinds.contains(kind)
+
+  private def isIonQNativeGateSet(supportedGateKinds: Set[String]): Boolean =
+    supportedGateKinds.contains("gpi") &&
+      supportedGateKinds.contains("gpi2") &&
+      supportedGateKinds.contains("zz")
+
+  private def isIonQOneQubitNativeGate(name: String): Boolean =
+    Set("gpi", "gpi2").contains(name.toLowerCase)
+
+  private def isIonQTwoQubitNativeGate(name: String): Boolean =
+    name.equalsIgnoreCase("zz")
 
   private def gateQubits(gate: Gate): Vector[Int] =
     gate match {

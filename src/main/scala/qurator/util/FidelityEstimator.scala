@@ -191,7 +191,8 @@ object FidelityEstimator{
                 dur2qNs = Map.empty,
                 durMeasNs = nanosOpt(a.readoutDurationSec),
                 dur1qAvgNs = nanosOpt(a.oneQGateDurationSec),
-                dur2qAvgNs = nanosOpt(a.twoQGateDurationSec)
+                dur2qAvgNs = nanosOpt(a.twoQGateDurationSec),
+                executionModel = ExecutionModel.GlobalSerialGates
             )
 
         case a : IQMCalibration =>
@@ -300,45 +301,96 @@ object FidelityEstimator{
                 dur2qNs = Map.empty,
                 durMeasNs = nanosOpt(a.readoutDurationSec),
                 dur1qAvgNs = nanosOpt(a.oneQGateDurationSec),
-                dur2qAvgNs = nanosOpt(a.twoQGateDurationSec)
+                dur2qAvgNs = nanosOpt(a.twoQGateDurationSec),
+                executionModel = ExecutionModel.GlobalSerialGates
             )
         }
 
+        private final case class ScheduleState(
+            availableByQubitNs: Map[Int, Long],
+            globalGateAvailableNs: Long
+        ) {
+            private def qubitAvailableNs(qubits: Vector[Int]): Long =
+                qubits.map(q => availableByQubitNs.getOrElse(q, 0L)).foldLeft(0L)(math.max)
 
-        def scheduleEndTimesSec(ops: List[Gate], cal: CanonicalCalibration): Map[Int, Double] = {
-            val availNs = scala.collection.mutable.Map.empty[Int, Long].withDefaultValue(0L)
-
-            ops.foreach {
-                case a @ (X(_) | H(_) | Measure(_) | RX(_, _) | RZ(_ ,_) | SX(_) | RY(_, _)) =>
-                    val q = a match { // this is dumb but oh well
-                        case X(q)       => q
-                        case H(q)       => q
-                        case SX(q) => q
-                        case Measure(q) => q
-                        case RX(_, q) => q
-                        case RZ(_, q) => q
-                        case RY(_, q) => q
+            def schedule(
+                qubits: Vector[Int],
+                durationNs: Long,
+                usesGlobalGateResource: Boolean,
+                executionModel: ExecutionModel
+            ): ScheduleState = {
+                val localStart = qubitAvailableNs(qubits)
+                val globalStart =
+                    executionModel match {
+                        case ExecutionModel.GlobalSerialGates => globalGateAvailableNs
+                        case ExecutionModel.ParallelByQubitOrEdge => 0L
                     }
-                    val dur = cal.durationNsFor(a)
-                    val start = availNs(q)
-                    val end = start + dur
-                    availNs.update(q, end)
-                case op @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRZ(_, _, _)) =>
-                    val (a, b) = op match{
-                        case CX(a, b) => (a, b)
-                        case CZ(a, b) => (a, b)
-                        case Swap(a , b) => (a, b)
-                        case CRZ(a, _, b) => (a, b)
-                    }
-                    val dur = cal.durationNsFor(op)
-                    val start = Math.max(availNs(a), availNs(b))
-                    val end = start + dur
-                    availNs.update(a, end)
-                    availNs.update(b, end)
+                val start = math.max(localStart, globalStart)
+                val end = start + durationNs
+                val updatedAvailable =
+                    qubits.foldLeft(availableByQubitNs) { case (acc, q) => acc.updated(q, end) }
+                val updatedGlobal =
+                    if (usesGlobalGateResource && executionModel == ExecutionModel.GlobalSerialGates) end
+                    else globalGateAvailableNs
 
+                ScheduleState(updatedAvailable, updatedGlobal)
+            }
+        }
+
+        private object ScheduleState {
+            val empty: ScheduleState =
+                ScheduleState(Map.empty, 0L)
+        }
+
+        private final case class ScheduledOperation(
+            qubits: Vector[Int],
+            durationNs: Long,
+            usesGlobalGateResource: Boolean
+        )
+
+        private def scheduledOperation(op: Gate, cal: CanonicalCalibration): Option[ScheduledOperation] =
+            op match {
+                case gate @ X(q) =>
+                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
+                case gate @ H(q) =>
+                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
+                case gate @ SX(q) =>
+                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
+                case gate @ RX(_, q) =>
+                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
+                case gate @ RZ(_, q) =>
+                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
+                case gate @ RY(_, q) =>
+                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
+                case gate @ Measure(q) =>
+                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = false))
+                case gate @ CX(a, b) =>
+                    Some(ScheduledOperation(Vector(a, b), cal.durationNsFor(gate), usesGlobalGateResource = true))
+                case gate @ CZ(a, b) =>
+                    Some(ScheduledOperation(Vector(a, b), cal.durationNsFor(gate), usesGlobalGateResource = true))
+                case gate @ Swap(a, b) =>
+                    Some(ScheduledOperation(Vector(a, b), cal.durationNsFor(gate), usesGlobalGateResource = true))
+                case gate @ CRZ(a, _, b) =>
+                    Some(ScheduledOperation(Vector(a, b), cal.durationNsFor(gate), usesGlobalGateResource = true))
+
+                case _ =>
+                    None
             }
 
-            availNs.toMap.view.mapValues(ns => ns.toDouble / 1e9).toMap
+        def scheduleEndTimesSec(ops: List[Gate], cal: CanonicalCalibration): Map[Int, Double] = {
+            val finalState =
+                ops.foldLeft(ScheduleState.empty) { (state, op) =>
+                    scheduledOperation(op, cal).fold(state) { scheduled =>
+                        state.schedule(
+                            qubits = scheduled.qubits,
+                            durationNs = scheduled.durationNs,
+                            usesGlobalGateResource = scheduled.usesGlobalGateResource,
+                            executionModel = cal.executionModel
+                        )
+                    }
+                }
+
+            finalState.availableByQubitNs.view.mapValues(ns => ns.toDouble / 1e9).toMap
         }
 
 

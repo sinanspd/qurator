@@ -17,6 +17,7 @@ import qurator.domain.DeviceQueueInformation._
 import java.time.LocalDateTime
 import scala.util.Try
 import qurator.domain.device.Device
+import qurator.domain.circuit._
 
 object Braket{
 
@@ -96,7 +97,7 @@ object Braket{
                 deviceQueueInfo.headOption.flatMap(q => q.queueSize.toIntOption).getOrElse(0),
                 t1 = 0.0f,
                 t2 =  0.0f,
-                gateSet = List()
+                gateSet = decodeBraketGateSet(deviceCapabilities)
             )
         }
     }

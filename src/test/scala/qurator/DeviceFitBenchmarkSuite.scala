@@ -22,6 +22,10 @@ import java.nio.charset.StandardCharsets
 
 object DeviceFitBenchmarkSuite extends SimpleIOSuite {
 
+  private def approx(actual: Double, expected: Double, tol: Double = 1e-12) =
+    if (math.abs(actual - expected) <= tol) success
+    else failure(s"expected $expected, got $actual")
+
   test("Braket device discovery tolerates null summary capabilities") {
     val payload =
       """{
@@ -52,6 +56,42 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
       expect(decoded.exists(_.devices.size == 2)) and
       expect(decoded.exists(_.devices.head.deviceCapabilities == "")) and
       expect(decoded.exists(_.devices(1).platformId.contains("iqm/Garnet")))
+    )
+  }
+
+  test("Braket device details preserve native gate set from capabilities") {
+    val capabilities =
+      """{
+        |  "service": {
+        |    "braketSchemaHeader": {
+        |      "name": "braket.device_schema.device_service_properties",
+        |      "version": "1"
+        |    },
+        |    "executionWindows": []
+        |  },
+        |  "paradigm": {
+        |    "qubitCount": 36,
+        |    "nativeGateSet": ["gpi", "gpi2", "zz"]
+        |  }
+        |}""".stripMargin
+
+    val device =
+      BraketDeviceDetailsResponse(
+        deviceArn = "arn:aws:braket:us-east-1::device/qpu/ionq/Forte-Enterprise-1",
+        deviceName = "Forte Enterprise 1",
+        deviceStatus = "ONLINE",
+        deviceType = "QPU",
+        providerName = "IonQ",
+        deviceCapabilities = capabilities,
+        deviceQueueInfo = Nil
+      ).toDevice
+
+    val nativeKinds =
+      device.gateSet.collect { case NamedGate(name, _, _) => name.toLowerCase }.toSet
+
+    IO.pure(
+      expect(device.qubits == 36) and
+      expect(nativeKinds == Set("gpi", "gpi2", "zz"))
     )
   }
 
@@ -272,6 +312,68 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
       expect(report.rows.headOption.flatMap(_.minEstimatedFidelity).exists(_.isFinite))
   }
 
+  test("run scores IonQ native lowering instead of direct generic H gates") {
+    implicit val logger = NoOpLogger.impl[IO]
+
+    val ionqNativeGateSet =
+      List(
+        NamedGate("gpi", Vector("0"), Vector(0)),
+        NamedGate("gpi2", Vector("0"), Vector(0)),
+        NamedGate("zz", Vector("0"), Vector(0, 1))
+      )
+
+    val client = new ProviderClient[IO] {
+      def provider: String = "test"
+      def fetchAvailableDevices: IO[List[Device]] =
+        IO.pure(List(Device("Braket", "ionq-native-test", qubits = 4, t1 = 0.0f, t2 = 0.0f, gateSet = ionqNativeGateSet)))
+      def fetchDeviceCalibration(deviceId: String): IO[DeviceCalibration] =
+        IO.pure(
+          IonQCalibration(
+            t1Seconds = Double.NaN,
+            t2Seconds = Double.NaN,
+            avg1qFidelityPct = 90.0,
+            avg2qFidelityPct = 80.0,
+            avgReadoutFidelity = 100.0,
+            oneQGateDurationSec = 1e-6,
+            twoQGateDurationSec = 2e-6,
+            readoutDurationSec = 1e-6,
+            topology = None
+          )
+        )
+      def submitTask(device: Device, task: QuantumTask, compiled: Circuit): IO[ProviderTaskSubmission] = ???
+      def getTask(taskId: String): IO[ProviderTaskStatus] = ???
+      def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] = ???
+      def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] = ???
+      def completedStatuses: Set[String] = Set.empty
+    }
+
+    val qasm =
+      """OPENQASM 3.0;
+        |include "stdgates.inc";
+        |qubit[1] q;
+        |h q[0];
+        |q[0] = measure q[0];
+        |""".stripMargin
+
+    for {
+      dir <- IO.blocking(java.nio.file.Files.createTempDirectory("device-fit-ionq-native-qasm"))
+      _ <- IO.blocking(java.nio.file.Files.writeString(dir.resolve("a.qasm"), qasm, StandardCharsets.UTF_8))
+      _ <- IO.blocking(java.nio.file.Files.writeString(dir.resolve("b.qasm"), qasm, StandardCharsets.UTF_8))
+      report <- DeviceFitBenchmark.run(
+        clients = List(client),
+        settings = DeviceFitBenchmark.Settings(
+          qasmFolder = fs2.io.file.Path.fromNioPath(dir),
+          loaderParallelism = 1,
+          deviceFetchParallelism = 1
+        )
+      )
+      fidelity <- IO.fromOption(report.rows.headOption.flatMap(_.maxEstimatedFidelity))(
+        new RuntimeException("expected a benchmark row with finite fidelity")
+      )
+    } yield approx(fidelity, math.pow(0.9, 8.0)) and
+      expect(fidelity < math.pow(0.9, 2.0))
+  }
+
   test("writeCsv writes benchmark rows to a file") {
     val report =
       DeviceFitBenchmark.Report(
@@ -281,6 +383,7 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
         targets = Vector.empty,
         rows = Vector(
           DeviceFitBenchmark.IterationResult(
+            depthGroup = 42,
             circuitsMerged = 2,
             mappedQubits = 5,
             accommodatingDevices = 3,
@@ -300,6 +403,6 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
       _ <- IO.blocking(java.nio.file.Files.deleteIfExists(tmp)).attempt
     } yield expect(content.startsWith(DeviceFitBenchmark.csvHeader)) and
       expect(content.contains("\"IBM/device,a\"")) and
-      expect(content.contains("2,5,3"))
+      expect(content.contains("42,2,5,3"))
   }
 }

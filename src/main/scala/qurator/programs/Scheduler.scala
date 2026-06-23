@@ -132,13 +132,6 @@ object Scheduler{
             SchedulerDashboard.dashboardUrl(dashboardConfig)
 
         //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
-        //TODO 1 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
-        //TODO 2 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
-        //TODO 3 Merge Cut Task Results --> change UI
-
-        //TODO 4 Is anything from Q-Dream useful??
-        //TODO 5 Is anything from Qonductor useful??
-        //TODO 6 Is anything from Pilot-Quantum useful??
 
         private val idleDelay: FiniteDuration = 250.millis
         private val mergeEnabled: Boolean = true

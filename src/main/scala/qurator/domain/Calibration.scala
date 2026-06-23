@@ -6,6 +6,12 @@ object calibration {
 
     sealed trait DeviceCalibration 
 
+    sealed trait ExecutionModel
+    object ExecutionModel {
+        case object ParallelByQubitOrEdge extends ExecutionModel
+        case object GlobalSerialGates extends ExecutionModel
+    }
+
     case class CalibrationTopology(
         qubits: List[Int],
         edges: List[(Int, Int)]
@@ -214,7 +220,8 @@ object calibration {
         durMeasNs: Option[Long],
         dur1qAvgNs: Option[Long],
         dur2qAvgNs: Option[Long],
-        initSurvivalPerQubit: Option[Double] = None
+        initSurvivalPerQubit: Option[Double] = None,
+        executionModel: ExecutionModel = ExecutionModel.ParallelByQubitOrEdge
     ){
         private def edgeKey(a: Int, b: Int): (Int, Int) = if (a <= b) (a, b) else (b, a)
 

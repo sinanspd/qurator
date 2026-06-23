@@ -34,7 +34,8 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
     t2Avg: Option[Double] = None,
     durMeasNs: Option[Long] = Some(100L),
     dur1qAvgNs: Option[Long] = Some(10L),
-    dur2qAvgNs: Option[Long] = Some(40L)
+    dur2qAvgNs: Option[Long] = Some(40L),
+    executionModel: ExecutionModel = ExecutionModel.ParallelByQubitOrEdge
   ): CanonicalCalibration =
     CanonicalCalibration(
       eps1q = Map.empty,
@@ -52,7 +53,8 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
       durMeasNs = durMeasNs,
       dur1qAvgNs = dur1qAvgNs,
       dur2qAvgNs = dur2qAvgNs,
-      initSurvivalPerQubit = None
+      initSurvivalPerQubit = None,
+      executionModel = executionModel
     )
 
   private def mkIonQCalibration(
@@ -207,6 +209,40 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
     )
   }
 
+  test("normalizeCalibration marks trapped-ion devices as global-serial-gates") {
+    val ionq =
+      FidelityEstimator.normalizeCalibration(
+        mkIonQCalibration(
+          avg1qFidelityPct = 99.0,
+          avg2qFidelityPct = 98.0,
+          avgReadoutFidelity = 97.0,
+          t1Seconds = 10.0,
+          t2Seconds = 8.0,
+          oneQGateDurationSec = 1e-6,
+          twoQGateDurationSec = 2e-6,
+          readoutDurationSec = 3e-6
+        )
+      )
+    val aqt =
+      FidelityEstimator.normalizeCalibration(
+        mkAQTCalibration(
+          oneQGateFidelity = 99.0,
+          twoQGateFidelity = 98.0,
+          readoutFidelity = 97.0,
+          t1Seconds = 10.0,
+          t2Seconds = 8.0,
+          readoutDurationSec = 3e-6,
+          oneQGateDurationSec = 1e-6,
+          twoQGateDurationSec = 2e-6
+        )
+      )
+
+    IO.pure(
+      expect(ionq.executionModel == ExecutionModel.GlobalSerialGates) and
+      expect(aqt.executionModel == ExecutionModel.GlobalSerialGates)
+    )
+  }
+
   test("normalizeCalibration IBM uses detailed qubit and edge metrics when present") {
     val in = IBMCalibration(
       qubits = List(0, 1),
@@ -265,9 +301,10 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
       approxOpt(out.eps1q.get((1, "RX")), Some(0.005)) and
       approxOpt(out.eps2q.get(((0, 1), "CX")), Some(0.01)) and
       approxOpt(out.eps2q.get(((0, 1), "RZZ")), Some(0.02)) and
-      expect(out.durMeasNs.contains(1000L)) and
-      expect(out.dur1qNs.get("RX").contains(20L)) and
-      expect(out.dur2qNs.get("CX").contains(70L))
+      expect(out.durMeasNs.contains(1500L)) and
+      expect(out.dur1qNs.get("RX").contains(35L)) and
+      expect(out.dur2qNs.get("CX").contains(70L)) and
+      expect(out.executionModel == ExecutionModel.ParallelByQubitOrEdge)
     )
   }
 
@@ -358,6 +395,66 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
         approx(actual(0), 10.0 / 1e9) and 
         approx(actual(1), 10.0 / 1e9)
       )
+  }
+
+  test("scheduleEndTimesSec serializes independent gates for global-serial-gates devices") {
+    val cal = mkCanonical(
+      dur1qAvgNs = Some(10L),
+      dur2qAvgNs = Some(40L),
+      durMeasNs = Some(100L),
+      executionModel = ExecutionModel.GlobalSerialGates
+    )
+
+    val actual = FidelityEstimator.scheduleEndTimesSec(
+      List(X(0), H(1)),
+      cal
+    )
+
+    IO.pure(
+        approx(actual(0), 10.0 / 1e9) and
+        approx(actual(1), 20.0 / 1e9)
+      )
+  }
+
+  test("scheduleEndTimesSec keeps readout parallel after serialized gates") {
+    val cal = mkCanonical(
+      dur1qAvgNs = Some(10L),
+      durMeasNs = Some(100L),
+      executionModel = ExecutionModel.GlobalSerialGates
+    )
+
+    val actual = FidelityEstimator.scheduleEndTimesSec(
+      List(X(0), H(1), Measure(0), Measure(1)),
+      cal
+    )
+
+    IO.pure(
+        approx(actual(0), 120.0 / 1e9) and
+        approx(actual(1), 120.0 / 1e9)
+    )
+  }
+
+  test("score applies extra decoherence from global-serial-gates execution") {
+    val parallel = mkCanonical(
+      eps1qAvg = Some(0.0),
+      eps2qAvg = Some(0.0),
+      readoutFidelityAvg = Some(1.0),
+      t2Avg = Some(1.0),
+      dur1qAvgNs = Some(10L),
+      durMeasNs = Some(0L),
+      executionModel = ExecutionModel.ParallelByQubitOrEdge
+    )
+    val serial = parallel.copy(executionModel = ExecutionModel.GlobalSerialGates)
+    val circuit = mkCircuit(List(X(0), H(1), Measure(0), Measure(1)))
+
+    val parallelEstimate = FidelityEstimator.score(circuit, parallel)
+    val serialEstimate = FidelityEstimator.score(circuit, serial)
+
+    IO.pure(
+      approx(parallelEstimate.logPDecoh, -20.0 / 1e9) and
+      approx(serialEstimate.logPDecoh, -40.0 / 1e9) and
+      expect(serialEstimate.pTotal < parallelEstimate.pTotal)
+    )
   }
 
   test("scheduleEndTimesSec accumulates sequential work on the same qubit") {

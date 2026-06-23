@@ -362,6 +362,11 @@ object Qasm3Parser {
       case "crz" =>
         val theta = oneParam("crz")
         tuples.map(expectArity2("crz", _)).map { case (c, t) => CRZ(c, theta, t) }
+      case "rzz" | "RZZ" =>
+        val theta = oneParam(call.name)
+        tuples.map(expectArity2(call.name, _)).map { case (a, b) =>
+          NamedGate("rzz", Vector(theta), Vector(a, b))
+        }
 
       case "ccx" | "CCX" =>
         tuples.map(expectArity3("ccx", _)).map { case (c1, c2, t) => CCX(c1, c2, t) }
@@ -450,7 +455,7 @@ object Qasm3Parser {
       case "sx"   => call.copy(name = "sxdg")
       case "sxdg" => call.copy(name = "sx")
 
-      case "p" | "phase" | "u1" | "rx" | "ry" | "rz" | "cp" | "cphase" | "crx" | "cry" | "crz" | "gphase" =>
+      case "p" | "phase" | "u1" | "rx" | "ry" | "rz" | "cp" | "cphase" | "crx" | "cry" | "crz" | "rzz" | "RZZ" | "gphase" =>
         call.copy(params = call.params.map(negExpr))
 
       case "U" | "u" =>
@@ -743,4 +748,3 @@ object Qasm3Parser {
   private def renderModifiers(controls: Int): String =
     if (controls == 1) "ctrl @ " else s"ctrl($controls) @ "
 }
-

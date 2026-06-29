@@ -43,6 +43,8 @@ import qurator.domain.QuantumJobResult
 import qurator.domain.QuantumResult
 import qurator.domain.SubmittedJobData._
 import qurator.Types.AppEnvironment
+import qurator.domain.cutting._
+import qurator.util.CuttingStrategies.CuttingStrategy
 
 
 final case class SubmittedJobInfo(
@@ -103,7 +105,7 @@ object Scheduler{
         dataPersistanceService: DataPersistanceService[F],
         clients: HttpClients[F],
         prioritizationStrategy: List[Task] => List[Task],
-        cuttingStrategy: (Circuit, List[Device]) => F[List[Circuit]],
+        cuttingStrategy: CuttingStrategy[F],
         targetEstimatedFidelity: Double, 
         additionalOptimizationRuns: Circuit => List[Circuit],
         dashboardConfig: SchedulerDashboardConfig = SchedulerDashboardConfig(),
@@ -130,8 +132,6 @@ object Scheduler{
 
         def dashboardUrl: String =
             SchedulerDashboard.dashboardUrl(dashboardConfig)
-
-        //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
 
         private val idleDelay: FiniteDuration = 250.millis
         private val mergeEnabled: Boolean = true
@@ -252,8 +252,21 @@ object Scheduler{
                 tids <- 
                     if(needsToBeCut){ 
                         for {
-                            cut <- cuttingStrategy(taskReq.circuit, devices)
-                            _ <- Logger[F].info(s"Cut length ${cut.length}")
+                            decision <- cuttingStrategy(
+                                CuttingRequest(
+                                    circuit = taskReq.circuit,
+                                    devices = devices,
+                                    targetEstimatedFidelity = targetEstimatedFidelity,
+                                    shots = Some(taskReq.shots.value.toLong)
+                                )
+                            )
+                            selectedPlan = decision.selected
+                            cut = selectedPlan.subcircuits
+                            _ <- Logger[F].info(
+                                s"Selected cutting plan=${selectedPlan.name}, cuts=${selectedPlan.parameters.maxCuts}, " +
+                                    s"subcircuits=${selectedPlan.parameters.maxSubcircuits}, maxWidth=${selectedPlan.parameters.maxSubcircuitWidth}, " +
+                                    s"frontier=${decision.frontier.map(_.name).mkString("[", ", ", "]")}"
+                            )
                             optimized = cut.flatMap(additionalOptimizationRuns(_))
                             cutGroupId <- ID.make[F, TaskId]
                             recreatedTasks <- optimized.traverse { c =>
@@ -328,13 +341,21 @@ object Scheduler{
                         str.l.traverse { req =>
                         requiresCutting(req, devices).flatMap { needsToBeCut =>
                             if (needsToBeCut) {
-                                cuttingStrategy(req.circuit, devices).map { cutCircuits =>
+                                cuttingStrategy(
+                                    CuttingRequest(
+                                        circuit = req.circuit,
+                                        devices = devices,
+                                        targetEstimatedFidelity = targetEstimatedFidelity,
+                                        shots = Some(req.shots.value.toLong)
+                                    )
+                                ).map { decision =>
+                                    val cutCircuits = decision.selected.subcircuits
                                     val optimizedCircuits = cutCircuits.flatMap(additionalOptimizationRuns) 
 
                                     optimizedCircuits.map { c =>
                                         NewQuantumTaskRequest(
                                             circuit     = c,
-                                            qubits      = req.qubits,
+                                            qubits      = TaskQubits(c.qubits),
                                             shots       = req.shots,
                                             depth       = req.depth,
                                             parentTasks = req.parentTasks,

@@ -63,7 +63,7 @@ object IBM{
                 queueLength = queue_length,
                 t1 = 0,
                 t2 = 0,
-                gateSet = List.empty // TODO, need fixing
+                gateSet = List.empty 
             )
     }
 

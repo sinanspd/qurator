@@ -29,6 +29,8 @@ import qurator.util.QuantumTaskLoader
 import qurator.util.Qasm3Parser
 import qurator.domain.{ProviderJobTiming, ProviderTaskStatus, QuantumJobResult, QuantumResult}
 import fs2.io.file.Path
+import qurator.domain.cutting.CuttingRequest
+import qurator.util.CuttingStrategies.CuttingStrategy
 
 
 final case class QuantumTaskSpec(
@@ -752,7 +754,7 @@ object SchedulerBenchmarkRunner {
         clients: HttpClients[IO],
         compiler: FakeCompiler[IO],
         targetEstimatedFidelity: Double,
-        cuttingStrategy: (Circuit, List[Device]) => IO[List[Circuit]],
+        cuttingStrategy: CuttingStrategy[IO],
         additionalOptimizationRuns: Circuit => List[Circuit]
     ): IO[List[QuantumTaskSpec]] =
         for {
@@ -767,7 +769,15 @@ object SchedulerBenchmarkRunner {
                 if (feasibleNoCut) {
                     List(spec).pure[IO]
                 } else {
-                    cuttingStrategy(spec.circuit, devices).map { cut =>
+                    cuttingStrategy(
+                        CuttingRequest(
+                            circuit = spec.circuit,
+                            devices = devices,
+                            targetEstimatedFidelity = targetEstimatedFidelity,
+                            shots = Some(spec.shots.value.toLong)
+                        )
+                    ).map { decision =>
+                        val cut = decision.selected.subcircuits
                         cut.flatMap(additionalOptimizationRuns).map { c =>
                             QuantumTaskSpec(
                                 circuit = c,
@@ -786,7 +796,7 @@ object SchedulerBenchmarkRunner {
         clients: HttpClients[IO],
         compiler: FakeCompiler[IO],
         targetEstimatedFidelity: Double,
-        cuttingStrategy: (Circuit, List[Device]) => IO[List[Circuit]],
+        cuttingStrategy: CuttingStrategy[IO],
         additionalOptimizationRuns: Circuit => List[Circuit],
         onQuantumComplete: QuantumResult => IO[Unit]
     ): IO[List[(TaskId, QuantumTaskSpec)]] =
@@ -921,7 +931,7 @@ object SchedulerBenchmarkRunner {
         specs: List[QuantumTaskSpec],
         registry: BenchmarkDeviceRegistry,
         clients: HttpClients[IO],
-        cuttingStrategy: (Circuit, List[Device]) => IO[List[Circuit]],
+        cuttingStrategy: CuttingStrategy[IO],
         compiler: FakeCompiler[IO],
         pollEvery: scala.concurrent.duration.FiniteDuration = scala.concurrent.duration.DurationInt(100).millis
     ): IO[BenchmarkRun] = {

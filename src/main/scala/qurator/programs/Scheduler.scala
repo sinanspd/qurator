@@ -111,6 +111,7 @@ object Scheduler{
         dashboardConfig: SchedulerDashboardConfig = SchedulerDashboardConfig(),
         environment: AppEnvironment = AppEnvironment.Development,
         compiler: FakeCompiler[F], //abstract this
+        cuttingEnabled: Boolean = false,
         batchSubmissionsEnabled: Boolean = true
   ): F[Scheduler[F]] =
     for {
@@ -133,12 +134,22 @@ object Scheduler{
         def dashboardUrl: String =
             SchedulerDashboard.dashboardUrl(dashboardConfig)
 
+        //////////////////////////////////////////////////////// ////////////////////////////////////////////////////////
+        //TODO 1 Estimate preperation time and add to queue time (and use entanglement estimation for runtime estimation)
+        //TODO 2 Use estimateSynronizationCost to implement merging. Downside, this requires time estimation for classical tasks.
+        //TODO 3 Merge Cut Task Results --> change UI
+
+        //TODO 4 Is anything from Q-Dream useful??
+        //TODO 5 Is anything from Qonductor useful??
+        //TODO 6 Is anything from Pilot-Quantum useful??
+
         private val idleDelay: FiniteDuration = 250.millis
         private val mergeEnabled: Boolean = true
         private val mergeMaxQubits: Int = 10
         private val mergeQueueFactorMillis: Long = 3000L
         private val productionMode: Boolean = environment.isProduction
         private val submittedJobDataLookback: FiniteDuration = 1.hour
+        private val cuttingEnabledFlag: Boolean = cuttingEnabled
         private val batchSubmissionsEnabledFlag: Boolean = batchSubmissionsEnabled
 
         private def registerDashboardTask(task: Task, pendingReason: String): F[Unit] =
@@ -1391,15 +1402,17 @@ object Scheduler{
 
             
         private def requiresCutting(task: NewQuantumTaskRequest, devices: List[Device]) : F[Boolean] = 
-            devices
-                .filter(_.qubits >= task.qubits.value)
-                .traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler))
-                .map(lf => {
-                    val x = lf.filter(_.pTotal > targetEstimatedFidelity)   //_.logPTotal > math.log(targetEstimatedFidelity))
-                    println(s"========== HERE: ${math.log(targetEstimatedFidelity)} ========") 
-                    println(x.mkString(", "))
-                    x.isEmpty
-                })
+            if (!cuttingEnabledFlag) false.pure[F]
+            else
+                devices
+                    .filter(_.qubits >= task.qubits.value)
+                    .traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler))
+                    .map(lf => {
+                        val x = lf.filter(_.pTotal > targetEstimatedFidelity)   //_.logPTotal > math.log(targetEstimatedFidelity))
+                        println(s"========== HERE: ${math.log(targetEstimatedFidelity)} ========") 
+                        println(x.mkString(", "))
+                        x.isEmpty
+                    })
 
         ////////////////////////////////////////////////////////////
         private def allParentResultsAvailable(t: Task) : F[Boolean] = 

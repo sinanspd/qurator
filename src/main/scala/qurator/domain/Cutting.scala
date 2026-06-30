@@ -5,12 +5,20 @@ import qurator.domain.device.Device
 
 object cutting {
 
+    sealed trait CuttingMode
+    object CuttingMode {
+        case object SpatialWidth extends CuttingMode
+        case object TemporalDepth extends CuttingMode
+        case object Hybrid extends CuttingMode
+    }
+
     final case class CuttingObjectiveWeights(
         samplingOverhead: Double = 0.25,
         classicalReconstruction: Double = 0.10,
         hardwareError: Double = 0.35,
         routingSwap: Double = 0.20,
-        queueRun: Double = 0.10
+        queueRun: Double = 0.10,
+        coherentDuration: Double = 0.10
     )
 
     final case class CuttingBudgets(
@@ -73,7 +81,14 @@ object cutting {
         queueRunMillis: Long,
         shotsRequired: Long,
         feasible: Boolean,
-        constraintViolations: List[String]
+        constraintViolations: List[String],
+        fragmentProductFidelity: Double = 1.0,
+        uncutDurationNs: Long = 0L,
+        maxSubcircuitDurationNs: Long = 0L,
+        durationReductionNs: Long = 0L,
+        apparentCutLogGain: Option[Double] = None,
+        fragmentOnlyLogGain: Option[Double] = None,
+        cutBenefitClassification: Option[String] = None
     )
 
     final case class CuttingPlan(

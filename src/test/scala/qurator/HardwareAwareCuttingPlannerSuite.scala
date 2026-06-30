@@ -129,13 +129,70 @@ object HardwareAwareCuttingPlannerSuite extends SimpleIOSuite {
             .plan[IO](
                 request = request,
                 fetchCalibration = _ => IO.raiseError(new RuntimeException("calibration should not be fetched")),
-                compileCircuitFor = (_, circuit) => IO.pure(circuit)
+                compileCircuitFor = (_, circuit) => IO.pure(circuit),
+                config = HardwareAwareCuttingPlanner.Config(
+                    smallCircuitNoCutFastPath = true,
+                    cuttingMode = CuttingMode.SpatialWidth
+                )
             )
             .map { decision =>
                 expect.all(
                     decision.selected.name == "no-cut-small-circuit-fast-path",
                     decision.selected.subcircuits == List(request.circuit),
                     decision.selected.deviceWidths.isEmpty
+                )
+            }
+    }
+
+    test("temporal mode prefers idle-heavy wire cuts for small deep circuits") {
+        val calibration =
+            lineCalibration(width = 8, highQualityRegion = 8).copy(
+                t1Seconds = (0 until 8).toList.map(_ -> 0.0000001),
+                t2Seconds = (0 until 8).toList.map(_ -> 0.0000001),
+                t1AvgSeconds = 0.0000001,
+                t2AvgSeconds = 0.0000001
+            )
+        val deepCircuit =
+            Circuit(
+                remainingGates = H(0) :: List.fill(100)(H(1)) ::: List(CX(0, 1)),
+                qubits = 2,
+                name = "idle-heavy"
+            )
+        val request =
+            CuttingRequest(
+                circuit = deepCircuit,
+                devices = List(device),
+                targetEstimatedFidelity = 0.90,
+                shots = Some(1000L),
+                paretoLimit = 8
+            )
+
+        HardwareAwareCuttingPlanner
+            .plan[IO](
+                request = request,
+                fetchCalibration = _ => IO.pure(calibration),
+                compileCircuitFor = (_, circuit) => IO.pure(circuit),
+                config = HardwareAwareCuttingPlanner.Config(
+                    cuttingMode = CuttingMode.TemporalDepth,
+                    temporalDurationT1T2RatioThreshold = 0.10,
+                    maxTemporalCutQubits = 1,
+                    minTemporalBoundaryScore = 0.0,
+                    smallCircuitNoCutFastPath = true
+                )
+            )
+            .map { decision =>
+                val temporal = decision.candidates.filter(_.name.startsWith("temporal-depth"))
+                val candidate = temporal.headOption
+
+                expect.all(
+                    temporal.nonEmpty,
+                    candidate.exists(_.cutLocations.nonEmpty),
+                    candidate.exists(_.cutLocations.forall(_.gateName == "WIRE")),
+                    candidate.exists(_.cutLocations.flatMap(_.qubits).distinct == List(0)),
+                    candidate.exists(_.metrics.samplingOverhead >= 4.0),
+                    candidate.exists(p => p.metrics.maxSubcircuitDurationNs < p.metrics.uncutDurationNs),
+                    candidate.exists(_.metrics.durationReductionNs > 0L),
+                    candidate.exists(_.parameters.maxSubcircuitWidth == request.circuit.qubits)
                 )
             }
     }
@@ -171,6 +228,49 @@ object HardwareAwareCuttingPlannerSuite extends SimpleIOSuite {
                 expect.all(
                     inferredWidth == request.circuit.qubits,
                     decision.candidates.exists(_.parameters.maxSubcircuitWidth < request.circuit.qubits)
+                )
+            }
+    }
+
+    test("planner includes midpoint candidate with cut benefit diagnostics") {
+        val calibration = lineCalibration(width = 8, highQualityRegion = 8)
+        val request =
+            CuttingRequest(
+                circuit = Circuit(
+                    remainingGates = List(
+                        H(0),
+                        H(3),
+                        CX(1, 2),
+                        Measure(0)
+                    ),
+                    qubits = 4,
+                    name = "midpoint"
+                ),
+                devices = List(device),
+                targetEstimatedFidelity = 0.90,
+                shots = Some(1000L),
+                paretoLimit = 6
+            )
+
+        HardwareAwareCuttingPlanner
+            .plan[IO](
+                request = request,
+                fetchCalibration = _ => IO.pure(calibration),
+                compileCircuitFor = (_, circuit) => IO.pure(circuit),
+                config = HardwareAwareCuttingPlanner.Config(
+                    effectiveWidthFidelityThreshold = 0.98,
+                    smallCircuitNoCutFastPath = false
+                )
+            )
+            .map { decision =>
+                val midpoint = decision.candidates.find(_.name == "midpoint-aggressive")
+
+                expect.all(
+                    midpoint.exists(_.parameters.maxSubcircuits == 2),
+                    midpoint.exists(_.cutLocations.map(_.gateIndex) == List(2)),
+                    midpoint.flatMap(_.metrics.apparentCutLogGain).isDefined,
+                    midpoint.flatMap(_.metrics.fragmentOnlyLogGain).isDefined,
+                    midpoint.flatMap(_.metrics.cutBenefitClassification).exists(_ != "no-cut-baseline")
                 )
             }
     }

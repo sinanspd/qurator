@@ -26,6 +26,7 @@ import qurator.programs.Scheduler
 import qurator.domain.Task._
 import qurator.domain.circuit._
 import qurator.util.CuttingStrategies
+import qurator.util.HardwareAwareCuttingPlanner
 import qurator.domain.device._
 import cats.syntax.all._
 
@@ -129,6 +130,7 @@ object RunBenchmarks extends IOApp.Simple {
                     val services = Services.make[IO](res.postgres)
                     val persistanceService = Services.make[IO](res.postgres).dataPersistanceService
                     val cuttingEffectiveWidthEnabled = true
+                    val cuttingSmallCircuitNoCutFastPath = false
 
                     def mkEnv(seed: Long) =
                         for {
@@ -141,7 +143,13 @@ object RunBenchmarks extends IOApp.Simple {
                             dummies  <- FakeBenchmarkClientsFromRegistry.make(registry)
                             clients   = BenchmarkHttpClients.make(registry, dummies)
                             compiler  = FakeCompiler[IO](compiled = Nil)
-                            cuttingStrategy = dummyBackUpCutter // CuttingStrategies.hardwareAware[IO](clients, compiler) // 
+                            cuttingStrategy = CuttingStrategies.hardwareAware[IO](
+                                clients,
+                                compiler,
+                                HardwareAwareCuttingPlanner.Config(
+                                    smallCircuitNoCutFastPath = cuttingSmallCircuitNoCutFastPath
+                                )
+                            ) // dummyBackUpCutter //
                             scheduler <- Scheduler.make[IO](
                                 dataPersistanceService = persistanceService,
                                 clients = clients,

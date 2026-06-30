@@ -303,6 +303,9 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
       approxOpt(out.eps2q.get(((0, 1), "RZZ")), Some(0.02)) and
       expect(out.durMeasNs.contains(1500L)) and
       expect(out.dur1qNs.get("RX").contains(35L)) and
+      expect(out.dur1qNs.get("RZ").contains(0L)) and
+      expect(out.durationNsFor(RZ("pi/2", 0)) == 0L) and
+      expect(out.durationNsFor(RX("pi/2", 0)) == 35L) and
       expect(out.dur2qNs.get("CX").contains(70L)) and
       expect(out.executionModel == ExecutionModel.ParallelByQubitOrEdge)
     )

@@ -33,8 +33,8 @@ object RunBenchmarks extends IOApp.Simple {
 
     implicit val logger = Slf4jLogger.getLogger[IO]
 
-    def dummyBackUpCutter: (Circuit, List[Device]) => IO[List[Circuit]] =
-        (c: Circuit, _: List[Device]) => {
+    def dummyBackUpCutter: CuttingStrategies.CuttingStrategy[IO] =
+        CuttingStrategies.fromSubcircuits[IO]("dummy-backup") { (c: Circuit, _: List[Device]) =>
 
             val n = math.max(1, c.qubits)
             val leftWidth  = math.max(1, n / 2)
@@ -128,6 +128,7 @@ object RunBenchmarks extends IOApp.Simple {
                 .evalMap { res => 
                     val services = Services.make[IO](res.postgres)
                     val persistanceService = Services.make[IO](res.postgres).dataPersistanceService
+                    val cuttingEffectiveWidthEnabled = true
 
                     def mkEnv(seed: Long) =
                         for {
@@ -140,29 +141,39 @@ object RunBenchmarks extends IOApp.Simple {
                             dummies  <- FakeBenchmarkClientsFromRegistry.make(registry)
                             clients   = BenchmarkHttpClients.make(registry, dummies)
                             compiler  = FakeCompiler[IO](compiled = Nil)
+                            cuttingStrategy = dummyBackUpCutter // CuttingStrategies.hardwareAware[IO](clients, compiler) // 
                             scheduler <- Scheduler.make[IO](
                                 dataPersistanceService = persistanceService,
                                 clients = clients,
                                 prioritizationStrategy = (a: List[Task]) => a,
-                                cuttingStrategy = dummyBackUpCutter, //CuttingStrategies.cutQC[IO](cutqcClient),
+                                cuttingStrategy = cuttingStrategy,
                                 targetEstimatedFidelity = 0.9,
                                 additionalOptimizationRuns = (c: Circuit) => List(c),
                                 environment = cfg.environment,
-                                compiler = compiler
+                                compiler = compiler,
+                                cuttingEffectiveWidthEnabled = cuttingEffectiveWidthEnabled
                             )
-                        } yield (registry, clients, compiler, scheduler)
+                        } yield (registry, clients, compiler, scheduler, cuttingStrategy)
 
                     for{
                         loaded <- WorkloadSpecs.loadedTasks
                         loadedFiltered = loaded.filter(t => t.qubits.value <= 5) // && t.qubits.value >= 21 )
                         specs <- WorkloadSpecs.sample(n = 10, seed = 42L, T = loadedFiltered)
-                        (reg1, cl1, co1, sch1) <- mkEnv(42L) //reinit so that the queue isn't tainted 
+                        (reg1, cl1, co1, sch1, cutting1) <- mkEnv(42L) //reinit so that the queue isn't tainted 
                         schedRun <- Logger[IO].info("Running Scheduler Benchmarks") *>
                             sch1.startRuntime.use(_ =>
-                                SchedulerBenchmarkRunner.runSchedulerBenchmark(sch1, specs, reg1, cl1, dummyBackUpCutter, co1)
+                                SchedulerBenchmarkRunner.runSchedulerBenchmark(
+                                    sch1,
+                                    specs,
+                                    reg1,
+                                    cl1,
+                                    cutting1,
+                                    co1,
+                                    cuttingEffectiveWidthEnabled = cuttingEffectiveWidthEnabled
+                                )
                             )
 
-                        (reg2, cl2, co2, _) <- mkEnv(42L)
+                        (reg2, cl2, co2, _, _) <- mkEnv(42L)
                         leastBusy <- Logger[IO].info("Running Least Busy Baselines") *>
                             SchedulerBenchmarkRunner.runBaseline(
                                 SchedulerBenchmarkRunner.BaselinePolicy.LeastBusy,
@@ -172,7 +183,7 @@ object RunBenchmarks extends IOApp.Simple {
                                 co2
                             )
 
-                        (reg3, cl3, co3, _) <- mkEnv(42L)
+                        (reg3, cl3, co3, _, _) <- mkEnv(42L)
                         hiFid <- Logger[IO].info("Running Highest Fidelity Benchmarks") *>
                             SchedulerBenchmarkRunner.runBaseline(
                                 SchedulerBenchmarkRunner.BaselinePolicy.HighestFidelity,

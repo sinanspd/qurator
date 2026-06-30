@@ -236,7 +236,7 @@ object calibration {
                     }
                     eps1q.get((q, g))
                     .orElse(eps1qAvg)
-                    .getOrElse(0.0) //TODO: Should we have a better default value here? 
+                    .getOrElse(0.0)  
 
                 case a @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRZ(_, _, _)) =>
                     val (a, b, g) = op match{

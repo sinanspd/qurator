@@ -21,8 +21,16 @@ object HardwareAwareCuttingPlanner {
         infeasiblePenalty: Double = 1000.0,
         unroutableSwapPenalty: Double = 100.0,
         queueScaleMillis: Double = 60.0 * 60.0 * 1000.0,
-        smallCircuitNoCutFastPath: Boolean = true,
-        smallCircuitNoCutWidth: Int = 5
+        smallCircuitNoCutFastPath: Boolean = false,
+        smallCircuitNoCutWidth: Int = 5,
+        cuttingMode: CuttingMode = CuttingMode.Hybrid,
+        wireCutOverhead: Double = 4.0,
+        temporalDurationT1T2RatioThreshold: Double = 0.25,
+        temporalBoundaryFractions: List[Double] = List(0.25, 0.50, 0.75),
+        maxTemporalFragments: Int = 4,
+        maxTemporalCutQubits: Int = 5,
+        maxTemporalBoundaryCandidates: Int = 8,
+        minTemporalBoundaryScore: Double = Double.NegativeInfinity
     )
 
     private final case class Topology(
@@ -117,6 +125,19 @@ object HardwareAwareCuttingPlanner {
         groups: List[List[Int]]
     )
 
+    private final case class TemporalPartitionCandidate(
+        name: String,
+        layerBoundaries: List[Int],
+        cutQubits: List[Int]
+    )
+
+    private final case class ScheduledGate(
+        index: Int,
+        qubits: Vector[Int],
+        startNs: Long,
+        endNs: Long
+    )
+
     private final case class BuiltSubcircuits(
         subcircuits: List[Circuit],
         logicalGroups: List[List[Int]],
@@ -125,7 +146,8 @@ object HardwareAwareCuttingPlanner {
 
     private final case class AssignmentEval(
         assignment: SubcircuitAssignment,
-        withinEffectiveWidth: Boolean
+        withinEffectiveWidth: Boolean,
+        coherentDurationNs: Long
     )
 
     def plan[F[_]: MonadThrow](
@@ -142,14 +164,37 @@ object HardwareAwareCuttingPlanner {
             request.devices
                 .traverse(loadDeviceModel(_, fetchCalibration, request.effectiveWidthEnabled, request.circuit.qubits, config))
                 .flatMap { deviceModels =>
-                    val partitions = candidatePartitions(request.circuit, deviceModels, config)
+                    val spatialPartitions =
+                        if (modeAllowsSpatial(config.cuttingMode)) candidatePartitions(request.circuit, deviceModels, config)
+                        else List(noCutPartition(request.circuit))
 
-                    partitions
+                    val temporalPartitions =
+                        if (modeAllowsTemporal(config.cuttingMode) && shouldTryTemporalCuts(request.circuit, deviceModels, config))
+                            temporalCandidates(request, deviceModels, config)
+                        else Nil
+
+                    val spatialPlans =
+                        spatialPartitions
                         .traverse { candidate =>
                             val built = buildSubcircuits(request.circuit, candidate, config)
                             buildPlan(request, candidate.name, built, deviceModels, compileCircuitFor, config)
                         }
-                        .map(decisionFromCandidates(request, _))
+
+                    val temporalPlans =
+                        temporalPartitions
+                            .traverse { candidate =>
+                                val built = buildTemporalSubcircuits(request.circuit, candidate, config)
+                                buildPlan(request, candidate.name, built, deviceModels, compileCircuitFor, config)
+                            }
+
+                    (spatialPlans, temporalPlans)
+                        .mapN { (spatial, temporal) =>
+                            val candidates =
+                                (spatial ++ temporal)
+                                    .distinctBy(p => (p.name, p.cutLocations.map(c => (c.gateIndex, c.gateName, c.qubits))))
+
+                            decisionFromCandidates(request, candidates)
+                        }
                 }
         }
 
@@ -550,7 +595,7 @@ object HardwareAwareCuttingPlanner {
         deviceModels: List[DeviceModel],
         config: Config
     ): List[PartitionCandidate] = {
-        val noCut = PartitionCandidate("no-cut", List((0 until circuit.qubits).toList))
+        val noCut = noCutPartition(circuit)
         val usefulMaxEffectiveWidth =
             deviceModels
                 .map(_.effectiveWidth.effectiveWidth)
@@ -589,7 +634,327 @@ object HardwareAwareCuttingPlanner {
                 PartitionCandidate(s"$label-width-$width", groups)
             }
 
-        (noCut :: cutCandidates).distinctBy(_.groups.map(_.sorted))
+        val midpoint =
+            Option.when(circuit.qubits >= 2)(midpointPartition(circuit)).toList
+
+        (noCut :: midpoint ::: cutCandidates)
+            .distinctBy(_.groups.map(_.sorted))
+    }
+
+    private def noCutPartition(circuit: Circuit): PartitionCandidate =
+        PartitionCandidate("no-cut", List((0 until circuit.qubits).toList))
+
+    private def modeAllowsSpatial(mode: CuttingMode): Boolean =
+        mode match {
+            case CuttingMode.SpatialWidth | CuttingMode.Hybrid => true
+            case CuttingMode.TemporalDepth                     => false
+        }
+
+    private def modeAllowsTemporal(mode: CuttingMode): Boolean =
+        mode match {
+            case CuttingMode.TemporalDepth | CuttingMode.Hybrid => true
+            case CuttingMode.SpatialWidth                       => false
+        }
+
+    private def shouldTryTemporalCuts(
+        circuit: Circuit,
+        deviceModels: List[DeviceModel],
+        config: Config
+    ): Boolean =
+        config.cuttingMode match {
+            case CuttingMode.TemporalDepth =>
+                true
+
+            case CuttingMode.Hybrid =>
+                deviceModels.exists { model =>
+                    model.device.qubits >= circuit.qubits &&
+                        model.calibration.exists(calibration => compiledDurationTooLong(circuit, calibration, config))
+                }
+
+            case CuttingMode.SpatialWidth =>
+                false
+        }
+
+    private def compiledDurationTooLong(
+        circuit: Circuit,
+        calibration: CanonicalCalibration,
+        config: Config
+    ): Boolean =
+        coherenceLimitNs(circuit, calibration).exists { limitNs =>
+            limitNs > 0L &&
+                coherentDurationNs(circuit, calibration).toDouble / limitNs.toDouble >= config.temporalDurationT1T2RatioThreshold
+        }
+
+    private def temporalCandidates(
+        request: CuttingRequest,
+        deviceModels: List[DeviceModel],
+        config: Config
+    ): List[TemporalPartitionCandidate] = {
+        val circuit = request.circuit
+        val n = circuit.remainingGates.size
+        if (n <= 1) Nil
+        else {
+            val calibration =
+                temporalReferenceCalibration(circuit, deviceModels)
+
+            val scoredIdleBoundaries =
+                calibration.toList.flatMap { cal =>
+                    idleAwareTemporalCandidates(circuit, cal, request.shots, config)
+                }
+
+            val fractionBoundaries =
+                config.temporalBoundaryFractions
+                    .flatMap(fractionBoundary(n, _))
+
+            val durationBoundaries =
+                calibration.toList.flatMap { cal =>
+                    durationBoundaryIndexes(circuit, cal, config)
+                }
+
+            val forcedBoundaryCandidates =
+                calibration.toList.flatMap { cal =>
+                    val scheduled = scheduledGates(circuit, cal)
+                    (fractionBoundaries ++ durationBoundaries)
+                        .distinct
+                        .flatMap(boundary => temporalCandidateAtBoundary(circuit, cal, scheduled, boundary, request.shots, config))
+                        .filter { case (_, score) => score >= config.minTemporalBoundaryScore }
+                        .sortBy { case (_, score) => -score }
+                        .map { case (candidate, _) => candidate }
+                }
+
+            (scoredIdleBoundaries ++ forcedBoundaryCandidates)
+                .distinctBy(c => (c.layerBoundaries, c.cutQubits))
+                .take(config.maxTemporalBoundaryCandidates.max(1))
+        }
+    }
+
+    private def idleAwareTemporalCandidates(
+        circuit: Circuit,
+        calibration: CanonicalCalibration,
+        shots: Option[Long],
+        config: Config
+    ): List[TemporalPartitionCandidate] = {
+        val scheduled = scheduledGates(circuit, calibration)
+
+        (1 until circuit.remainingGates.size).toList
+            .flatMap(boundary => temporalCandidateAtBoundary(circuit, calibration, scheduled, boundary, shots, config))
+            .sortBy { case (_, score) => -score }
+            .filter { case (_, score) => score >= config.minTemporalBoundaryScore }
+            .take(config.maxTemporalBoundaryCandidates.max(1))
+            .map { case (candidate, _) => candidate }
+    }
+
+    private def temporalCandidateAtBoundary(
+        circuit: Circuit,
+        calibration: CanonicalCalibration,
+        scheduled: Vector[ScheduledGate],
+        boundary: Int,
+        shots: Option[Long],
+        config: Config
+    ): Option[(TemporalPartitionCandidate, Double)] = {
+        val normalizedBoundary =
+            math.max(1, math.min(circuit.remainingGates.size - 1, boundary))
+
+        val scoredQubits =
+            liveQubitsAtBoundary(circuit, normalizedBoundary)
+                .flatMap { q =>
+                    val savedLog =
+                        idleDecoherenceSavedLog(q, normalizedBoundary, scheduled, calibration)
+                    Option.when(savedLog > 0.0)(q -> savedLog)
+                }
+                .sortBy { case (q, savedLog) => (-savedLog, q) }
+                .take(config.maxTemporalCutQubits.max(1))
+
+        val cutQubits = scoredQubits.map(_._1).sorted
+
+        Option.when(cutQubits.nonEmpty) {
+            val savedLog = scoredQubits.map(_._2).sum
+            val samplingOverhead = cappedPow(config.wireCutOverhead, cutQubits.size)
+            val overheadLog = math.log(math.max(1.0, samplingOverhead))
+            val reconstructionPenalty =
+                config.reconstructionVariancePenalty *
+                    math.log1p(samplingOverhead) /
+                    math.sqrt(shots.getOrElse(1000L).max(1L).toDouble)
+            val score = savedLog - overheadLog - reconstructionPenalty
+
+            TemporalPartitionCandidate(
+                name = temporalCandidateName(List(normalizedBoundary)),
+                layerBoundaries = List(normalizedBoundary),
+                cutQubits = cutQubits
+            ) -> score
+        }
+    }
+
+    private def temporalReferenceCalibration(
+        circuit: Circuit,
+        deviceModels: List[DeviceModel]
+    ): Option[CanonicalCalibration] =
+        deviceModels
+            .filter(_.device.qubits >= circuit.qubits)
+            .flatMap(_.calibration)
+            .sortBy(cal => -coherentDurationNs(circuit, cal))
+            .headOption
+
+    private def fractionBoundary(
+        gateCount: Int,
+        fraction: Double
+    ): Option[Int] =
+        Option
+            .when(fraction.isFinite && fraction > 0.0 && fraction < 1.0) {
+                math.round(gateCount.toDouble * fraction).toInt
+            }
+            .map(b => math.max(1, math.min(gateCount - 1, b)))
+
+    private def durationBoundaryIndexes(
+        circuit: Circuit,
+        calibration: CanonicalCalibration,
+        config: Config
+    ): List[Int] = {
+        val maxFragmentDuration =
+            coherenceLimitNs(circuit, calibration)
+                .map(limit => math.max(1L, (limit.toDouble * config.temporalDurationT1T2RatioThreshold).toLong))
+                .getOrElse(math.max(1L, coherentDurationNs(circuit, calibration) / 2L))
+
+        durationBoundariesFor(circuit, calibration, maxFragmentDuration, config.maxTemporalFragments)
+            .flatten
+            .distinct
+            .sorted
+    }
+
+    private def durationBoundariesFor(
+        circuit: Circuit,
+        calibration: CanonicalCalibration,
+        maxFragmentDurationNs: Long,
+        maxFragments: Int
+    ): List[List[Int]] = {
+        val gateCount = circuit.remainingGates.size
+        val totalDuration = gateDurationSumNs(circuit, calibration)
+        val fragmentCap = math.max(2, math.min(maxFragments, 8))
+
+        if (gateCount <= 1 || totalDuration <= maxFragmentDurationNs) Nil
+        else {
+            val requiredFragments =
+                math.ceil(totalDuration.toDouble / maxFragmentDurationNs.toDouble).toInt
+                    .max(2)
+                    .min(fragmentCap)
+
+            val boundaries =
+                (1 until requiredFragments).toList.flatMap { i =>
+                    boundaryNearDuration(circuit, calibration, totalDuration.toDouble * i.toDouble / requiredFragments.toDouble)
+                }
+
+            List(boundaries.distinct.sorted.filter(b => b > 0 && b < gateCount)).filter(_.nonEmpty)
+        }
+    }
+
+    private def boundaryNearDuration(
+        circuit: Circuit,
+        calibration: CanonicalCalibration,
+        targetDurationNs: Double
+    ): Option[Int] = {
+        val (_, boundary) =
+            circuit.remainingGates.zipWithIndex.foldLeft(0L -> Option.empty[Int]) {
+                case ((elapsed, found), (gate, idx)) =>
+                    found match {
+                        case Some(_) => elapsed -> found
+                        case None =>
+                            val nextElapsed = elapsed + gateDurationNs(gate, calibration)
+                            val maybeBoundary =
+                                Option.when(nextElapsed.toDouble >= targetDurationNs)(math.max(1, idx + 1))
+                            nextElapsed -> maybeBoundary
+                    }
+            }
+
+        boundary.map(b => math.min(circuit.remainingGates.size - 1, b))
+    }
+
+    private def temporalCandidateName(boundaries: List[Int]): String =
+        s"temporal-depth-${boundaries.mkString("-")}"
+
+    private def scheduledGates(
+        circuit: Circuit,
+        calibration: CanonicalCalibration
+    ): Vector[ScheduledGate] = {
+        var availableByQubit = Map.empty[Int, Long].withDefaultValue(0L)
+        var globalAvailableNs = 0L
+
+        circuit.remainingGates.zipWithIndex.map { case (gate, idx) =>
+            val qubits = gateQubits(gate).distinct
+            val duration = gateDurationNs(gate, calibration)
+            val localStart =
+                if (qubits.isEmpty) 0L
+                else qubits.map(q => availableByQubit(q)).max
+            val globalStart =
+                if (usesGlobalGateResource(gate) && calibration.executionModel == ExecutionModel.GlobalSerialGates) globalAvailableNs
+                else 0L
+            val start = math.max(localStart, globalStart)
+            val end = start + duration
+
+            qubits.foreach { q =>
+                availableByQubit = availableByQubit.updated(q, end)
+            }
+            if (usesGlobalGateResource(gate) && calibration.executionModel == ExecutionModel.GlobalSerialGates) {
+                globalAvailableNs = end
+            }
+
+            ScheduledGate(idx, qubits, start, end)
+        }.toVector
+    }
+
+    private def usesGlobalGateResource(gate: Gate): Boolean =
+        gate match {
+            case Measure(_) | GPhase(_) => false
+            case _                      => gateQubits(gate).nonEmpty
+        }
+
+    private def idleDecoherenceSavedLog(
+        q: Int,
+        boundary: Int,
+        scheduled: Vector[ScheduledGate],
+        calibration: CanonicalCalibration
+    ): Double = {
+        val boundaryTime =
+            scheduled
+                .filter(_.index < boundary)
+                .map(_.endNs)
+                .maxOption
+                .getOrElse(0L)
+        val previousEnd =
+            scheduled
+                .filter(g => g.index < boundary && g.qubits.contains(q))
+                .map(_.endNs)
+                .maxOption
+
+        previousEnd match {
+            case Some(end) if boundaryTime > end =>
+                coherenceSeconds(q, calibration)
+                    .map(coherence => (boundaryTime - end).toDouble / 1e9 / coherence)
+                    .getOrElse(0.0)
+
+            case _ =>
+                0.0
+        }
+    }
+
+    private def coherenceSeconds(
+        q: Int,
+        calibration: CanonicalCalibration
+    ): Option[Double] =
+        List(calibration.t1For(q), calibration.t2For(q))
+            .flatten
+            .filter(v => v.isFinite && v > 0.0)
+            .minOption
+
+    private def midpointPartition(circuit: Circuit): PartitionCandidate = {
+        val n = circuit.qubits
+        val leftWidth = math.max(1, n / 2)
+        val left = (0 until leftWidth).toList
+        val right = (leftWidth until n).toList
+
+        PartitionCandidate(
+            name = "midpoint-aggressive",
+            groups = List(left, right).filter(_.nonEmpty)
+        )
     }
 
     private def smallCircuitNoCutFastPathApplies(
@@ -606,6 +971,7 @@ object HardwareAwareCuttingPlanner {
             request.budgets.maxSamplingOverhead.forall(_ >= 1.0)
 
         config.smallCircuitNoCutFastPath &&
+            config.cuttingMode == CuttingMode.SpatialWidth &&
             request.effectiveWidthEnabled &&
             request.circuit.qubits <= config.smallCircuitNoCutWidth &&
             triviallyFits &&
@@ -736,6 +1102,53 @@ object HardwareAwareCuttingPlanner {
         BuiltSubcircuits(subcircuits, groups, cutLocations)
     }
 
+    private def buildTemporalSubcircuits(
+        circuit: Circuit,
+        candidate: TemporalPartitionCandidate,
+        config: Config
+    ): BuiltSubcircuits = {
+        val boundaries =
+            candidate.layerBoundaries
+                .distinct
+                .sorted
+                .filter(b => b > 0 && b < circuit.remainingGates.size)
+
+        val ranges =
+            (0 :: boundaries) zip (boundaries :+ circuit.remainingGates.size)
+
+        val logicalGroup =
+            (0 until circuit.qubits).toList
+
+        val subcircuits =
+            ranges.zipWithIndex.map { case ((from, until), idx) =>
+                Circuit(
+                    remainingGates = circuit.remainingGates.slice(from, until),
+                    qubits = circuit.qubits,
+                    name = subcircuitName(circuit, candidate.name, idx)
+                )
+            }
+
+        val cutLocations =
+            boundaries.flatMap { boundary =>
+                liveQubitsAtBoundary(circuit, boundary)
+                    .filter(candidate.cutQubits.contains)
+                    .map { q =>
+                        CutLocation(
+                            gateIndex = boundary,
+                            gateName = "WIRE",
+                            qubits = List(q),
+                            overhead = config.wireCutOverhead
+                        )
+                    }
+            }
+
+        BuiltSubcircuits(
+            subcircuits = subcircuits,
+            logicalGroups = subcircuits.map(_ => logicalGroup),
+            cutLocations = cutLocations
+        )
+    }
+
     private def buildPlan[F[_]: MonadThrow](
         request: CuttingRequest,
         name: String,
@@ -747,7 +1160,7 @@ object HardwareAwareCuttingPlanner {
         built.subcircuits.zipWithIndex.traverse { case (subcircuit, idx) =>
             assignSubcircuit(subcircuit, idx, built.logicalGroups(idx), deviceModels, compileCircuitFor, config)
         }.map { assignments =>
-            scorePlan(request, name, built, assignments, deviceModels.map(_.effectiveWidth), config)
+            scorePlan(request, name, built, assignments, deviceModels, config)
         }
 
     private def assignSubcircuit[F[_]: MonadThrow](
@@ -801,28 +1214,32 @@ object HardwareAwareCuttingPlanner {
                     compileCircuitFor(model.device, subcircuit).map { compiled =>
                         val fidelity = FidelityEstimator.score(compiled, calibration).pTotal
                         val runMillis = estimatedRunMillis(compiled, calibration, model.device, config)
-                        fidelity -> runMillis
+                        val coherentNs = coherentDurationNs(compiled, calibration)
+                        (fidelity, runMillis, coherentNs)
                     }
 
                 case Some(calibration) if subcircuit.remainingGates.nonEmpty =>
                     compileCircuitFor(model.device, subcircuit).map { compiled =>
                         val fidelity = fallbackFidelity(compiled, calibration)
                         val runMillis = estimatedRunMillis(compiled, calibration, model.device, config)
-                        fidelity -> runMillis
+                        val coherentNs = coherentDurationNs(compiled, calibration)
+                        (fidelity, runMillis, coherentNs)
                     }
 
                 case Some(calibration) =>
                     val runMillis = estimatedRunMillis(subcircuit, calibration, model.device, config)
-                    (1.0, runMillis).pure[F]
+                    val coherentNs = coherentDurationNs(subcircuit, calibration)
+                    (1.0, runMillis, coherentNs).pure[F]
 
                 case None =>
                     val fallbackFidelity =
                         if (withinEffectiveWidth) 0.90 else 0.50
                     val runMillis = model.device.queueLength.toLong * config.queueLengthMillisFactor
-                    (fallbackFidelity, runMillis).pure[F]
+                    val coherentNs = subcircuit.remainingGates.size.toLong
+                    (fallbackFidelity, runMillis, coherentNs).pure[F]
             }
 
-        estimateF.map { case (fidelity, queueRunMillis) =>
+        estimateF.map { case (fidelity, queueRunMillis, coherentNs) =>
             AssignmentEval(
                 assignment = SubcircuitAssignment(
                     subcircuitIndex = subcircuitIndex,
@@ -833,7 +1250,8 @@ object HardwareAwareCuttingPlanner {
                     routingSwapCost = routingCost,
                     estimatedQueueRunMillis = queueRunMillis
                 ),
-                withinEffectiveWidth = withinEffectiveWidth
+                withinEffectiveWidth = withinEffectiveWidth,
+                coherentDurationNs = coherentNs
             )
         }
     }
@@ -843,10 +1261,11 @@ object HardwareAwareCuttingPlanner {
         name: String,
         built: BuiltSubcircuits,
         assignmentEvals: List[AssignmentEval],
-        effectiveWidths: List[DeviceEffectiveWidth],
+        deviceModels: List[DeviceModel],
         config: Config
     ): CuttingPlan = {
         val assignments = assignmentEvals.map(_.assignment)
+        val effectiveWidths = deviceModels.map(_.effectiveWidth)
         val cuts = built.cutLocations.size
         val samplingOverhead =
             if (built.cutLocations.isEmpty) 1.0
@@ -866,6 +1285,12 @@ object HardwareAwareCuttingPlanner {
         val estimatedFidelity = clamp01(productFidelity * reconstructionPenalty * cutPenalty)
         val routingCost = assignments.map(_.routingSwapCost).sum
         val queueRunMillis = assignments.map(_.estimatedQueueRunMillis).maxOption.getOrElse(0L)
+        val uncutDurationNs = baselineCoherentDurationNs(request.circuit, deviceModels)
+        val maxSubcircuitDurationNs = assignmentEvals.map(_.coherentDurationNs).maxOption.getOrElse(uncutDurationNs)
+        val durationReductionNs = math.max(0L, uncutDurationNs - maxSubcircuitDurationNs)
+        val normalizedMaxDuration =
+            if (uncutDurationNs > 0L) maxSubcircuitDurationNs.toDouble / uncutDurationNs.toDouble
+            else 0.0
         val classicalReconstructionCost = samplingOverhead * math.max(1, built.subcircuits.size).toDouble
         val classicalMemoryBytes = classicalReconstructionCost * cappedPow(2.0, maxWidth) * 16.0
         val widthViolations =
@@ -899,7 +1324,11 @@ object HardwareAwareCuttingPlanner {
                 queueRunMillis = queueRunMillis,
                 shotsRequired = shotsRequired,
                 feasible = feasible,
-                constraintViolations = violations
+                constraintViolations = violations,
+                fragmentProductFidelity = productFidelity,
+                uncutDurationNs = uncutDurationNs,
+                maxSubcircuitDurationNs = maxSubcircuitDurationNs,
+                durationReductionNs = durationReductionNs
             )
 
         val weights = request.objectiveWeights
@@ -910,6 +1339,7 @@ object HardwareAwareCuttingPlanner {
                 weights.hardwareError * metrics.estimatedHardwareError -
                 weights.routingSwap * math.log1p(routingCost) -
                 weights.queueRun * (math.log1p(queueRunMillis.toDouble) / math.log1p(config.queueScaleMillis)) -
+                weights.coherentDuration * normalizedMaxDuration -
                 (if (feasible) 0.0 else config.infeasiblePenalty)
 
         CuttingPlan(
@@ -936,18 +1366,22 @@ object HardwareAwareCuttingPlanner {
     ): CuttingDecision = {
         val nonEmptyCandidates =
             if (candidates.nonEmpty) candidates else List(noCutDecision(request).selected)
+        val noCutPlan =
+            nonEmptyCandidates.find(_.cutLocations.isEmpty).getOrElse(noCutDecision(request).selected)
+        val candidatesWithDiagnostics =
+            nonEmptyCandidates.map(withCutBenefitDiagnostic(_, noCutPlan))
 
         val selectedPool =
-            nonEmptyCandidates.filter(_.metrics.feasible) match {
-                case Nil => nonEmptyCandidates
+            candidatesWithDiagnostics.filter(p => p.metrics.feasible && selectableAfterDiagnostics(p)) match {
+                case Nil => candidatesWithDiagnostics
                 case xs  => xs
             }
 
         val selected = selectedPool.maxBy(p => (p.score, p.metrics.estimatedFidelity))
         val pareto =
-            nonEmptyCandidates
-                .filterNot(p => nonEmptyCandidates.exists(other => other != p && dominates(other, p)))
-                .sortBy(p => (-p.score, p.metrics.samplingOverhead, p.metrics.queueRunMillis))
+            candidatesWithDiagnostics
+                .filterNot(p => candidatesWithDiagnostics.exists(other => other != p && dominates(other, p)))
+                .sortBy(p => (-p.score, p.metrics.samplingOverhead, p.metrics.maxSubcircuitDurationNs, p.metrics.queueRunMillis))
 
         val frontier =
             (selected :: pareto.filterNot(_ == selected))
@@ -957,7 +1391,51 @@ object HardwareAwareCuttingPlanner {
         CuttingDecision(
             selected = selected,
             frontier = frontier,
-            candidates = nonEmptyCandidates.sortBy(p => (-p.score, p.metrics.samplingOverhead))
+            candidates = candidatesWithDiagnostics.sortBy(p => (-p.score, p.metrics.samplingOverhead))
+        )
+    }
+
+    private def selectableAfterDiagnostics(plan: CuttingPlan): Boolean =
+        !isTemporalPlan(plan) || plan.metrics.apparentCutLogGain.exists(_ > 0.0)
+
+    private def isTemporalPlan(plan: CuttingPlan): Boolean =
+        plan.cutLocations.exists(_.gateName == "WIRE")
+
+    private def withCutBenefitDiagnostic(
+        candidate: CuttingPlan,
+        noCutPlan: CuttingPlan
+    ): CuttingPlan = {
+        val logNoCutFidelity =
+            math.log(math.max(1e-12, noCutPlan.metrics.estimatedFidelity))
+
+        val logCandidateFidelity =
+            math.log(math.max(1e-12, candidate.metrics.estimatedFidelity))
+
+        val apparentGain =
+            logCandidateFidelity - logNoCutFidelity
+
+        val fragmentOnlyGain =
+            math.log(math.max(1e-12, candidate.metrics.fragmentProductFidelity)) - logNoCutFidelity
+
+        val classification =
+            if (candidate.cutLocations.isEmpty) "no-cut-baseline"
+            else if (fragmentOnlyGain > 0.0 && apparentGain < 0.0) "fragment-benefit-reconstruction-kills"
+            else if (fragmentOnlyGain > 0.0 && apparentGain > 0.0) "valid-cut-likely-helps"
+            else if (fragmentOnlyGain < 0.0) "cut-not-useful-before-reconstruction"
+            else "cut-benefit-neutral"
+
+        val metrics =
+            candidate.metrics.copy(
+                apparentCutLogGain = Some(apparentGain),
+                fragmentOnlyLogGain = Some(fragmentOnlyGain),
+                cutBenefitClassification = Some(classification)
+            )
+
+        candidate.copy(
+            metrics = metrics,
+            explanation =
+                candidate.explanation :+
+                    s"Cut benefit diagnostic: classification=$classification, fragmentOnlyLogGain=$fragmentOnlyGain, apparentCutLogGain=$apparentGain."
         )
     }
 
@@ -969,6 +1447,7 @@ object HardwareAwareCuttingPlanner {
                 a.metrics.classicalMemoryBytes <= b.metrics.classicalMemoryBytes + 1e-12 &&
                 a.metrics.routingSwapCost <= b.metrics.routingSwapCost + 1e-12 &&
                 a.metrics.queueRunMillis <= b.metrics.queueRunMillis &&
+                a.metrics.maxSubcircuitDurationNs <= b.metrics.maxSubcircuitDurationNs &&
                 a.cuts <= b.cuts
 
         val strictlyBetter =
@@ -978,6 +1457,7 @@ object HardwareAwareCuttingPlanner {
                 a.metrics.classicalMemoryBytes < b.metrics.classicalMemoryBytes - 1e-12 ||
                 a.metrics.routingSwapCost < b.metrics.routingSwapCost - 1e-12 ||
                 a.metrics.queueRunMillis < b.metrics.queueRunMillis ||
+                a.metrics.maxSubcircuitDurationNs < b.metrics.maxSubcircuitDurationNs ||
                 a.cuts < b.cuts
 
         betterOrEqual && strictlyBetter
@@ -1067,6 +1547,71 @@ object HardwareAwareCuttingPlanner {
                 }.sum
         }
 
+    private def baselineCoherentDurationNs(
+        circuit: Circuit,
+        deviceModels: List[DeviceModel]
+    ): Long =
+        deviceModels
+            .filter(_.device.qubits >= circuit.qubits)
+            .flatMap(_.calibration.map(coherentDurationNs(circuit, _)))
+            .filter(_ > 0L)
+            .minOption
+            .getOrElse(0L)
+
+    private def coherentDurationNs(
+        circuit: Circuit,
+        calibration: CanonicalCalibration
+    ): Long = {
+        val scheduledNs =
+            FidelityEstimator
+                .scheduleEndTimesSec(circuit.remainingGates, calibration)
+                .values
+                .map(sec => math.ceil(sec * 1e9).toLong)
+                .maxOption
+                .getOrElse(0L)
+
+        if (scheduledNs > 0L) scheduledNs else gateDurationSumNs(circuit, calibration)
+    }
+
+    private def gateDurationSumNs(
+        circuit: Circuit,
+        calibration: CanonicalCalibration
+    ): Long =
+        circuit.remainingGates.foldLeft(0L) { (acc, gate) =>
+            acc + gateDurationNs(gate, calibration)
+        }
+
+    private def gateDurationNs(
+        gate: Gate,
+        calibration: CanonicalCalibration
+    ): Long =
+        calibration.durationNsFor(gate).max(0L)
+
+    private def coherenceLimitNs(
+        circuit: Circuit,
+        calibration: CanonicalCalibration
+    ): Option[Long] = {
+        val logicalQubits = 0 until circuit.qubits
+        val limitsSeconds =
+            logicalQubits.toList.flatMap { q =>
+                List(calibration.t1For(q), calibration.t2For(q)).flatten.filter(_ > 0.0)
+            }
+
+        limitsSeconds.minOption.map(sec => math.max(1L, (sec * 1e9).toLong))
+    }
+
+    private def liveQubitsAtBoundary(
+        circuit: Circuit,
+        boundary: Int
+    ): List[Int] = {
+        val before =
+            circuit.remainingGates.take(boundary).flatMap(gateQubits).distinct.toSet
+        val after =
+            circuit.remainingGates.drop(boundary).flatMap(gateQubits).distinct.toSet
+
+        (before intersect after).toList.sorted
+    }
+
     private def estimatedRunMillis(
         circuit: Circuit,
         calibration: CanonicalCalibration,
@@ -1121,7 +1666,8 @@ object HardwareAwareCuttingPlanner {
     ): List[String] =
         List(
             s"Generated $name plan with ${built.cutLocations.size} cut(s) and ${built.subcircuits.size} subcircuit(s).",
-            s"Estimated sampling overhead is ${metrics.samplingOverhead}; estimated fidelity is ${metrics.estimatedFidelity}."
+            s"Estimated sampling overhead is ${metrics.samplingOverhead}; estimated fidelity is ${metrics.estimatedFidelity}.",
+            s"Estimated max coherent duration is ${metrics.maxSubcircuitDurationNs} ns versus ${metrics.uncutDurationNs} ns uncut."
         ) ++ Option.when(metrics.constraintViolations.nonEmpty)(
             s"Constraint violations: ${metrics.constraintViolations.mkString("; ")}"
         ).toList

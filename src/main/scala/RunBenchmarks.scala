@@ -141,7 +141,7 @@ object RunBenchmarks extends IOApp.Simple {
                             dummies  <- FakeBenchmarkClientsFromRegistry.make(registry)
                             clients   = BenchmarkHttpClients.make(registry, dummies)
                             compiler  = FakeCompiler[IO](compiled = Nil)
-                            cuttingStrategy = CuttingStrategies.hardwareAware[IO](clients, compiler)
+                            cuttingStrategy = dummyBackUpCutter // CuttingStrategies.hardwareAware[IO](clients, compiler) // 
                             scheduler <- Scheduler.make[IO](
                                 dataPersistanceService = persistanceService,
                                 clients = clients,

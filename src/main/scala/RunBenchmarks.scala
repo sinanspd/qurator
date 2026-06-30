@@ -33,8 +33,8 @@ object RunBenchmarks extends IOApp.Simple {
 
     implicit val logger = Slf4jLogger.getLogger[IO]
 
-    def dummyBackUpCutter: (Circuit, List[Device]) => IO[List[Circuit]] =
-        (c: Circuit, _: List[Device]) => {
+    def dummyBackUpCutter: CuttingStrategies.CuttingStrategy[IO] =
+        CuttingStrategies.fromSubcircuits[IO]("dummy-backup") { (c: Circuit, _: List[Device]) =>
 
             val n = math.max(1, c.qubits)
             val leftWidth  = math.max(1, n / 2)
@@ -128,6 +128,7 @@ object RunBenchmarks extends IOApp.Simple {
                 .evalMap { res => 
                     val services = Services.make[IO](res.postgres)
                     val persistanceService = Services.make[IO](res.postgres).dataPersistanceService
+                    val cuttingEffectiveWidthEnabled = true
 
                     def mkEnv(seed: Long) =
                         for {
@@ -149,7 +150,8 @@ object RunBenchmarks extends IOApp.Simple {
                                 targetEstimatedFidelity = 0.9,
                                 additionalOptimizationRuns = (c: Circuit) => List(c),
                                 environment = cfg.environment,
-                                compiler = compiler
+                                compiler = compiler,
+                                cuttingEffectiveWidthEnabled = cuttingEffectiveWidthEnabled
                             )
                         } yield (registry, clients, compiler, scheduler, cuttingStrategy)
 
@@ -160,7 +162,15 @@ object RunBenchmarks extends IOApp.Simple {
                         (reg1, cl1, co1, sch1, cutting1) <- mkEnv(42L) //reinit so that the queue isn't tainted 
                         schedRun <- Logger[IO].info("Running Scheduler Benchmarks") *>
                             sch1.startRuntime.use(_ =>
-                                SchedulerBenchmarkRunner.runSchedulerBenchmark(sch1, specs, reg1, cl1, cutting1, co1)
+                                SchedulerBenchmarkRunner.runSchedulerBenchmark(
+                                    sch1,
+                                    specs,
+                                    reg1,
+                                    cl1,
+                                    cutting1,
+                                    co1,
+                                    cuttingEffectiveWidthEnabled = cuttingEffectiveWidthEnabled
+                                )
                             )
 
                         (reg2, cl2, co2, _, _) <- mkEnv(42L)

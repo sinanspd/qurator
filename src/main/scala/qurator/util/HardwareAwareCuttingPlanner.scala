@@ -6,6 +6,7 @@ import qurator.domain.calibration._
 import qurator.domain.circuit._
 import qurator.domain.cutting._
 import qurator.domain.device.Device
+import scala.collection.concurrent.TrieMap
 
 object HardwareAwareCuttingPlanner {
 
@@ -19,7 +20,9 @@ object HardwareAwareCuttingPlanner {
         queueLengthMillisFactor: Long = 1000L,
         infeasiblePenalty: Double = 1000.0,
         unroutableSwapPenalty: Double = 100.0,
-        queueScaleMillis: Double = 60.0 * 60.0 * 1000.0
+        queueScaleMillis: Double = 60.0 * 60.0 * 1000.0,
+        smallCircuitNoCutFastPath: Boolean = true,
+        smallCircuitNoCutWidth: Int = 5
     )
 
     private final case class Topology(
@@ -64,6 +67,45 @@ object HardwareAwareCuttingPlanner {
         effectiveWidth: DeviceEffectiveWidth
     )
 
+    private final case class QualityIndex(
+        nodeQuality: Map[Int, Double],
+        edgeQuality: Map[(Int, Int), Double],
+        neighbors: Map[Int, Vector[Int]]
+    ) {
+        def node(q: Int): Double =
+            nodeQuality.getOrElse(q, 0.99)
+
+        def edge(a: Int, b: Int): Double =
+            edgeQuality.getOrElse(edgeKey(a, b), 0.99)
+    }
+
+    private final case class RegionState(
+        region: Set[Int],
+        nodeSum: Double,
+        edgeSum: Double,
+        edgeCount: Int
+    )
+
+    private final case class QualityIndexCacheKey(
+        platform: String,
+        platformId: String,
+        calibrationSnapshotId: String
+    )
+
+    private final case class EffectiveWidthCacheKey(
+        platform: String,
+        platformId: String,
+        calibrationSnapshotId: String,
+        threshold: Double,
+        maxUsefulWidth: Int
+    )
+
+    private val qualityIndexCache: TrieMap[QualityIndexCacheKey, QualityIndex] =
+        TrieMap.empty
+
+    private val effectiveWidthCache: TrieMap[EffectiveWidthCacheKey, DeviceEffectiveWidth] =
+        TrieMap.empty
+
     private final case class InteractionEdge(
         a: Int,
         b: Int,
@@ -94,9 +136,11 @@ object HardwareAwareCuttingPlanner {
     ): F[CuttingDecision] =
         if (request.devices.isEmpty) {
             noCutDecision(request, "no-device-candidate").pure[F]
+        } else if (smallCircuitNoCutFastPathApplies(request, config)) {
+            noCutDecision(request, "no-cut-small-circuit-fast-path").pure[F]
         } else {
             request.devices
-                .traverse(loadDeviceModel(_, fetchCalibration, config))
+                .traverse(loadDeviceModel(_, fetchCalibration, request.effectiveWidthEnabled, request.circuit.qubits, config))
                 .flatMap { deviceModels =>
                     val partitions = candidatePartitions(request.circuit, deviceModels, config)
 
@@ -191,6 +235,8 @@ object HardwareAwareCuttingPlanner {
     private def loadDeviceModel[F[_]: MonadThrow](
         device: Device,
         fetchCalibration: Device => F[DeviceCalibration],
+        effectiveWidthEnabled: Boolean,
+        maxUsefulWidth: Int,
         config: Config
     ): F[DeviceModel] =
         fetchCalibration(device).attempt.map {
@@ -199,7 +245,9 @@ object HardwareAwareCuttingPlanner {
                 val topology = topologyOf(rawCalibration).map { t =>
                     Topology(t.qubits.toVector.distinct.sorted, t.normalizedEdges.map { case (a, b) => edgeKey(a, b) }.toSet)
                 }
-                val effective = inferEffectiveWidth(device, rawCalibration, canonical, topology, config)
+                val effective =
+                    if (effectiveWidthEnabled) inferEffectiveWidth(device, rawCalibration, canonical, topology, maxUsefulWidth, config)
+                    else rawEffectiveWidth(device, canonical, topology)
 
                 DeviceModel(
                     device = device,
@@ -229,71 +277,195 @@ object HardwareAwareCuttingPlanner {
         rawCalibration: DeviceCalibration,
         calibration: CanonicalCalibration,
         topology: Option[Topology],
+        maxUsefulWidth: Int,
         config: Config
     ): DeviceEffectiveWidth =
         topology match {
             case None =>
+                val widthCap = math.max(1, math.min(maxUsefulWidth, device.qubits))
                 DeviceEffectiveWidth(
                     device = device,
                     rawWidth = device.qubits,
-                    effectiveWidth = device.qubits,
+                    effectiveWidth = widthCap,
                     regionQuality = averageDeviceQuality(calibration),
-                    physicalRegion = (0 until device.qubits).toList
+                    physicalRegion = (0 until widthCap).toList
                 )
 
             case Some(t) if t.edges.isEmpty =>
-                DeviceEffectiveWidth(
-                    device = device,
-                    rawWidth = device.qubits,
-                    effectiveWidth = t.qubits.size.max(device.qubits),
-                    regionQuality = averageDeviceQuality(calibration),
-                    physicalRegion = (if (t.qubits.nonEmpty) t.qubits.toList else (0 until device.qubits).toList)
-                )
-
-            case Some(t) =>
-                val edgeQualityOverrides = rawEdgeQualities(rawCalibration)
-                val best = t.qubits.map(seed => greedyEffectiveRegion(seed, t, calibration, edgeQualityOverrides, config)).maxByOption {
-                    case (region, quality) => (region.size, quality)
-                }
-
-                val (region, quality) =
-                    best.getOrElse(Vector.empty[Int] -> 0.0)
-
+                val widthCap = math.max(1, math.min(maxUsefulWidth, t.qubits.size.max(1)))
+                val region = if (t.qubits.nonEmpty) t.qubits.take(widthCap).toList else (0 until widthCap).toList
                 DeviceEffectiveWidth(
                     device = device,
                     rawWidth = device.qubits,
                     effectiveWidth = region.size.max(1),
-                    regionQuality = quality,
-                    physicalRegion = region.toList.sorted
+                    regionQuality = averageDeviceQuality(calibration),
+                    physicalRegion = region
+                )
+
+            case Some(t) =>
+                val widthCap = math.max(1, math.min(maxUsefulWidth, t.qubits.size))
+                val snapshotId = calibrationSnapshotId(rawCalibration)
+                val cacheKey =
+                    EffectiveWidthCacheKey(
+                        platform = device.platform,
+                        platformId = device.platformId,
+                        calibrationSnapshotId = snapshotId,
+                        threshold = config.effectiveWidthFidelityThreshold,
+                        maxUsefulWidth = widthCap
+                    )
+
+                effectiveWidthCache.getOrElseUpdate(
+                    cacheKey, {
+                        val qualityIndex = deviceQualityIndex(device, rawCalibration, calibration, t, snapshotId)
+                        var bestRegion = Vector.empty[Int]
+                        var bestQuality = 0.0
+
+                        val seeds =
+                            t.qubits.sortBy(q => -qubitQuality(q, calibration))
+
+                        val iterator = seeds.iterator
+
+                        while (iterator.hasNext && bestRegion.size < widthCap) {
+                            val seed = iterator.next()
+
+                            val (region, quality) =
+                                greedyEffectiveRegionBounded(seed, qualityIndex, widthCap, config)
+
+                            val better =
+                                region.size > bestRegion.size ||
+                                    (region.size == bestRegion.size && quality > bestQuality)
+
+                            if (better) {
+                                bestRegion = region
+                                bestQuality = quality
+                            }
+                        }
+
+                        DeviceEffectiveWidth(
+                            device = device,
+                            rawWidth = device.qubits,
+                            effectiveWidth = bestRegion.size.max(1),
+                            regionQuality = bestQuality,
+                            physicalRegion = bestRegion.toList.sorted
+                        )
+                    }
                 )
         }
 
-    private def greedyEffectiveRegion(
-        seed: Int,
-        topology: Topology,
+    private def rawEffectiveWidth(
+        device: Device,
         calibration: CanonicalCalibration,
-        edgeQualityOverrides: Map[(Int, Int), Double],
+        topology: Option[Topology]
+    ): DeviceEffectiveWidth = {
+        val physicalRegion =
+            topology match {
+                case Some(t) if t.qubits.nonEmpty => t.qubits.take(device.qubits).toList
+                case _                            => (0 until device.qubits).toList
+            }
+
+        DeviceEffectiveWidth(
+            device = device,
+            rawWidth = device.qubits,
+            effectiveWidth = device.qubits,
+            regionQuality = averageDeviceQuality(calibration),
+            physicalRegion = physicalRegion
+        )
+    }
+
+    private def deviceQualityIndex(
+        device: Device,
+        rawCalibration: DeviceCalibration,
+        calibration: CanonicalCalibration,
+        topology: Topology,
+        calibrationSnapshotId: String
+    ): QualityIndex = {
+        val cacheKey =
+            QualityIndexCacheKey(
+                platform = device.platform,
+                platformId = device.platformId,
+                calibrationSnapshotId = calibrationSnapshotId
+            )
+
+        qualityIndexCache.getOrElseUpdate(
+            cacheKey, {
+                val edgeQualityOverrides = rawEdgeQualities(rawCalibration)
+                QualityIndex(
+                    nodeQuality = topology.qubits.map(q => q -> qubitQuality(q, calibration)).toMap,
+                    edgeQuality = topology.edges.map { case (a, b) =>
+                        edgeKey(a, b) -> twoQubitQuality(a, b, calibration, edgeQualityOverrides)
+                    }.toMap,
+                    neighbors = topology.neighbors
+                )
+            }
+        )
+    }
+
+    private def addToRegion(
+        state: RegionState,
+        q: Int,
+        index: QualityIndex
+    ): RegionState = {
+        val incidentInside =
+            index.neighbors.getOrElse(q, Vector.empty).filter(state.region.contains)
+
+        RegionState(
+            region = state.region + q,
+            nodeSum = state.nodeSum + index.node(q),
+            edgeSum = state.edgeSum + incidentInside.map(n => index.edge(q, n)).sum,
+            edgeCount = state.edgeCount + incidentInside.size
+        )
+    }
+
+    private def regionQuality(state: RegionState): Double = {
+        if (state.region.isEmpty) 0.0
+        else {
+            val nodeAvg = state.nodeSum / state.region.size.toDouble
+
+            val edgeAvg =
+                if (state.region.size <= 1) nodeAvg
+                else if (state.edgeCount == 0) 0.0
+                else state.edgeSum / state.edgeCount.toDouble
+
+            clamp01(0.45 * nodeAvg + 0.55 * edgeAvg)
+        }
+    }
+
+    private def greedyEffectiveRegionBounded(
+        seed: Int,
+        index: QualityIndex,
+        maxRegionSize: Int,
         config: Config
     ): (Vector[Int], Double) = {
-        var region = Set(seed)
-        var quality = regionQuality(region, topology, calibration, edgeQualityOverrides)
+        var state =
+            RegionState(
+                region = Set(seed),
+                nodeSum = index.node(seed),
+                edgeSum = 0.0,
+                edgeCount = 0
+            )
+
+        var quality = regionQuality(state)
         var keepGoing = true
 
-        while (keepGoing) {
+        while (keepGoing && state.region.size < maxRegionSize) {
             val boundary =
-                region.toVector
-                    .flatMap(q => topology.neighbors.getOrElse(q, Vector.empty))
-                    .filterNot(region.contains)
+                state.region.toVector
+                    .flatMap(q => index.neighbors.getOrElse(q, Vector.empty))
+                    .filterNot(state.region.contains)
                     .distinct
 
-            val best = boundary.map { q =>
-                val next = region + q
-                (q, regionQuality(next, topology, calibration, edgeQualityOverrides))
-            }.sortBy { case (q, qlty) => (qlty, -q) }.lastOption
+            val best =
+                boundary
+                    .map { q =>
+                        val next = addToRegion(state, q, index)
+                        (q, next, regionQuality(next))
+                    }
+                    .sortBy { case (q, _, qlty) => (qlty, -q) }
+                    .lastOption
 
             best match {
-                case Some((q, qlty)) if qlty >= config.effectiveWidthFidelityThreshold =>
-                    region = region + q
+                case Some((_, next, qlty)) if qlty >= config.effectiveWidthFidelityThreshold =>
+                    state = next
                     quality = qlty
 
                 case _ =>
@@ -301,12 +473,7 @@ object HardwareAwareCuttingPlanner {
             }
         }
 
-        if (quality >= config.effectiveWidthFidelityThreshold) {
-            (region.toVector.sorted, quality)
-        } else {
-            val singleQuality = regionQuality(Set(seed), topology, calibration, edgeQualityOverrides)
-            (Vector(seed), singleQuality)
-        }
+        state.region.toVector.sorted -> quality
     }
 
     private def rawEdgeQualities(rawCalibration: DeviceCalibration): Map[(Int, Int), Double] =
@@ -327,6 +494,16 @@ object HardwareAwareCuttingPlanner {
             fidelity.map(f => edgeKey(edge) -> f)
         }
 
+    private def calibrationSnapshotId(rawCalibration: DeviceCalibration): String =
+        rawCalibration match {
+            case a: IBMCalibration     => a.calibrationId.orElse(a.updatedAt).getOrElse(s"hash:${a.##}")
+            case a: AQTCalibration     => a.updatedAt.getOrElse(s"hash:${a.##}")
+            case a: IonQCalibration    => a.updatedAt.getOrElse(s"hash:${a.##}")
+            case a: IQMCalibration     => a.updatedAt.getOrElse(s"hash:${a.##}")
+            case a: RigettiCalibration => a.updatedAt.getOrElse(s"hash:${a.##}")
+            case a                     => s"hash:${a.##}"
+        }
+
     private def probabilityLike(value: Double): Double =
         if (value > 1.0 && value <= 100.0) value / 100.0 else value
 
@@ -335,25 +512,6 @@ object HardwareAwareCuttingPlanner {
         val f2 = calibration.eps2qAvg.map(e => clamp01(1.0 - e)).getOrElse(0.99)
         val ro = calibration.readoutFidelityAvg.map(clamp01).getOrElse(0.99)
         (f1 + f2 + ro) / 3.0
-    }
-
-    private def regionQuality(
-        region: Set[Int],
-        topology: Topology,
-        calibration: CanonicalCalibration,
-        edgeQualityOverrides: Map[(Int, Int), Double]
-    ): Double = {
-        val nodeQuality =
-            if (region.isEmpty) 0.0
-            else region.toVector.map(q => qubitQuality(q, calibration)).sum / region.size.toDouble
-
-        val internalEdges = topology.edges.filter { case (a, b) => region.contains(a) && region.contains(b) }.toVector
-        val edgeQuality =
-            if (region.size <= 1) nodeQuality
-            else if (internalEdges.isEmpty) 0.0
-            else internalEdges.map { case (a, b) => twoQubitQuality(a, b, calibration, edgeQualityOverrides) }.sum / internalEdges.size.toDouble
-
-        clamp01(0.45 * nodeQuality + 0.55 * edgeQuality)
     }
 
     private def qubitQuality(q: Int, calibration: CanonicalCalibration): Double = {
@@ -393,14 +551,25 @@ object HardwareAwareCuttingPlanner {
         config: Config
     ): List[PartitionCandidate] = {
         val noCut = PartitionCandidate("no-cut", List((0 until circuit.qubits).toList))
-        val maxEffectiveWidth = deviceModels.map(_.effectiveWidth.effectiveWidth).maxOption.getOrElse(circuit.qubits).max(1)
-        val minEffectiveWidth = deviceModels.map(_.effectiveWidth.effectiveWidth).filter(_ > 0).minOption.getOrElse(maxEffectiveWidth)
+        val usefulMaxEffectiveWidth =
+            deviceModels
+                .map(_.effectiveWidth.effectiveWidth)
+                .maxOption
+                .getOrElse(circuit.qubits)
+                .min(circuit.qubits)
+                .max(1)
+        val usefulMinEffectiveWidth =
+            deviceModels
+                .map(_.effectiveWidth.effectiveWidth.min(circuit.qubits))
+                .filter(_ > 0)
+                .minOption
+                .getOrElse(usefulMaxEffectiveWidth)
         val baseWidths =
             List(
-                maxEffectiveWidth,
-                math.ceil(maxEffectiveWidth.toDouble * 0.75).toInt,
-                math.ceil(maxEffectiveWidth.toDouble * 0.50).toInt,
-                minEffectiveWidth
+                usefulMaxEffectiveWidth,
+                math.ceil(usefulMaxEffectiveWidth.toDouble * 0.75).toInt,
+                math.ceil(usefulMaxEffectiveWidth.toDouble * 0.50).toInt,
+                usefulMinEffectiveWidth
             )
                 .filter(w => w > 0 && w < circuit.qubits)
                 .distinct
@@ -421,6 +590,27 @@ object HardwareAwareCuttingPlanner {
             }
 
         (noCut :: cutCandidates).distinctBy(_.groups.map(_.sorted))
+    }
+
+    private def smallCircuitNoCutFastPathApplies(
+        request: CuttingRequest,
+        config: Config
+    ): Boolean = {
+        val triviallyFits =
+            request.devices.exists(_.qubits >= request.circuit.qubits)
+
+        val cuttingCannotHelpWidth =
+            request.circuit.qubits <= request.devices.map(_.qubits).maxOption.getOrElse(0)
+
+        val hasNoForcedCutBudget =
+            request.budgets.maxSamplingOverhead.forall(_ >= 1.0)
+
+        config.smallCircuitNoCutFastPath &&
+            request.effectiveWidthEnabled &&
+            request.circuit.qubits <= config.smallCircuitNoCutWidth &&
+            triviallyFits &&
+            cuttingCannotHelpWidth &&
+            hasNoForcedCutBudget
     }
 
     private def greedyPartition(

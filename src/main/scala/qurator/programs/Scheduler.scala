@@ -111,7 +111,8 @@ object Scheduler{
         dashboardConfig: SchedulerDashboardConfig = SchedulerDashboardConfig(),
         environment: AppEnvironment = AppEnvironment.Development,
         compiler: FakeCompiler[F], //abstract this
-        cuttingEnabled: Boolean = false,
+        cuttingEnabled: Boolean = true,
+        cuttingEffectiveWidthEnabled: Boolean = true,
         batchSubmissionsEnabled: Boolean = true
   ): F[Scheduler[F]] =
     for {
@@ -150,6 +151,7 @@ object Scheduler{
         private val productionMode: Boolean = environment.isProduction
         private val submittedJobDataLookback: FiniteDuration = 1.hour
         private val cuttingEnabledFlag: Boolean = cuttingEnabled
+        private val cuttingEffectiveWidthEnabledFlag: Boolean = cuttingEffectiveWidthEnabled
         private val batchSubmissionsEnabledFlag: Boolean = batchSubmissionsEnabled
 
         private def registerDashboardTask(task: Task, pendingReason: String): F[Unit] =
@@ -268,7 +270,8 @@ object Scheduler{
                                     circuit = taskReq.circuit,
                                     devices = devices,
                                     targetEstimatedFidelity = targetEstimatedFidelity,
-                                    shots = Some(taskReq.shots.value.toLong)
+                                    shots = Some(taskReq.shots.value.toLong),
+                                    effectiveWidthEnabled = cuttingEffectiveWidthEnabledFlag
                                 )
                             )
                             selectedPlan = decision.selected
@@ -357,7 +360,8 @@ object Scheduler{
                                         circuit = req.circuit,
                                         devices = devices,
                                         targetEstimatedFidelity = targetEstimatedFidelity,
-                                        shots = Some(req.shots.value.toLong)
+                                        shots = Some(req.shots.value.toLong),
+                                        effectiveWidthEnabled = cuttingEffectiveWidthEnabledFlag
                                     )
                                 ).map { decision =>
                                     val cutCircuits = decision.selected.subcircuits

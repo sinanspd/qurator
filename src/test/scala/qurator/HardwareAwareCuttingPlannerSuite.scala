@@ -116,6 +116,65 @@ object HardwareAwareCuttingPlannerSuite extends SimpleIOSuite {
             }
     }
 
+    test("small-circuit no-cut fast path avoids calibration fetch") {
+        val request =
+            CuttingRequest(
+                circuit = Circuit(List(H(0), CX(0, 1), Measure(0)), 5, "small"),
+                devices = List(device),
+                targetEstimatedFidelity = 0.90,
+                shots = Some(1000L)
+            )
+
+        HardwareAwareCuttingPlanner
+            .plan[IO](
+                request = request,
+                fetchCalibration = _ => IO.raiseError(new RuntimeException("calibration should not be fetched")),
+                compileCircuitFor = (_, circuit) => IO.pure(circuit)
+            )
+            .map { decision =>
+                expect.all(
+                    decision.selected.name == "no-cut-small-circuit-fast-path",
+                    decision.selected.subcircuits == List(request.circuit),
+                    decision.selected.deviceWidths.isEmpty
+                )
+            }
+    }
+
+    test("effective width inference is capped at circuit width when fast path is disabled") {
+        val calibration = lineCalibration(width = 8, highQualityRegion = 8)
+        val request =
+            CuttingRequest(
+                circuit = Circuit(
+                    remainingGates = List(H(0), CX(0, 1), CX(1, 2), CX(2, 3), CX(3, 4), Measure(0)),
+                    qubits = 5,
+                    name = "bounded"
+                ),
+                devices = List(device),
+                targetEstimatedFidelity = 0.90,
+                shots = Some(1000L),
+                paretoLimit = 4
+            )
+
+        HardwareAwareCuttingPlanner
+            .plan[IO](
+                request = request,
+                fetchCalibration = _ => IO.pure(calibration),
+                compileCircuitFor = (_, circuit) => IO.pure(circuit),
+                config = HardwareAwareCuttingPlanner.Config(
+                    effectiveWidthFidelityThreshold = 0.98,
+                    smallCircuitNoCutFastPath = false
+                )
+            )
+            .map { decision =>
+                val inferredWidth = decision.candidates.flatMap(_.deviceWidths).head.effectiveWidth
+
+                expect.all(
+                    inferredWidth == request.circuit.qubits,
+                    decision.candidates.exists(_.parameters.maxSubcircuitWidth < request.circuit.qubits)
+                )
+            }
+    }
+
     test("legacy subcircuit splitters can be adapted to the plan interface") {
         val strategy =
             CuttingStrategies.fromSubcircuits[IO]("manual") { (circuit, _) =>

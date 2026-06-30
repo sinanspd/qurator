@@ -755,6 +755,7 @@ object SchedulerBenchmarkRunner {
         compiler: FakeCompiler[IO],
         targetEstimatedFidelity: Double,
         cuttingStrategy: CuttingStrategy[IO],
+        cuttingEffectiveWidthEnabled: Boolean,
         additionalOptimizationRuns: Circuit => List[Circuit]
     ): IO[List[QuantumTaskSpec]] =
         for {
@@ -774,7 +775,8 @@ object SchedulerBenchmarkRunner {
                             circuit = spec.circuit,
                             devices = devices,
                             targetEstimatedFidelity = targetEstimatedFidelity,
-                            shots = Some(spec.shots.value.toLong)
+                            shots = Some(spec.shots.value.toLong),
+                            effectiveWidthEnabled = cuttingEffectiveWidthEnabled
                         )
                     ).map { decision =>
                         val cut = decision.selected.subcircuits
@@ -797,6 +799,7 @@ object SchedulerBenchmarkRunner {
         compiler: FakeCompiler[IO],
         targetEstimatedFidelity: Double,
         cuttingStrategy: CuttingStrategy[IO],
+        cuttingEffectiveWidthEnabled: Boolean,
         additionalOptimizationRuns: Circuit => List[Circuit],
         onQuantumComplete: QuantumResult => IO[Unit]
     ): IO[List[(TaskId, QuantumTaskSpec)]] =
@@ -818,6 +821,7 @@ object SchedulerBenchmarkRunner {
                 compiler,
                 targetEstimatedFidelity,
                 cuttingStrategy,
+                cuttingEffectiveWidthEnabled,
                 additionalOptimizationRuns
             )
 
@@ -933,6 +937,7 @@ object SchedulerBenchmarkRunner {
         clients: HttpClients[IO],
         cuttingStrategy: CuttingStrategy[IO],
         compiler: FakeCompiler[IO],
+        cuttingEffectiveWidthEnabled: Boolean = true,
         pollEvery: scala.concurrent.duration.FiniteDuration = scala.concurrent.duration.DurationInt(100).millis
     ): IO[BenchmarkRun] = {
         for{
@@ -946,7 +951,7 @@ object SchedulerBenchmarkRunner {
                     case Some(taskId) => completedQuantumRef.update(_ + (taskId -> result))
                     case None         => IO.raiseError(new RuntimeException(s"Missing taskId in quantum result for job=${result.jobId}"))
                 }
-            quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _, clients, compiler, 0.9, cuttingStrategy, (c: Circuit) => List(c), onQuantumComplete)).map(_.flatten)
+            quantumIdPairs <- specs.traverse(submitOneWorkItem(scheduler, _, clients, compiler, 0.9, cuttingStrategy, cuttingEffectiveWidthEnabled, (c: Circuit) => List(c), onQuantumComplete)).map(_.flatten)
             expectedIds = quantumIdPairs.map(_._1).toSet
             completions <- waitUntilAllCompleted(completedQuantumRef, expectedIds, pollEvery)
             t1 <- monotonicMillis

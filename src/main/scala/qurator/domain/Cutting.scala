@@ -27,7 +27,8 @@ object cutting {
         shots: Option[Long] = None,
         objectiveWeights: CuttingObjectiveWeights = CuttingObjectiveWeights(),
         budgets: CuttingBudgets = CuttingBudgets(),
-        paretoLimit: Int = 5
+        paretoLimit: Int = 5,
+        effectiveWidthEnabled: Boolean = true
     )
 
     final case class CuttingFrameworkParameters(

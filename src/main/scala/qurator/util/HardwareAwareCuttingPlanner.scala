@@ -30,7 +30,11 @@ object HardwareAwareCuttingPlanner {
         maxTemporalFragments: Int = 4,
         maxTemporalCutQubits: Int = 5,
         maxTemporalBoundaryCandidates: Int = 8,
-        minTemporalBoundaryScore: Double = Double.NegativeInfinity
+        minTemporalBoundaryScore: Double = Double.NegativeInfinity,
+        surgicalGateCutsEnabled: Boolean = true,
+        maxSurgicalGateCutCandidates: Int = 8,
+        maxSurgicalGateCuts: Int = 2,
+        surgicalGateCutRequiresComponentSplit: Boolean = false
     )
 
     private final case class Topology(
@@ -131,6 +135,11 @@ object HardwareAwareCuttingPlanner {
         cutQubits: List[Int]
     )
 
+    private final case class SurgicalGateCutCandidate(
+        name: String,
+        gateIndices: List[Int]
+    )
+
     private final case class ScheduledGate(
         index: Int,
         qubits: Vector[Int],
@@ -173,6 +182,11 @@ object HardwareAwareCuttingPlanner {
                             temporalCandidates(request, deviceModels, config)
                         else Nil
 
+                    val surgicalCuts =
+                        if (modeAllowsSurgical(config.cuttingMode) && config.surgicalGateCutsEnabled)
+                            surgicalGateCutCandidates(request.circuit, deviceModels, config)
+                        else Nil
+
                     val spatialPlans =
                         spatialPartitions
                         .traverse { candidate =>
@@ -187,10 +201,17 @@ object HardwareAwareCuttingPlanner {
                                 buildPlan(request, candidate.name, built, deviceModels, compileCircuitFor, config)
                             }
 
-                    (spatialPlans, temporalPlans)
-                        .mapN { (spatial, temporal) =>
+                    val surgicalPlans =
+                        surgicalCuts
+                            .traverse { candidate =>
+                                val built = buildSurgicalGateCutSubcircuits(request.circuit, candidate, config)
+                                buildPlan(request, candidate.name, built, deviceModels, compileCircuitFor, config)
+                            }
+
+                    (spatialPlans, temporalPlans, surgicalPlans)
+                        .mapN { (spatial, temporal, surgical) =>
                             val candidates =
-                                (spatial ++ temporal)
+                                (spatial ++ temporal ++ surgical)
                                     .distinctBy(p => (p.name, p.cutLocations.map(c => (c.gateIndex, c.gateName, c.qubits))))
 
                             decisionFromCandidates(request, candidates)
@@ -656,6 +677,12 @@ object HardwareAwareCuttingPlanner {
             case CuttingMode.SpatialWidth                       => false
         }
 
+    private def modeAllowsSurgical(mode: CuttingMode): Boolean =
+        mode match {
+            case CuttingMode.SpatialWidth | CuttingMode.Hybrid => true
+            case CuttingMode.TemporalDepth                     => false
+        }
+
     private def shouldTryTemporalCuts(
         circuit: Circuit,
         deviceModels: List[DeviceModel],
@@ -957,6 +984,132 @@ object HardwareAwareCuttingPlanner {
         )
     }
 
+    private def surgicalGateCutCandidates(
+        circuit: Circuit,
+        deviceModels: List[DeviceModel],
+        config: Config
+    ): List[SurgicalGateCutCandidate] = {
+        val maxCuts =
+            math.max(1, config.maxSurgicalGateCuts)
+        val maxCandidates =
+            math.max(1, config.maxSurgicalGateCutCandidates)
+
+        val scored =
+            circuit.remainingGates.zipWithIndex.flatMap { case (gate, idx) =>
+                val qs = gateQubits(gate).distinct
+                Option.when(qs.size >= 2) {
+                    val splitBonus =
+                        if (surgicalCutSplitsComponents(circuit, Set(idx))) 1.0 else 0.0
+                    val score =
+                        surgicalGateRiskScore(circuit, gate, idx, deviceModels, config) + splitBonus
+
+                    (idx, score)
+                }
+            }
+                .filter { case (idx, _) =>
+                    !config.surgicalGateCutRequiresComponentSplit ||
+                        surgicalCutSplitsComponents(circuit, Set(idx))
+                }
+                .sortBy { case (idx, score) => (-score, idx) }
+                .take(maxCandidates)
+
+        val singles =
+            scored.map { case (idx, _) =>
+                SurgicalGateCutCandidate(s"surgical-gate-$idx", List(idx))
+            }
+
+        val cumulative =
+            (2 to math.min(maxCuts, scored.size)).toList.map { k =>
+                val indices = scored.take(k).map(_._1).sorted
+                SurgicalGateCutCandidate(s"surgical-top-$k", indices)
+            }
+
+        (singles ++ cumulative)
+            .filter(_.gateIndices.nonEmpty)
+            .distinctBy(_.gateIndices.sorted)
+            .take(maxCandidates)
+    }
+
+    private def surgicalGateRiskScore(
+        circuit: Circuit,
+        gate: Gate,
+        gateIndex: Int,
+        deviceModels: List[DeviceModel],
+        config: Config
+    ): Double = {
+        val n = circuit.remainingGates.size.max(1).toDouble
+        val qs = gateQubits(gate).distinct
+        val depthWeight = 1.0 + gateIndex.toDouble / n
+        val repetitionWeight =
+            qs.combinations(2).map {
+                case Vector(a, b) =>
+                    circuit.remainingGates.count { g =>
+                        val touched = gateQubits(g).distinct
+                        touched.contains(a) && touched.contains(b)
+                    }.toDouble
+                case _ => 1.0
+            }.maxOption.getOrElse(1.0)
+        val calibrationRisk =
+            deviceModels.flatMap(_.calibration).map { calibration =>
+                gateErrorEstimate(gate, calibration)
+            }.maxOption.getOrElse(0.01)
+        val routingRisk =
+            deviceModels.flatMap(model => logicalRoutingPenalty(qs, model, config)).minOption.getOrElse(0.0)
+        val overheadLog =
+            math.log(math.max(1.0, overheadForGate(gate, config)))
+
+        depthWeight * (50.0 * calibrationRisk + 0.75 * routingRisk + 0.10 * repetitionWeight) / math.max(1.0, overheadLog)
+    }
+
+    private def gateErrorEstimate(
+        gate: Gate,
+        calibration: CanonicalCalibration
+    ): Double = {
+        val eps = calibration.epsFor(gate)
+        if (eps > 0.0) eps
+        else {
+            val arity = gateQubits(gate).distinct.size
+            if (arity <= 1) calibration.eps1qAvg.getOrElse(0.001)
+            else calibration.eps2qAvg.getOrElse(0.01)
+        }
+    }
+
+    private def logicalRoutingPenalty(
+        logicalQubits: Vector[Int],
+        model: DeviceModel,
+        config: Config
+    ): Option[Double] =
+        model.topology.map { topology =>
+            val physicalRegion =
+                if (model.effectiveWidth.physicalRegion.size >= logicalQubits.maxOption.getOrElse(0) + 1)
+                    model.effectiveWidth.physicalRegion
+                else
+                    (0 until model.device.qubits).toList
+            val logicalToPhysical =
+                physicalRegion.zipWithIndex.map { case (p, l) => l -> p }.toMap
+
+            logicalQubits.combinations(2).flatMap {
+                case Vector(a, b) =>
+                    for {
+                        pa <- logicalToPhysical.get(a)
+                        pb <- logicalToPhysical.get(b)
+                    } yield {
+                        if (topology.hasEdge(pa, pb)) 0.0
+                        else topology.shortestPathLength(pa, pb)
+                            .map(d => math.max(0, d - 1).toDouble)
+                            .getOrElse(config.unroutableSwapPenalty)
+                    }
+                case _ => None
+            }.sum
+        }
+
+    private def surgicalCutSplitsComponents(
+        circuit: Circuit,
+        cutGateIndices: Set[Int]
+    ): Boolean =
+        connectedComponentsAfterRemoving(circuit, Set.empty).size <
+            connectedComponentsAfterRemoving(circuit, cutGateIndices).size
+
     private def smallCircuitNoCutFastPathApplies(
         request: CuttingRequest,
         config: Config
@@ -1100,6 +1253,106 @@ object HardwareAwareCuttingPlanner {
             }
 
         BuiltSubcircuits(subcircuits, groups, cutLocations)
+    }
+
+    private def buildSurgicalGateCutSubcircuits(
+        circuit: Circuit,
+        candidate: SurgicalGateCutCandidate,
+        config: Config
+    ): BuiltSubcircuits = {
+        val cutGateIndices =
+            candidate.gateIndices.toSet
+
+        val groups =
+            connectedComponentsAfterRemoving(circuit, cutGateIndices)
+
+        val cutLocations =
+            circuit.remainingGates.zipWithIndex.flatMap { case (gate, idx) =>
+                Option.when(cutGateIndices.contains(idx)) {
+                    CutLocation(
+                        gateIndex = idx,
+                        gateName = gateName(gate),
+                        qubits = gateQubits(gate).toList.sorted,
+                        overhead = overheadForGate(gate, config)
+                    )
+                }
+            }
+
+        val subcircuits =
+            groups.zipWithIndex.map { case (group, groupIdx) =>
+                val remap = group.zipWithIndex.toMap
+                val gates =
+                    circuit.remainingGates.zipWithIndex.flatMap { case (gate, idx) =>
+                        val qs = gateQubits(gate)
+                        if (cutGateIndices.contains(idx)) None
+                        else if (qs.isEmpty && groupIdx == 0) remapGate(gate, remap)
+                        else if (qs.nonEmpty && qs.forall(remap.contains)) remapGate(gate, remap)
+                        else None
+                    }
+
+                Circuit(
+                    remainingGates = gates,
+                    qubits = group.size,
+                    name = subcircuitName(circuit, candidate.name, groupIdx)
+                )
+            }
+
+        BuiltSubcircuits(subcircuits, groups, cutLocations)
+    }
+
+    private def connectedComponentsAfterRemoving(
+        circuit: Circuit,
+        cutGateIndices: Set[Int]
+    ): List[List[Int]] = {
+        val allQubits = (0 until circuit.qubits).toVector
+        val neighbors =
+            circuit.remainingGates.zipWithIndex.foldLeft(allQubits.map(_ -> Set.empty[Int]).toMap) {
+                case (acc, (gate, idx)) if !cutGateIndices.contains(idx) =>
+                    val qs = gateQubits(gate).distinct
+                    if (qs.size < 2) acc
+                    else {
+                        qs.combinations(2).foldLeft(acc) {
+                            case (inner, Vector(a, b)) =>
+                                inner
+                                    .updated(a, inner.getOrElse(a, Set.empty) + b)
+                                    .updated(b, inner.getOrElse(b, Set.empty) + a)
+                            case (inner, _) =>
+                                inner
+                        }
+                    }
+
+                case (acc, _) =>
+                    acc
+            }
+
+        var unseen = allQubits.toSet
+        var components = Vector.empty[List[Int]]
+
+        while (unseen.nonEmpty) {
+            val seed = unseen.min
+            var queue = Vector(seed)
+            var component = Set.empty[Int]
+
+            while (queue.nonEmpty) {
+                val current = queue.head
+                queue = queue.tail
+
+                if (!component.contains(current)) {
+                    component += current
+                    val next =
+                        neighbors.getOrElse(current, Set.empty)
+                            .filter(q => unseen.contains(q) && !component.contains(q))
+                            .toVector
+                            .sorted
+                    queue = queue ++ next
+                }
+            }
+
+            unseen = unseen -- component
+            components = components :+ component.toList.sorted
+        }
+
+        components.toList
     }
 
     private def buildTemporalSubcircuits(

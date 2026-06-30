@@ -275,6 +275,55 @@ object HardwareAwareCuttingPlannerSuite extends SimpleIOSuite {
             }
     }
 
+    test("planner includes surgical gate-cut candidates without forcing a full partition boundary") {
+        val calibration = lineCalibration(width = 8, highQualityRegion = 8)
+        val request =
+            CuttingRequest(
+                circuit = Circuit(
+                    remainingGates = List(
+                        H(0),
+                        CX(0, 1),
+                        H(2),
+                        CX(1, 2),
+                        Measure(0)
+                    ),
+                    qubits = 3,
+                    name = "surgical"
+                ),
+                devices = List(device),
+                targetEstimatedFidelity = 0.90,
+                shots = Some(1000L),
+                paretoLimit = 8
+            )
+
+        HardwareAwareCuttingPlanner
+            .plan[IO](
+                request = request,
+                fetchCalibration = _ => IO.pure(calibration),
+                compileCircuitFor = (_, circuit) => IO.pure(circuit),
+                config = HardwareAwareCuttingPlanner.Config(
+                    cuttingMode = CuttingMode.SpatialWidth,
+                    effectiveWidthFidelityThreshold = 0.98,
+                    smallCircuitNoCutFastPath = false,
+                    surgicalGateCutsEnabled = true,
+                    maxSurgicalGateCuts = 1,
+                    maxSurgicalGateCutCandidates = 4
+                )
+            )
+            .map { decision =>
+                val surgical = decision.candidates.find(_.name.startsWith("surgical-gate-"))
+
+                expect.all(
+                    surgical.exists(_.cutLocations.size == 1),
+                    surgical.exists(_.cutLocations.head.gateName == "CX"),
+                    surgical.exists(p => p.metrics.samplingOverhead >= 9.0 && p.metrics.samplingOverhead < 9.1),
+                    surgical.exists(_.subcircuits.map(_.remainingGates.size).sum < request.circuit.remainingGates.size),
+                    surgical.flatMap(_.metrics.apparentCutLogGain).isDefined,
+                    surgical.flatMap(_.metrics.fragmentOnlyLogGain).isDefined
+                )
+            }
+    }
+
     test("legacy subcircuit splitters can be adapted to the plan interface") {
         val strategy =
             CuttingStrategies.fromSubcircuits[IO]("manual") { (circuit, _) =>

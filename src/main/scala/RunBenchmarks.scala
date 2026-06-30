@@ -142,7 +142,7 @@ object RunBenchmarks extends IOApp.Simple {
                             )
                             dummies  <- FakeBenchmarkClientsFromRegistry.make(registry)
                             clients   = BenchmarkHttpClients.make(registry, dummies)
-                            compiler  = FakeCompiler[IO](compiled = Nil)
+                            compiler  = FakeCompiler.topologyAware[IO](registry)
                             cuttingStrategy = CuttingStrategies.hardwareAware[IO](
                                 clients,
                                 compiler,

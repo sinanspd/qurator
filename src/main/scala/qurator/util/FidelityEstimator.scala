@@ -393,31 +393,52 @@ object FidelityEstimator{
             finalState.availableByQubitNs.view.mapValues(ns => ns.toDouble / 1e9).toMap
         }
 
+        private def touchedQubits(op: Gate): Vector[Int] =
+            op match {
+                case X(q) => Vector(q)
+                case Y(q) => Vector(q)
+                case Z(q) => Vector(q)
+                case H(q) => Vector(q)
+                case S(q) => Vector(q)
+                case SDG(q) => Vector(q)
+                case T(q) => Vector(q)
+                case TDG(q) => Vector(q)
+                case SX(q) => Vector(q)
+                case SXDG(q) => Vector(q)
+                case Id(q) => Vector(q)
+                case Phase(_, q) => Vector(q)
+                case RX(_, q) => Vector(q)
+                case RY(_, q) => Vector(q)
+                case RZ(_, q) => Vector(q)
+                case U(_, _, _, q) => Vector(q)
+                case U2(_, _, q) => Vector(q)
+                case U3(_, _, _, q) => Vector(q)
+                case CX(a, b) => Vector(a, b)
+                case CY(a, b) => Vector(a, b)
+                case CZ(a, b) => Vector(a, b)
+                case CH(a, b) => Vector(a, b)
+                case Swap(a, b) => Vector(a, b)
+                case CP(a, _, b) => Vector(a, b)
+                case CRX(a, _, b) => Vector(a, b)
+                case CRY(a, _, b) => Vector(a, b)
+                case CRZ(a, _, b) => Vector(a, b)
+                case CU(a, _, _, _, b) => Vector(a, b)
+                case CCX(a, b, c) => Vector(a, b, c)
+                case Measure(q) => Vector(q)
+                case Reset(q) => Vector(q)
+                case GPhase(_) => Vector.empty
+                case NamedGate(_, _, qubits) => qubits
+            }
 
         def score(compiled: Circuit, cal: CanonicalCalibration): FidelityEstimate = {
             val endTimesSec = scheduleEndTimesSec(compiled.remainingGates, cal)
 
-            val mqubit = compiled.remainingGates.map{
-                case a @ (X(_) | H(_) | Measure(_) | RX(_, _) | RZ(_ ,_) | SX(_) | RY(_, _)) =>
-                    val q = a match { // this is dumb but oh well
-                        case X(q)       => q
-                        case H(q)       => q
-                        case SX(q) => q
-                        case Measure(q) => q
-                        case RX(_, q) => q
-                        case RZ(_, q) => q
-                        case RY(_, q) => q
-                    }
-                    q
-                case op @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRZ(_, _, _)) =>
-                    val (a, b) = op match{
-                        case CX(a, b) => (a, b)
-                        case CZ(a, b) => (a, b)
-                        case Swap(a , b) => (a, b)
-                        case CRZ(a, _, b) => (a, b)
-                    }
-                    Math.max(a, b)
-            }.max
+            val touchedQubitCount =
+                compiled.remainingGates.iterator.flatMap(touchedQubits).toSet.size
+
+            val widthForCorrection =
+                if (touchedQubitCount > 0) touchedQubitCount
+                else compiled.qubits
 
             val logPOps = compiled.remainingGates.foldLeft(0.0) { (acc, op) =>
                 op match {
@@ -470,8 +491,8 @@ object FidelityEstimator{
             )
 
             val fcoeff =
-                if (mqubit > 20) 0.3
-                else if (mqubit > 10) 0.7
+                if (widthForCorrection > 20) 0.3
+                else if (widthForCorrection > 10) 0.7
                 else 1.0
 
             val adjusted = est.copy(

@@ -33,22 +33,22 @@ sealed abstract class HttpApi[F[_]: Async] private (
     )
 
     private val middleware: HttpRoutes[F] => HttpRoutes[F] = {
-        { http: HttpRoutes[F] =>
+        { (http: HttpRoutes[F]) =>
         AutoSlash(http)
-        } andThen { http: HttpRoutes[F] =>
+        } andThen { (http: HttpRoutes[F]) =>
         CORS.policy
             .withAllowOriginHost(Set(Origin.Host(Uri.Scheme.http, Uri.RegName("localhost"), Some(4200))))
             .withAllowCredentials(true)
             .apply(routes)
-        } andThen { http: HttpRoutes[F] =>
+        } andThen { (http: HttpRoutes[F]) =>
         Timeout(60.seconds)(http)
         }
     }
 
     private val loggers: HttpApp[F] => HttpApp[F] = {
-        { http: HttpApp[F] =>
+        { (http: HttpApp[F]) =>
         RequestLogger.httpApp(true, true)(http)
-        } andThen { http: HttpApp[F] =>
+        } andThen { (http: HttpApp[F]) =>
         ResponseLogger.httpApp(true, true)(http)
         }
     }

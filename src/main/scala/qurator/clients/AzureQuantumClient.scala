@@ -28,7 +28,8 @@ import cats.effect.Sync
 import org.typelevel.log4cats.Logger
 import qurator.domain.ID
 import qurator.domain.DeviceQueueInformation.DeviceQueueInformationId
-import io.circe.syntax._ 
+import io.circe.syntax._
+import io.circe.generic.auto.*
 import qurator.domain.Azure._
 import qurator.domain.calibration._
 

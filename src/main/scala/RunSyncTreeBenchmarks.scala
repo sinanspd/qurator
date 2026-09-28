@@ -1,24 +1,23 @@
 
-import cats.effect._
+import cats.effect.*
 import cats.effect.std.Supervisor
-import eu.timepit.refined.auto._
-import org.typelevel.log4cats.Logger
+import eu.timepit.refined.auto.*
+import org.typelevel.log4cats.{Logger, SelfAwareStructuredLogger}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import qurator.Config
 import qurator.AppResources
 import qurator.modules.Services
 import qurator.programs.DeviceEstimator
 import qurator.programs.Scheduler
-import qurator.domain.Task._
-import qurator.domain.circuit._
-import qurator.testbed._
+import qurator.domain.Task.*
+import qurator.domain.circuit.*
+import qurator.testbed.*
 import qurator.util.CuttingStrategies
 import scala.util.Random
 
 object RunSyncTreeBenchmarks extends IOApp.Simple {
 
-  implicit val logger = Slf4jLogger.getLogger[IO]
+  implicit val logger: SelfAwareStructuredLogger[IO] = Slf4jLogger.getLogger[IO]
 
   // val syncGroups = List(
   //       SyncBench2.SyncGroupSpec(

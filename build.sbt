@@ -1,36 +1,33 @@
 import sbt._
 
-val scala3Version = "2.13.10"
+val scala3Version = "3.3.8"
 
-val catsV          = "2.7.0"
-val catsEffectV    = "3.3.12"
-val catsRetryV    = "3.1.0"
-val circeV        = "0.14.6"
-val cirisV         = "2.3.2"
-val derevoV       = "0.14.0"
-val fs2V           = "3.7.0"
-val http4sV        = "0.23.10"
-val log4catsV      = "2.3.1"
-val monocleV       = "3.1.0"
-val newtypeV       = "0.4.4"
-val refinedV       = "0.11.0"
-val redis4catsV    = "1.1.1"
-val skunkV         = "0.5.1"
+val catsV          = "2.10.0"
+val catsEffectV    = "3.5.4"
+val catsRetryV     = "3.1.3"
+val catsDerivedV   = "3.5.0"
+val circeV         = "0.14.6"
+val cirisV         = "3.5.0"
+val fs2V           = "3.10.2"
+val http4sV        = "0.23.26"
+val log4catsV      = "2.6.0"
+val monocleV       = "3.2.0"
+val refinedV       = "0.11.1"
+val redis4catsV    = "1.6.0"
+val skunkV         = "0.6.3"
 val squantsV       = "1.8.3"
-val logbackV          = "1.2.11"
-//https://github.com/maginepro/http4s-aws
+val logbackV       = "1.5.6"
 
 def circe(artifact: String): ModuleID  = "io.circe"   %% s"circe-$artifact"  % circeV
 def ciris(artifact: String): ModuleID  = "is.cir"     %% artifact            % cirisV
-def derevo(artifact: String): ModuleID = "tf.tofu"    %% s"derevo-$artifact" % derevoV
 def http4s(artifact: String): ModuleID = "org.http4s" %% s"http4s-$artifact" % http4sV
 
 val cats       = "org.typelevel"    %% "cats-core"   % catsV
 val catsEffect = "org.typelevel"    %% "cats-effect" % catsEffectV
 val catsRetry  = "com.github.cb372" %% "cats-retry"  % catsRetryV
+val catsDerived = "org.typelevel"   %% "kittens"     % catsDerivedV
 val squants    = "org.typelevel"    %% "squants"     % squantsV
 val fs2        = "co.fs2"           %% "fs2-core"    % fs2V
-val newtype  = "io.estatico"   %% "newtype"        % newtypeV
 
 val circeCore    = circe("core")
 val circeGeneric = circe("generic")
@@ -40,10 +37,6 @@ val circeRefined = circe("refined")
 val cirisCore    = ciris("ciris")
 val cirisEnum    = ciris("ciris-enumeratum")
 val cirisRefined = ciris("ciris-refined")
-
-val derevoCore  = derevo("core")
-val derevoCats  = derevo("cats")
-val derevoCirce = derevo("circe-magnolia")
 
 val http4sDsl    = http4s("dsl")
 val http4sServer = http4s("ember-server")
@@ -63,27 +56,11 @@ val skunkCirce = "org.tpolecat" %% "skunk-circe" % skunkV
 
 val logback = "ch.qos.logback" % "logback-classic" % logbackV
 
-val betterMonadicForV = "0.3.1"
-val kindProjectorV    = "0.13.2"
-val organizeImportsV  = "0.6.0"
-val semanticDBV       = "4.4.31"
-
-
-val betterMonadicFor = compilerPlugin(
-  "com.olegpy" %% "better-monadic-for" % betterMonadicForV
-)
-val kindProjector = compilerPlugin(
-  "org.typelevel" % "kind-projector" % kindProjectorV cross CrossVersion.full
-)
-val semanticDB = compilerPlugin(
-  "org.scalameta" % "semanticdb-scalac" % semanticDBV cross CrossVersion.full
-)
-
 ThisBuild / evictionErrorLevel := Level.Warn
 
 ThisBuild / assemblyMergeStrategy in assembly := {
- case PathList("META-INF", _*) => MergeStrategy.discard
- case _                        => MergeStrategy.first
+  case PathList("META-INF", _*) => MergeStrategy.discard
+  case _                        => MergeStrategy.first
 }
 
 lazy val root = project
@@ -91,50 +68,40 @@ lazy val root = project
   .settings(
     assembly / mainClass := Some("qurator.DataPersitance"),
     name := "qure",
-    organization := "com.sinanspd", 
-    scalacOptions ++= List("-Ymacro-annotations", "-Yrangepos", "-Wconf:cat=unused:info"),
-    version := "0.1.20-SNAPSHOT",
-    crossScalaVersions := Seq("2.12.10"),
+    organization := "com.sinanspd",
     scalaVersion := scala3Version,
-    resolvers += Resolver.sonatypeRepo("snapshots"),
+    version := "0.1.20-SNAPSHOT",
+    resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
     libraryDependencies ++= Seq(
-     kindProjector,
-     betterMonadicFor,
-     //semanticDB,
-     "org.typelevel" %% "spire" % "0.17.0",
-     "org.jliszka" %% "probability-monad" % "1.0.4",
-     catsEffect,
-     cats,
-     catsRetry,
-     squants,
-     fs2,
-     circeCore,
-     circeGeneric,
-     circeParser,
-     logback,
-     circeRefined,
-     cirisCore,
-     cirisEnum,
-     cirisRefined,
-     derevoCore,
-     derevoCats,
-     derevoCirce,
-     http4sDsl,
-     http4sServer,
-     newtype,
-     http4sClient,
-     http4sCirce,
-     monocleCore,
-     refinedCore,
-     refinedCats,
-     redis4catsEffects,
-     redis4catsEffects,
-     skunkCore,
-     skunkCirce,
-     "io.circe" %% "circe-generic-extras" % "0.14.3",
-     "com.magine" %% "http4s-aws" % "6.2.1",
-     //"com.sinanspd" %% "qure" % "0.1.20-SNAPSHOT"
-     "org.typelevel" %% "weaver-cats" % "0.11.3" % Test
+      "org.typelevel" %% "spire" % "0.18.0",
+      "org.typelevel" %% "cats-mtl" % "1.7.0",
+      catsEffect,
+      cats,
+      catsRetry,
+      catsDerived,
+      squants,
+      fs2,
+      circeCore,
+      circeGeneric,
+      circeParser,
+      circeRefined,
+      logback,
+      cirisCore,
+      cirisEnum,
+      cirisRefined,
+      http4sDsl,
+      http4sServer,
+      http4sClient,
+      http4sCirce,
+      monocleCore,
+      refinedCore,
+      refinedCats,
+      redis4catsEffects,
+      redis4catsLog4cats,
+      skunkCore,
+      skunkCirce,
+      "org.typelevel" %% "weaver-cats" % "0.13.0" % Test,
+      "org.typelevel" %% "log4cats-noop" % "2.8.0" % Test
     )
   )
 

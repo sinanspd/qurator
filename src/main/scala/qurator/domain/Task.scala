@@ -1,45 +1,63 @@
 package qurator.domain
 
-import ciris._
-
-import qurator.optics.uuid
-import derevo.cats._
-import derevo.circe.magnolia.{ decoder, encoder }
-import derevo.derive
-
+import ciris.*
+import qurator.optics.{IsUUID, uuid}
+import io.circe.generic.auto.*
+import cats.derived.*
+import cats.{Eq, Show}
 import java.util.UUID
 import java.time.LocalDateTime
-import ciris._
-import ciris.refined._
-import com.comcast.ip4s.{ Host, Port }
-import eu.timepit.refined.cats._
+import ciris.*
+import ciris.refined.*
+import com.comcast.ip4s.{Host, Port}
+import eu.timepit.refined.cats.*
 import eu.timepit.refined.types.net.UserPortNumber
 import eu.timepit.refined.types.numeric.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
-import io.estatico.newtype.macros.newtype
-import qurator.domain.circuit._
-import qurator.domain.device._
+import qurator.domain.circuit.*
+import qurator.domain.device.*
 import qurator.domain.IBM.SubmitJobRequestV2
 import qurator.domain.Braket.BraketCreateQuantumTaskRequest
 import qurator.domain.Azure.AzureJobCreateRequest
 
-
 object Task{
 
-    @derive(decoder, encoder, eqv, show, uuid)
-    @newtype
-    case class TaskId(value: UUID) 
+  opaque type TaskId = UUID
 
-    @derive(decoder, encoder, eqv, show, uuid)
-    @newtype
-    case class SyncronizedQuantumTaskId(value: UUID)
+  opaque type SyncronizedQuantumTaskId = UUID
+
+  object TaskId {
+    def apply(value: UUID): TaskId = value
+
+    extension (id: TaskId) {
+      def value: UUID = id
+    }
+
+    given Eq[TaskId] = Eq.fromUniversalEquals
+    given Show[TaskId] = Show.fromToString
+    given IsUUID[TaskId] = IsUUID.opaqueUUID[TaskId]
+  }
+
+  object SyncronizedQuantumTaskId {
+    def apply(value: UUID): SyncronizedQuantumTaskId = value
+
+    extension (id: SyncronizedQuantumTaskId) {
+      def value: UUID = id
+    }
+
+    given Eq[SyncronizedQuantumTaskId] = summon[Eq[UUID]]
+
+    given Show[SyncronizedQuantumTaskId] = summon[Show[UUID]]
+
+    given IsUUID[SyncronizedQuantumTaskId] = IsUUID.opaqueUUID[SyncronizedQuantumTaskId]
+  }
 
     case class TaskQubits(value: Int)
     case class TaskShots(value: Int)
     case class TaskDepth(value: Int)
 
     sealed trait Task{
-        val uuid : TaskId;
+        val uuid : TaskId
     }
     
     case class ClassicalTask(

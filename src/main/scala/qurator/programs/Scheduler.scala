@@ -500,13 +500,13 @@ object Scheduler{
             loop
         }
 
-       private def deviceKey(device: Device): (String, String) =
+        private def deviceKey(device: Device): (String, String) =
             (device.platform, device.platformId)
 
-       private def deviceKeyString(key: (String, String)): String =
+        private def deviceKeyString(key: (String, String)): String =
             s"${key._1}/${key._2}"
 
-       private def observedFleetMeanQueueMillis(
+        private def observedFleetMeanQueueMillis(
             observedQueueByDevice: Map[Device, Option[Long]]
         ): Option[Double] =
             observedQueueByDevice.values.flatten.toList match {
@@ -514,7 +514,7 @@ object Scheduler{
                 case xs  => Some(xs.sum.toDouble / xs.size.toDouble)
             }
 
-       private def scoreQuantumDevices(
+        private def scoreQuantumDevices(
             task: QuantumTask,
             devices: List[Device],
             observedQueueByDevice: Map[Device, Option[Long]],
@@ -545,10 +545,10 @@ object Scheduler{
                 }
             }
 
-       private def bestQuantumDeviceScore(scores: List[QuantumDeviceScore]): QuantumDeviceScore =
+        private def bestQuantumDeviceScore(scores: List[QuantumDeviceScore]): QuantumDeviceScore =
             scores.maxBy(s => (s.assignmentCoefficient, s.logFidelity, -s.queueLength, -s.transpileMillis))
 
-       private def scheduleOneQuantumTask(
+        private def scheduleOneQuantumTask(
             task: QuantumTask,
             blacklistedDevices: Set[(String, String)] = Set.empty
         ): F[Unit] =
@@ -909,7 +909,7 @@ object Scheduler{
         private def startFetchingResults(): F[Unit] =
             Stream
                 .repeatEval(
-                    fetchAllInProgressJobResults.handleErrorWith { e =>
+                    fetchAllInProgressJobResults().handleErrorWith { e =>
                         Logger[F].error(e)("Result fetch loop failed unexpectedly; continuing")
                     }
                 )
@@ -921,7 +921,7 @@ object Scheduler{
             SchedulerDashboard.resource[F](dashboardConfig, dashboardState) *>
             Resource
                 .make {
-                    (Concurrent[F].start(startScheduling), Concurrent[F].start(startFetchingResults)).tupled
+                    (Concurrent[F].start(startScheduling()), Concurrent[F].start(startFetchingResults())).tupled
                 } { case (schedFib, fetchFib) =>
                     schedFib.cancel *> fetchFib.cancel
                 }
@@ -1717,298 +1717,296 @@ object Scheduler{
             submittedTasks.get
     }
 
+  def weightedMajorityDevice(
+                              choices: List[(QuantumTask, Device, Double)]
+                            ): Option[Device] =
+    choices
+      .groupBy { case (_, device, _) => device }
+      .toList
+      .sortBy { case (device, votes) =>
+        val weightedVotes = votes.map { case (task, _, _) => task.qubits.value }.sum
+        val weightedScore = votes.map { case (task, _, score) => task.qubits.value.toDouble * score }.sum
 
-    private[qurator] def weightedMajorityDevice(
-        choices: List[(QuantumTask, Device, Double)]
-    ): Option[Device] =
-        choices
-            .groupBy { case (_, device, _) => device }
-            .toList
-            .sortBy { case (device, votes) =>
-                val weightedVotes = votes.map { case (task, _, _) => task.qubits.value }.sum
-                val weightedScore = votes.map { case (task, _, score) => task.qubits.value.toDouble * score }.sum
+        (weightedVotes, weightedScore, device.qubits, -device.queueLength, device.platform, device.platformId)
+      }
+      .lastOption
+      .map(_._1)
 
-                (weightedVotes, weightedScore, device.qubits, -device.queueLength, device.platform, device.platformId)
+  private[qurator] def allParentResultsAvailable(
+                                                  completedTasks: Set[TaskId],
+                                                  t: Task
+                                                ): Boolean =
+    t match {
+      case ct: ClassicalTask =>
+        ct.parentTasks.forall(pid => completedTasks.contains(pid))
+
+      case qt: QuantumTask =>
+        qt.parentTasks.forall(pid => completedTasks.contains(pid))
+
+      case sgt: SyncronizedQuantumTaskList =>
+        sgt.tasks.forall(child => allParentResultsAvailable(completedTasks, child))
+    }
+
+  //single pass, greedy
+  private[qurator] def bucketByDepth(tasks: List[QuantumTask], depthRelTol: Double): List[List[QuantumTask]] = {
+    final case class Bucket(tasks: List[QuantumTask], meanDepth: Double) {
+      def size: Int = tasks.size
+    }
+
+    def withinMeanBound(mean: Double, d: Int): Boolean = {
+      val md = math.max(mean, 1.0)
+      (math.abs(d.toDouble - mean) / md) <= depthRelTol
+    }
+
+    val sorted = tasks.sortBy(_.depth.value)
+
+    val buckets: List[Bucket] =
+      sorted.foldLeft(List.empty[Bucket]) { (acc, t) =>
+        acc match {
+          case Nil =>
+            Bucket(List(t), t.depth.value.toDouble) :: Nil
+
+          case b :: rest =>
+            val d = t.depth.value
+            if (withinMeanBound(b.meanDepth, d)) {
+              val newTasks = t :: b.tasks
+              val newMean =
+                (b.meanDepth * b.tasks.size.toDouble + d.toDouble) / newTasks.size.toDouble
+              Bucket(newTasks, newMean) :: rest
+            } else {
+              Bucket(List(t), d.toDouble) :: acc
             }
-            .lastOption
-            .map(_._1)
-
-
-    private[qurator] def allParentResultsAvailable(
-        completedTasks: Set[TaskId],
-        t: Task
-    ): Boolean =
-        t match {
-            case ct: ClassicalTask =>
-                ct.parentTasks.forall(pid => completedTasks.contains(pid))
-
-            case qt: QuantumTask =>
-                qt.parentTasks.forall(pid => completedTasks.contains(pid))
-
-            case sgt: SyncronizedQuantumTaskList =>
-                sgt.tasks.forall(child => allParentResultsAvailable(completedTasks, child))
         }
+      }
 
-    
-        //single pass, greedy 
-        private[qurator] def bucketByDepth(tasks: List[QuantumTask], depthRelTol: Double): List[List[QuantumTask]] = { 
-            final case class Bucket(tasks: List[QuantumTask], meanDepth: Double) {
-                def size: Int = tasks.size
-            }
+    buckets.reverse.map(b => b.tasks.reverse)
+  }
 
-            def withinMeanBound (mean: Double, d: Int): Boolean = {
-                val md = math.max(mean, 1.0)
-                (math.abs(d.toDouble - mean) / md) <= depthRelTol
-            }
+  private[qurator] def attemptToMergeSyncTasks[F[_] : MonadThrow : GenUUID : Logger](
+      tasks: List[QuantumTask],
+      clients: HttpClients[F],
+      compiler: FakeCompiler[F],
+      targetEstimatedFidelity: Double
+  ): F[List[QuantumTask]] =
+    for {
+      devices <- getAvailableDevices[F](clients)
+      maxQubits = devices.map(_.qubits).maxOption.getOrElse(0)
+      depthTolerance = 0.20
+      depthBuckets = Scheduler.bucketByDepth(tasks, depthTolerance)
+      groups = depthBuckets.flatMap { bucket =>
+        assignToFinalBuckets(
+          bucket = bucket,
+          capacity = maxQubits,
+          maxTasksPerBin = 3 //fix this, obv shouldn't be constant
+        )
+      }
+      merged <- groups.traverse(g => Scheduler.flattenGroup(g, devices, clients, compiler, targetEstimatedFidelity))
+    } yield merged.flatten
 
-            val sorted = tasks.sortBy(_.depth.value)
+  private[qurator] def getAvailableDevices[F[_] : MonadThrow](clients: HttpClients[F]): F[List[Device]] =
+    for {
+      providerDevices <- clients.providerClients.traverse(_.fetchAvailableDevices.attempt)
+      azureE <- clients.azure.fetchDeviceInformation.attempt
 
-            val buckets: List[Bucket] =
-                sorted.foldLeft(List.empty[Bucket]) { (acc, t) =>
-                    acc match {
-                        case Nil =>
-                            Bucket(List(t), t.depth.value.toDouble) :: Nil
+      quantumDevices = providerDevices.flatMap(_.toOption.getOrElse(Nil))
 
-                        case b :: rest =>
-                            val d = t.depth.value
-                            if (withinMeanBound(b.meanDepth, d)) {
-                                val newTasks = t :: b.tasks
-                                val newMean =
-                                (b.meanDepth * b.tasks.size.toDouble + d.toDouble) / newTasks.size.toDouble
-                                Bucket(newTasks, newMean) :: rest
-                            } else {
-                                Bucket(List(t), d.toDouble) :: acc
-                            }
-                    }
-                }
+      azure = azureE.toOption.toList.flatMap(_.value)
+        .filter(_.currentAvailability == "Available")
+        .map(_.toDevice)
+    } yield quantumDevices ++ azure
 
-            buckets.reverse.map(b => b.tasks.reverse)
+  private[qurator] def assignToFinalBuckets(
+      bucket: List[QuantumTask],
+      capacity: Int,
+      maxTasksPerBin: Int
+  ): List[List[QuantumTask]] = {
+    final case class Bin(tasks: List[QuantumTask], used: Int) {
+      def canFit(t: QuantumTask): Boolean =
+        (used + t.qubits.value <= capacity) && (tasks.size < maxTasksPerBin)
+
+      def add(t: QuantumTask): Bin = Bin(tasks :+ t, used + t.qubits.value)
+    }
+
+    val sorted = bucket.sortBy(t => -t.qubits.value)
+
+    val bins = sorted.foldLeft(List.empty[Bin]) { (binsAcc, t) =>
+      val idx = binsAcc.indexWhere(_.canFit(t))
+      if (idx >= 0) {
+        binsAcc.updated(idx, binsAcc(idx).add(t))
+      } else {
+        Bin(List(t), t.qubits.value) :: binsAcc
+      }
+    }
+
+    bins.reverse.map(_.tasks)
+  }
+
+  private[qurator] def flattenGroup[F[_] : MonadThrow : GenUUID : Logger](
+      group: List[QuantumTask],
+      devices: List[Device],
+      clients: HttpClients[F],
+      compiler: FakeCompiler[F],
+      targetEstimatedFidelity: Double
+  ): F[List[QuantumTask]] = {
+    println("Starting Flatten Group")
+    println(s"Group Size ${group.length}")
+    group match {
+      case Nil => List.empty[QuantumTask].pure[F]
+      case single :: Nil => List(single).pure[F]
+      case g =>
+        val mergedQubits = g.map(_.qubits.value).sum
+        val feasibleDevices = devices.filter(_.qubits >= mergedQubits)
+
+        if (feasibleDevices.isEmpty) {
+          g.pure[F]
+        } else {
+          val mergedCircuit: Circuit =
+            mergeCircuits(g.map(_.circuit))
+          ID.make[F, TaskId].flatMap { mergedId =>
+            val mergedTask =
+              QuantumTask(
+                uuid = mergedId,
+                circuit = mergedCircuit,
+                qubits = TaskQubits(mergedQubits),
+                shots = TaskShots(g.map(_.shots.value).max),
+                depth = TaskDepth(g.map(_.depth.value).max),
+                parentTasks = g.flatMap(_.parentTasks).distinct,
+                childTasks = g.map(_.uuid),
+                createdAt = g.map(_.createdAt).min
+              )
+
+            feasibleDevices
+              .traverse(d => Scheduler.estimateFidelity(d, mergedTask.circuit, clients, compiler))
+              .map(_.map(_.logPTotal).maxOption.getOrElse(0.0))
+              .flatMap { bestFidelity =>
+                Logger[F].info(s"Group Size: ${group.size}, mergedQubits: ${mergedQubits}, feasibleDevices: ${feasibleDevices.size}, bestFidelity: ${bestFidelity}, targetFidelity: ${math.log(targetEstimatedFidelity)}") *>
+                  (if (bestFidelity >= math.log(targetEstimatedFidelity)) List(mergedTask).pure[F]
+                  else g.pure[F])
+              }
+          }
         }
+    }
+  }
 
-        private[qurator] def attemptToMergeSyncTasks[F[_] : MonadThrow : GenUUID : Logger](
-            tasks: List[QuantumTask],
-            clients: HttpClients[F],
-            compiler: FakeCompiler[F],
-            targetEstimatedFidelity: Double
-        ): F[List[QuantumTask]] = 
-            for{
-                devices <- getAvailableDevices[F](clients)
-                maxQubits = devices.map(_.qubits).maxOption.getOrElse(0)
-                depthTolerance = 0.20 
-                depthBuckets = Scheduler.bucketByDepth(tasks, depthTolerance)
-                groups = depthBuckets.flatMap { bucket =>
-                    assignToFinalBuckets(
-                        bucket = bucket,
-                        capacity = maxQubits, 
-                        maxTasksPerBin = 3 //fix this, obv shouldn't be constant
-                    )
-                }
-                merged <- groups.traverse(g => Scheduler.flattenGroup(g, devices, clients, compiler, targetEstimatedFidelity))
-            } yield merged.flatten
-        
-        private[qurator] def getAvailableDevices[F[_]: MonadThrow](clients: HttpClients[F]): F[List[Device]] =
-            for {
-                providerDevices <- clients.providerClients.traverse(_.fetchAvailableDevices.attempt)
-                azureE  <- clients.azure.fetchDeviceInformation.attempt
+  private[qurator] def estimateFidelity[F[_] : MonadThrow](
+      device: Device,
+      task: Circuit,
+      clients: HttpClients[F],
+      compiler: FakeCompiler[F]
+  ): F[FidelityEstimate] =
+    for {
+      compiled <- compiler.compileCircuitFor(device, task)
+      deviceCal <- Scheduler.fetchDeviceCalibration(device, clients)
+      cal = FidelityEstimator.normalizeCalibration(deviceCal)
+      est = FidelityEstimator.score(compiled, cal)
+    } yield est
 
-                quantumDevices = providerDevices.flatMap(_.toOption.getOrElse(Nil))
+  private def fetchDeviceCalibration[F[_] : MonadThrow](device: Device, clients: HttpClients[F]): F[DeviceCalibration] =
+    clients.providerClient(device.platform).map(_.fetchDeviceCalibration(device.platformId)).getOrElse {
+      if (device.platform == "Azure")
+        clients.azure.fetchDeviceCalibration(device.platformId)
+      else
+        new RuntimeException(s"No ProviderClient registered for platform=${device.platform}")
+          .raiseError[F, DeviceCalibration]
+    }
 
-                azure = azureE.toOption.toList.flatMap(_.value)
-                .filter(_.currentAvailability == "Available")
-                .map(_.toDevice)
-            } yield quantumDevices ++ azure
+  private[qurator] def buildGreedySynchronizedPlan[F[_] : Monad : Logger : MonadCancelThrow](
+                                                                                              orderedTasks: List[QuantumTask],
+                                                                                              candidatesByTask: Map[QuantumTask, List[CandidateDevice]],
+                                                                                              t1BudgetMillis: Long
+                                                                                            ): F[SynchronizedPlan] = {
 
-        private[qurator] def assignToFinalBuckets( 
-            bucket: List[QuantumTask],
-            capacity: Int,
-            maxTasksPerBin: Int
-        ): List[List[QuantumTask]] = { 
-            final case class Bin(tasks: List[QuantumTask], used: Int) {
-                def canFit(t: QuantumTask): Boolean =
-                    (used + t.qubits.value <= capacity) && (tasks.size < maxTasksPerBin)
-                def add(t: QuantumTask): Bin = Bin(tasks :+ t, used + t.qubits.value)
-            }
+    final case class Placement(
+        task: QuantumTask,
+        device: Device,
+        startMillis: Long,
+        finishMillis: Long
+    )
 
-            val sorted = bucket.sortBy(t => -t.qubits.value)
+    final case class Acc(
+        assignments: Map[Device, List[QuantumTask]],
+        runtimeSum: Map[Device, Long],
+        placements: List[Placement]
+    )
 
-            val bins = sorted.foldLeft(List.empty[Bin]) { (binsAcc, t) =>
-                val idx = binsAcc.indexWhere(_.canFit(t))
-                if (idx >= 0) {
-                    binsAcc.updated(idx, binsAcc(idx).add(t))
-                } else {
-                    Bin(List(t), t.qubits.value) :: binsAcc
-                }
-            }
+    def taskStartFinish(device: Device, cand: CandidateDevice, acc: Acc): (Long, Long) = {
+      val prevRuntimeOnDevice = acc.runtimeSum.getOrElse(device, 0L)
+      val start = cand.queueMillis + prevRuntimeOnDevice
+      val finish = start + cand.runMillis
+      (start, finish)
+    }
 
-            bins.reverse.map(_.tasks)
+    def objective(starts: List[Long], finishes: List[Long]): Long = {
+      val spreadStart =
+        starts.maxOption.getOrElse(0L) - starts.minOption.getOrElse(0L)
+
+      val spreadFinish =
+        finishes.maxOption.getOrElse(0L) - finishes.minOption.getOrElse(0L)
+
+      val t1Penalty =
+        if (t1BudgetMillis > 0L && spreadFinish > t1BudgetMillis)
+          (spreadFinish - t1BudgetMillis) * 10L
+        else 0L
+
+      spreadStart + (spreadFinish / 2L) + t1Penalty
+    }
+
+    def chooseBestDeviceForTask(t: QuantumTask, acc: Acc): F[(Device, CandidateDevice, Long, Long)] = {
+      val candidates = candidatesByTask.getOrElse(t, Nil)
+
+      if (candidates.isEmpty) {
+        Logger[F].warn(s"No candidates computed for task=${t.uuid}") *>
+          (new RuntimeException("No candidates for task"))
+            .raiseError[F, (Device, CandidateDevice, Long, Long)]
+      } else {
+        val currentStarts = acc.placements.map(_.startMillis)
+        val currentFinishes = acc.placements.map(_.finishMillis)
+
+        candidates
+          .traverse { cand =>
+            val (start, finish) = taskStartFinish(cand.device, cand, acc)
+
+            val starts2 = start :: currentStarts
+            val finishes2 = finish :: currentFinishes
+
+            val obj = objective(starts2, finishes2)
+
+            (obj, -cand.fidelity, cand.queueMillis, cand, start, finish).pure[F]
+          }
+          .map { scored =>
+            val (_, _, _, bestCand, bestStart, bestFinish) =
+              scored.minBy { case (obj, negFid, q, _, _, _) => (obj, negFid, q) }
+
+            (bestCand.device, bestCand, bestStart, bestFinish)
+          }
+      }
+    }
+
+    orderedTasks
+      .foldLeftM(
+        Acc(
+          assignments = Map.empty[Device, List[QuantumTask]],
+          runtimeSum = Map.empty[Device, Long],
+          placements = Nil
+        )
+      ) { (acc, t) =>
+        chooseBestDeviceForTask(t, acc).map { case (d, cand, start, finish) =>
+          val updatedAssignments =
+            acc.assignments.updated(d, acc.assignments.getOrElse(d, Nil) :+ t)
+
+          val updatedRuntimeSum =
+            acc.runtimeSum.updated(d, acc.runtimeSum.getOrElse(d, 0L) + cand.runMillis)
+
+          val updatedPlacements =
+            Placement(t, d, start, finish) :: acc.placements
+
+          Acc(
+            assignments = updatedAssignments,
+            runtimeSum = updatedRuntimeSum,
+            placements = updatedPlacements
+          )
         }
-
-
-        private[qurator] def flattenGroup[F[_]: MonadThrow : GenUUID : Logger](
-            group: List[QuantumTask], 
-            devices: List[Device],
-            clients: HttpClients[F],
-            compiler: FakeCompiler[F],
-            targetEstimatedFidelity: Double
-        ): F[List[QuantumTask]] = {
-            println("Starting Flatten Group")
-            println(s"Group Size ${group.length}")
-            group match {
-                case Nil          => List.empty[QuantumTask].pure[F]
-                case single :: Nil => List(single).pure[F]
-                case g =>
-                    val mergedQubits = g.map(_.qubits.value).sum
-                    val feasibleDevices = devices.filter(_.qubits >= mergedQubits)
-
-                    if (feasibleDevices.isEmpty) {
-                        g.pure[F]
-                    } else {
-                        val mergedCircuit: Circuit =
-                            mergeCircuits(g.map(_.circuit)) 
-                        ID.make[F, TaskId].flatMap { mergedId =>
-                            val mergedTask =
-                                QuantumTask(
-                                    uuid        = mergedId,
-                                    circuit     = mergedCircuit,
-                                    qubits      = TaskQubits(mergedQubits),
-                                    shots       = TaskShots(g.map(_.shots.value).max),  
-                                    depth       = TaskDepth(g.map(_.depth.value).max),   
-                                    parentTasks = g.flatMap(_.parentTasks).distinct,    
-                                    childTasks  = g.map(_.uuid),                         
-                                    createdAt   = g.map(_.createdAt).min
-                                )
-
-                            feasibleDevices
-                                .traverse(d => Scheduler.estimateFidelity(d, mergedTask.circuit, clients, compiler)) 
-                                .map(_.map(_.logPTotal).maxOption.getOrElse(0.0))
-                                .flatMap { bestFidelity =>
-                                    Logger[F].info(s"Group Size: ${group.size}, mergedQubits: ${mergedQubits}, feasibleDevices: ${feasibleDevices.size}, bestFidelity: ${bestFidelity}, targetFidelity: ${math.log(targetEstimatedFidelity)}") *>
-                                    {if (bestFidelity >= math.log(targetEstimatedFidelity)) List(mergedTask).pure[F]
-                                    else g.pure[F]}
-                                }
-                            }
-                    }
-            } 
-        }
-
-            private[qurator] def estimateFidelity[F[_]: MonadThrow](
-                device: Device, 
-                task: Circuit, 
-                clients: HttpClients[F],
-                compiler: FakeCompiler[F]) : F[FidelityEstimate] =  
-                for{
-                    compiled <- compiler.compileCircuitFor(device, task)
-                    deviceCal <- Scheduler.fetchDeviceCalibration(device, clients) 
-                    cal = FidelityEstimator.normalizeCalibration(deviceCal)
-                    est = FidelityEstimator.score(compiled, cal)
-                } yield est
-
-            private def fetchDeviceCalibration[F[_]: MonadThrow](device: Device, clients: HttpClients[F]): F[DeviceCalibration] =
-                clients.providerClient(device.platform).map(_.fetchDeviceCalibration(device.platformId)).getOrElse {
-                    if (device.platform == "Azure")
-                        clients.azure.fetchDeviceCalibration(device.platformId)
-                    else
-                        new RuntimeException(s"No ProviderClient registered for platform=${device.platform}")
-                            .raiseError[F, DeviceCalibration]
-                }
-
-            private[qurator] def buildGreedySynchronizedPlan[F[_]: Monad : Logger : MonadCancelThrow](
-                orderedTasks: List[QuantumTask],
-                candidatesByTask: Map[QuantumTask, List[CandidateDevice]],
-                t1BudgetMillis: Long
-            ): F[SynchronizedPlan] = {
-
-                final case class Placement(
-                    task: QuantumTask,
-                    device: Device,
-                    startMillis: Long,
-                    finishMillis: Long
-                )
-
-                final case class Acc(
-                    assignments: Map[Device, List[QuantumTask]],
-                    runtimeSum: Map[Device, Long],
-                    placements: List[Placement]
-                )
-
-                def taskStartFinish(device: Device, cand: CandidateDevice, acc: Acc): (Long, Long) = {
-                    val prevRuntimeOnDevice = acc.runtimeSum.getOrElse(device, 0L)
-                    val start = cand.queueMillis + prevRuntimeOnDevice
-                    val finish = start + cand.runMillis
-                    (start, finish)
-                }
-
-                def objective(starts: List[Long], finishes: List[Long]): Long = {
-                    val spreadStart =
-                        starts.maxOption.getOrElse(0L) - starts.minOption.getOrElse(0L)
-
-                    val spreadFinish =
-                        finishes.maxOption.getOrElse(0L) - finishes.minOption.getOrElse(0L)
-
-                    val t1Penalty =
-                        if (t1BudgetMillis > 0L && spreadFinish > t1BudgetMillis)
-                            (spreadFinish - t1BudgetMillis) * 10L
-                        else 0L
-
-                    spreadStart + (spreadFinish / 2L) + t1Penalty
-                }
-
-                def chooseBestDeviceForTask(t: QuantumTask, acc: Acc): F[(Device, CandidateDevice, Long, Long)] = {
-                    val candidates = candidatesByTask.getOrElse(t, Nil)
-
-                    if (candidates.isEmpty) {
-                        Logger[F].warn(s"No candidates computed for task=${t.uuid}") *>
-                        (new RuntimeException("No candidates for task"))
-                            .raiseError[F, (Device, CandidateDevice, Long, Long)]
-                    } else {
-                        val currentStarts   = acc.placements.map(_.startMillis)
-                        val currentFinishes = acc.placements.map(_.finishMillis)
-
-                        candidates
-                            .traverse { cand =>
-                                val (start, finish) = taskStartFinish(cand.device, cand, acc)
-
-                                val starts2   = start :: currentStarts
-                                val finishes2 = finish :: currentFinishes
-
-                                val obj = objective(starts2, finishes2)
-
-                                (obj, -cand.fidelity, cand.queueMillis, cand, start, finish).pure[F]
-                            }
-                            .map { scored =>
-                                val (_, _, _, bestCand, bestStart, bestFinish) =
-                                    scored.minBy { case (obj, negFid, q, _, _, _) => (obj, negFid, q) }
-
-                                (bestCand.device, bestCand, bestStart, bestFinish)
-                            }
-                    }
-                }
-
-                orderedTasks
-                    .foldLeftM(
-                        Acc(
-                            assignments = Map.empty[Device, List[QuantumTask]],
-                            runtimeSum = Map.empty[Device, Long],
-                            placements = Nil
-                        )
-                    ) { (acc, t) =>
-                        chooseBestDeviceForTask(t, acc).map { case (d, cand, start, finish) =>
-                            val updatedAssignments =
-                                acc.assignments.updated(d, acc.assignments.getOrElse(d, Nil) :+ t)
-
-                            val updatedRuntimeSum =
-                                acc.runtimeSum.updated(d, acc.runtimeSum.getOrElse(d, 0L) + cand.runMillis)
-
-                            val updatedPlacements =
-                                Placement(t, d, start, finish) :: acc.placements
-
-                            Acc(
-                                assignments = updatedAssignments,
-                                runtimeSum = updatedRuntimeSum,
-                                placements = updatedPlacements
-                            )
-                        }
-                    }
-                    .map(acc => SynchronizedPlan(acc.assignments))
-            }
+      }
+      .map(acc => SynchronizedPlan(acc.assignments))
+  }
 }

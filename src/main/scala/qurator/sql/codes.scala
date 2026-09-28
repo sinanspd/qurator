@@ -31,7 +31,6 @@ import eu.timepit.refined.char._
 import eu.timepit.refined.collection._
 import eu.timepit.refined.generic._
 //import shop.ext.refined._
-import scala.tools.nsc.doc.base.comment.Code
 import qurator.domain.DeviceQueueInformation._
 import qurator.domain.SubmittedJobData._
 

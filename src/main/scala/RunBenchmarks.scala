@@ -1,10 +1,9 @@
 
-import cats.effect._
-import org.typelevel.log4cats.noop.NoOpLogger
-import qurator.testbed._
+import cats.effect.*
+import qurator.testbed.*
 import cats.effect.std.Supervisor
-import eu.timepit.refined.auto._
-import org.typelevel.log4cats.Logger
+import eu.timepit.refined.auto.*
+import org.typelevel.log4cats.{Logger, SelfAwareStructuredLogger}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import qurator.Config
 import scala.language.postfixOps
@@ -23,16 +22,16 @@ import scala.annotation.meta.param
 import qurator.domain.IBM.SamplerV2Input
 import qurator.domain.IBM.SamplerV2PUB
 import qurator.programs.Scheduler
-import qurator.domain.Task._
-import qurator.domain.circuit._
+import qurator.domain.Task.*
+import qurator.domain.circuit.*
 import qurator.util.CuttingStrategies
 import qurator.util.HardwareAwareCuttingPlanner
-import qurator.domain.device._
-import cats.syntax.all._
+import qurator.domain.device.*
+import cats.syntax.all.*
 
 object RunBenchmarks extends IOApp.Simple {
 
-    implicit val logger = Slf4jLogger.getLogger[IO]
+    implicit val logger: SelfAwareStructuredLogger[IO] = Slf4jLogger.getLogger[IO]
 
     def dummyBackUpCutter: CuttingStrategies.CuttingStrategy[IO] =
         CuttingStrategies.fromSubcircuits[IO]("dummy-backup") { (c: Circuit, _: List[Device]) =>
@@ -141,7 +140,7 @@ object RunBenchmarks extends IOApp.Simple {
                             registry <- BenchmarkDeviceRegistry.make(
                                 BenchmarkDeviceRegistry.defaultDevices,
                                 BenchmarkDeviceRegistry.defaultCalibrations,
-                                new DeviceEstimator(persistanceService),
+                                DeviceEstimator(persistanceService),
                                 seed = seed
                             )
                             dummies  <- FakeBenchmarkClientsFromRegistry.make(registry)
@@ -173,7 +172,8 @@ object RunBenchmarks extends IOApp.Simple {
                         loaded <- WorkloadSpecs.loadedTasks
                         loadedFiltered = loaded.filter(t => t.qubits.value <= 5) // && t.qubits.value >= 21 )
                         specs <- WorkloadSpecs.sample(n = 100, seed = 42L, T = loadedFiltered)
-                        (reg1, cl1, co1, sch1, cutting1) <- mkEnv(42L) //reinit so that the queue isn't tainted 
+                        env <- mkEnv(42L)
+                        (reg1, cl1, co1, sch1, cutting1) = env //reinit so that the queue isn't tainted 
                         schedRun <- Logger[IO].info("Running Scheduler Benchmarks") *>
                             sch1.startRuntime.use(_ =>
                                 SchedulerBenchmarkRunner.runSchedulerBenchmark(
@@ -186,9 +186,8 @@ object RunBenchmarks extends IOApp.Simple {
                                     cuttingEffectiveWidthEnabled = cuttingEffectiveWidthEnabled
                                 )
                             )
-
-                        (regNoCut, clNoCut, coNoCut, schNoCut, cuttingNoCut) <-
-                            mkEnv(42L, cuttingEnabled = false, mergingEnabled = false)
+                        env <- mkEnv(42L, cuttingEnabled = false, mergingEnabled = false)
+                        (regNoCut, clNoCut, coNoCut, schNoCut, cuttingNoCut) = env
                         noCutNoMergeRun <-
                             Logger[IO].info("Running Scheduler Benchmark Without Circuit Cutting Or Merging") *>
                                 schNoCut.startRuntime.use(_ =>
@@ -214,7 +213,8 @@ object RunBenchmarks extends IOApp.Simple {
                         )
                         baselineRuns <- baselinePolicies.traverse { policy =>
                             for {
-                                (registry, clients, compiler, _, _) <- mkEnv(42L)
+                                env <- mkEnv(42L)
+                                (registry, clients, compiler, _, _) = env
                                 run <- Logger[IO].info(s"Running ${policy.name} benchmark") *>
                                     SchedulerBenchmarkRunner.runBaseline(
                                         policy,

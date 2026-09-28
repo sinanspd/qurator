@@ -43,45 +43,34 @@ object DataPersistanceService {
           session.execute(createSubmittedJobDataTable).void
         }
 
-      def persistDeviceQueueInformation(l : List[DeviceQueueInformationCreate]) = 
+      def persistDeviceQueueInformation(l: List[DeviceQueueInformationCreate]): F[Unit] =
         for {
-            _ <- Logger[F].info("Persisting device queue information")
-            listofargs: F[List[
-            (
-                DeviceQueueInformationId ~
-                String ~
-                DeviceProvider ~
-                Int ~
-                Option[Int] ~
-                Option[Int] ~
-                Option[Int] ~
-                QueueType ~
-                LocalDateTime
-            )
-          ]] = l.map(
-              i =>
-                ID.make[F, DeviceQueueInformationId].map { id =>
-                  val nw                   = LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault())
-                  (id ~  i.name ~ i.provider ~ i.queueLength ~ i.waitTimeAvg ~ i.waitTimep50 ~ i.waitTimep95 ~ i.queueType ~ nw)
-                }
-            )
-            .traverse(identity)
+          _ <- Logger[F].info("Persisting device queue information")
+          listofargs = l.map { i =>
+            ID.make[F, DeviceQueueInformationId].map { id =>
+              val nw = LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault())
+              // Keep the ~ constructor for Skunk's composite encoder:
+              id ~ i.name ~ i.provider ~ i.queueLength ~ i.waitTimeAvg ~ i.waitTimep50 ~ i.waitTimep95 ~ i.queueType ~ nw
+            }
+          }.traverse(identity)
+
           args <- listofargs
           qry = {
-            val enc =
-            (deviceQueueInformationId ~ varchar ~ deviceProvider ~ int4 ~ int4.opt ~ int4.opt ~ int4.opt ~ queueType ~ timestamp).values
-                .list(args)
+            val enc = (
+              deviceQueueInformationId ~ varchar ~ deviceProvider ~ int4 ~ int4.opt ~ int4.opt ~ int4.opt ~ queueType ~ timestamp
+              ).values.list(args.length)
+
             sql"""
-                      INSERT INTO device_queue_info
-                      VALUES $enc
-                      """.command
+              INSERT INTO device_queue_info
+              VALUES $enc
+            """.command
           }
           a <- postgres.use { session =>
             session.prepare(qry).flatMap { cmd =>
               cmd.execute(args)
             }.void
           }
-        } yield a 
+        } yield a
 
 
       def getDeviceQueueInformationByPage(page: Int): F[List[DeviceQueueInformation]] = 
@@ -145,7 +134,7 @@ object DataPersistanceService {
         Logger[F].info(s"Fetching submitted job data after $date for provider=$provider, device=$deviceId") *>
         postgres.use { session =>
           session.prepare(fetchSubmittedJobDataAfterDateQuery).flatMap { cmd =>
-            cmd.stream(date ~ provider ~ deviceId, 1024).compile.toList
+            cmd.stream((date, provider, deviceId), 1024).compile.toList
           }
         }
     }
@@ -237,12 +226,12 @@ private object DataPersistanceServiceSQL{
          LIMIT 1
         """.query(decoder)
 
-    val fetchSubmittedJobDataAfterDateQuery: Query[LocalDateTime ~ String ~ String, SubmittedJobData] =
-        sql"""
-         SELECT uuid, job_id, provider, device_id, submitted_at, started_at, completed_at
-         FROM submitted_job_data
-         WHERE submitted_at > $timestamp AND provider = $varchar AND device_id = $varchar
-         ORDER BY submitted_at DESC
-         LIMIT 100
-        """.query(submittedJobDataDecoder)
+    val fetchSubmittedJobDataAfterDateQuery: Query[(LocalDateTime, String, String), SubmittedJobData] =
+      sql"""
+       SELECT uuid, job_id, provider, device_id, submitted_at, started_at, completed_at
+       FROM submitted_job_data
+       WHERE submitted_at > $timestamp AND provider = $varchar AND device_id = $varchar
+       ORDER BY submitted_at DESC
+       LIMIT 100
+      """.query(submittedJobDataDecoder)
 }

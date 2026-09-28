@@ -2,24 +2,29 @@ package qurator
 
 import cats.effect.Async
 import qurator.Types.AppConfig
-import qurator.Types._
-
+import qurator.Types.*
 import cats.effect.Async
-import cats.syntax.all._
-import ciris._
-import ciris.refined._
-import com.comcast.ip4s._
-import eu.timepit.refined.auto._
-import eu.timepit.refined.cats._
+import cats.syntax.all.*
+import ciris.*
+import ciris.refined.*
+import com.comcast.ip4s.*
+import eu.timepit.refined.auto.*
+import eu.timepit.refined.cats.*
+import eu.timepit.refined.predicates.all.NonEmpty
+import eu.timepit.refined.types.all.*
 import eu.timepit.refined.types.string.NonEmptyString
 import qurator.domain.IBM.IBMConfig
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 import qurator.domain.Braket.BraketConfig
 import qurator.domain.Azure.AzureConfig
 import qurator.domain.CutQC.CutQCConfig
 
 
 object Config{
+
+    private def nonEmptyString(s: String): NonEmptyString =
+        eu.timepit.refined.refineV[NonEmpty](s)
+          .fold(error => throw new Exception(error), identity)
 
     def load[F[_] : Async] : F[AppConfig] = 
         (env("IBM_SERVICE_CRN").as[NonEmptyString].or(env("IBM_INSTANCE_ID").as[NonEmptyString]),
@@ -32,7 +37,7 @@ object Config{
          env("AZURE_SUB_ID").as[NonEmptyString],
          env("AZURE_WORKSPACE").as[NonEmptyString],
          env("AZURE_QUANTUM_API_KEY").as[NonEmptyString].secret,
-         env("CUTQC_BASE_URI").as[NonEmptyString].default("http://localhost:8000"),
+         env("CUTQC_BASE_URI").as[NonEmptyString].default(nonEmptyString("http://localhost:8000")),
          env("QURATOR_DEVICE_FIT_QASM_FOLDER").as[NonEmptyString].option,
          env("QURATOR_DEVICE_FIT_OUTPUT").as[NonEmptyString].option,
          env("QURATOR_ENV").as[String].default("development")
@@ -54,12 +59,12 @@ object Config{
         ) => {
             AppConfig(
                 PostgreSQLConfig(
-                    host = "qurator.cjy4iumyuob7.us-east-1.rds.amazonaws.com", 
-                    port = 5432,
-                    user = "postgres",
+                    host = nonEmptyString("qurator.cjy4iumyuob7.us-east-1.rds.amazonaws.com"), 
+                    port = 5432.asInstanceOf[UserPortNumber],
+                    user = nonEmptyString("postgres"),
                     password = pgPassword,
-                    database = "postgres",
-                    max = 10
+                    database = nonEmptyString("postgres"),
+                    max = 10.asInstanceOf[PosInt]
                 ),
                 IBMConfig(
                     instanceId = ibmInstanceId,

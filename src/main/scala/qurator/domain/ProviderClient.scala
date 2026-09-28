@@ -61,6 +61,9 @@ trait ProviderDeviceList[+A <: ProviderDeviceSummary] {
 }
 
 trait ProviderClient[F[_]] {
+  type Submission <: ProviderTaskSubmission
+  type Status <: ProviderTaskStatus
+  
   def provider: String
   def batchSubmitter: Option[ProviderBatchSubmitter[F]] =
     None
@@ -71,8 +74,8 @@ trait ProviderClient[F[_]] {
       device: Device,
       task: QuantumTask,
       compiled: Circuit
-  ): F[_ <: ProviderTaskSubmission]
-  def getTask(taskId: String): F[_ <: ProviderTaskStatus]
+  ): F[Submission]
+  def getTask(taskId: String): F[Status]
   def fetchJobTiming(taskId: String, status: ProviderTaskStatus): F[ProviderJobTiming]
   def fetchTaskResult(taskId: String, status: ProviderTaskStatus): F[QuantumJobResult]
   def fetchDeviceCalibration(deviceId: String): F[DeviceCalibration]

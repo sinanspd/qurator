@@ -1,10 +1,9 @@
 
-import cats.effect._
-import org.typelevel.log4cats.noop.NoOpLogger
-import qurator.testbed._
+import cats.effect.*
+import qurator.testbed.*
 import cats.effect.std.Supervisor
-import eu.timepit.refined.auto._
-import org.typelevel.log4cats.Logger
+import eu.timepit.refined.auto.*
+import org.typelevel.log4cats.{Logger, SelfAwareStructuredLogger}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import qurator.Config
 import scala.language.postfixOps
@@ -23,13 +22,13 @@ import scala.annotation.meta.param
 import qurator.domain.IBM.SamplerV2Input
 import qurator.domain.IBM.SamplerV2PUB
 import qurator.programs.Scheduler
-import qurator.domain.Task._
-import qurator.domain.circuit._
+import qurator.domain.Task.*
+import qurator.domain.circuit.*
 import qurator.util.CuttingStrategies
 
 object RunSyncBenchmarks extends IOApp.Simple {
 
-    implicit val logger = Slf4jLogger.getLogger[IO]
+    implicit val logger: SelfAwareStructuredLogger[IO] = Slf4jLogger.getLogger[IO]
 
     val syncGroups = List(
         SyncBench.SyncGroupSpec(

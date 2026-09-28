@@ -227,27 +227,27 @@ object calibration {
 
         def epsFor(op: Gate): Double =
             op match {
-                case a @ (X(_) | H(_) | RX(_, _) | RZ(_, _))  =>
-                    val (q, g) = a match { // this is dumb but oh well
-                        case X(q)       => (q, "X")
-                        case H(q)       => (q, "H")
-                        case RX(_, q)   => (q, "RX")
-                        case RZ(_, q)   => (q, "RZ")
+                case a @ (X(_) | H(_) | RX(_, _) | RZ(_, _)) =>
+                    val (q, g) = a match {
+                        case X(q)     => (q, "X")
+                        case H(q)     => (q, "H")
+                        case RX(_, q) => (q, "RX")
+                        case RZ(_, q) => (q, "RZ")
                     }
                     eps1q.get((q, g))
-                    .orElse(eps1qAvg)
-                    .getOrElse(0.0)  
+                      .orElse(eps1qAvg)
+                      .getOrElse(0.0)
 
                 case a @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRZ(_, _, _)) =>
-                    val (a, b, g) = op match{
-                        case CX(a, b) => (a, b, "CX")
-                        case CZ(a, b) => (a, b, "CZ")
-                        case Swap(a , b) => (a, b, "SWAP")
+                    val (a, b, g) = op match {
+                        case CX(a, b)     => (a, b, "CX")
+                        case CZ(a, b)     => (a, b, "CZ")
+                        case Swap(a, b)   => (a, b, "SWAP")
                         case CRZ(a, _, b) => (a, b, "CRotate")
                     }
                     eps2q.get((edgeKey(a, b), g))
-                    .orElse(eps2qAvg)
-                    .getOrElse(0.0)
+                      .orElse(eps2qAvg)
+                      .getOrElse(0.0)
 
                 case Measure(_) =>
                     0.0
@@ -255,44 +255,44 @@ object calibration {
                     0.0
             }
 
-            def durationNsFor(op: Gate): Long =
+        def durationNsFor(op: Gate): Long =
             op match {
-                case a : X =>
+                case a: X =>
                     dur1qNs.get("X").orElse(dur1qAvgNs).getOrElse(0L)
 
-                case a : H =>
+                case a: H =>
                     dur1qNs.get("H").orElse(dur1qAvgNs).getOrElse(0L)
 
-                case a : CX =>
-                     dur2qNs.get("CX").orElse(dur2qAvgNs).getOrElse(0L)
+                case a: CX =>
+                    dur2qNs.get("CX").orElse(dur2qAvgNs).getOrElse(0L)
 
-                case a : CZ =>
-                     dur2qNs.get("CZ").orElse(dur2qAvgNs).getOrElse(0L)
+                case a: CZ =>
+                    dur2qNs.get("CZ").orElse(dur2qAvgNs).getOrElse(0L)
 
-                case a : Swap =>
-                     dur2qNs.get("SWAP").orElse(dur2qAvgNs).getOrElse(0L)
+                case a: Swap =>
+                    dur2qNs.get("SWAP").orElse(dur2qAvgNs).getOrElse(0L)
 
-                case a : CRZ =>
-                     dur2qNs.get("CRotate").orElse(dur2qAvgNs).getOrElse(0L)
+                case a: CRZ =>
+                    dur2qNs.get("CRotate").orElse(dur2qAvgNs).getOrElse(0L)
 
-                case a : RX =>
-                     dur2qNs.get("Rotate").orElse(dur1qAvgNs).getOrElse(0L)
+                case a: RX =>
+                    dur2qNs.get("Rotate").orElse(dur1qAvgNs).getOrElse(0L)
 
-                case a : RZ =>
-                     dur1qNs.get("RZ").orElse(dur1qAvgNs).getOrElse(0L)
+                case a: RZ =>
+                    dur1qNs.get("RZ").orElse(dur1qAvgNs).getOrElse(0L)
 
-                case a : Measure =>
+                case a: Measure =>
                     durMeasNs.getOrElse(0L)
+
                 case _ =>
                     0L
             }
 
-            def readoutFidFor(q: Int): Double =
-                readoutFidelity.get(q).orElse(readoutFidelityAvg).getOrElse(0.0)
+        def readoutFidFor(q: Int): Double =
+            readoutFidelity.get(q).orElse(readoutFidelityAvg).getOrElse(0.0)
 
-            def t2For(q: Int): Option[Double] = t2.get(q).orElse(t2Avg)
-            def t1For(q: Int): Option[Double] = t1.get(q).orElse(t1Avg)
-
+        def t2For(q: Int): Option[Double] = t2.get(q).orElse(t2Avg)
+        def t1For(q: Int): Option[Double] = t1.get(q).orElse(t1Avg)
     }
 
     case class FidelityEstimate(

@@ -252,14 +252,14 @@ object SchedulerDashboard {
         isSelected: Boolean
     ): SchedulerDashboardTaskView =
         SchedulerDashboardTaskView(
-            taskId = rec.taskId.value.toString,
+            taskId = rec.taskId.toString,
             kind = rec.kind,
             label = rec.label,
             status = rec.status,
             pendingReason = rec.pendingReason,
             createdAtMillis = rec.createdAtMillis,
-            parentTaskIds = rec.parentTaskIds.map(_.value.toString),
-            childTaskIds = rec.childTaskIds.map(_.value.toString),
+            parentTaskIds = rec.parentTaskIds.map(_.toString),
+            childTaskIds = rec.childTaskIds.map(_.toString),
             qubits = rec.qubits,
             depth = rec.depth,
             t1BudgetMillis = rec.t1BudgetMillis,
@@ -277,7 +277,7 @@ object SchedulerDashboard {
     def tasksResponse(state: SchedulerDashboardState, nowMillis: Long): SchedulerDashboardTasksResponse = {
         val visible = state.records.values.toList
             .filterNot(_.hiddenFromTaskList)
-            .sortBy(rec => (-rec.createdAtMillis, rec.taskId.value.toString))
+            .sortBy(rec => (-rec.createdAtMillis, rec.taskId.toString))
 
         val counts = visible.groupBy(_.status).view.mapValues(_.size).toMap
 
@@ -390,15 +390,15 @@ object SchedulerDashboard {
             val levels = levelLoop(roots, initialLevels).withDefaultValue(0)
 
             val nodeViews = included.values.toList
-                .sortBy(rec => (levels(rec.taskId), rec.createdAtMillis, rec.taskId.value.toString))
+                .sortBy(rec => (levels(rec.taskId), rec.createdAtMillis, rec.taskId.toString))
                 .map(rec => recordToView(rec, Some(levels(rec.taskId)), rec.taskId == selectedTaskId))
 
             Some(
                 SchedulerDashboardGraphResponse(
                     generatedAtMillis = nowMillis,
-                    selectedTaskId = selectedTaskId.value.toString,
+                    selectedTaskId = selectedTaskId.toString,
                     nodes = nodeViews,
-                    edges = edges.map { case (from, to) => (from.value.toString, to.value.toString) }
+                    edges = edges.map { case (from, to) => (from.toString, to.toString) }
                 )
             )
         }

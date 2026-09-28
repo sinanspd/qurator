@@ -17,7 +17,8 @@ final case class FakeDevice[F[_]: Async](name: String, deviceEstimator: DeviceEs
     currentJobs <- j.get
     now = LocalDateTime.now()
     queueLength <- deviceEstimator.estimateDeviceQueueLength(device)
-    (queueSpeedMin, queueSpeedMax) <- deviceEstimator.estimateDeviceProcessingSpeed(device)
+    speeds <- deviceEstimator.estimateDeviceProcessingSpeed(device)
+    (queueSpeedMin, queueSpeedMax) = speeds
     updatedJobs = currentJobs :+ ((t, queueLength, Random.between(queueSpeedMin, queueSpeedMax), now))
   } yield ()
 

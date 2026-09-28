@@ -1,18 +1,19 @@
-import cats.effect._
-import cats.syntax.all._
-import eu.timepit.refined.auto._
+import cats.effect.*
+import cats.syntax.all.*
+import eu.timepit.refined.auto.*
+import org.typelevel.log4cats.SelfAwareStructuredLogger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-import qurator.domain.Task._
-import qurator.domain.circuit._
-import qurator.domain.cutting._
+import qurator.domain.Task.*
+import qurator.domain.circuit.*
+import qurator.domain.cutting.*
 import qurator.domain.device.Device
-import qurator.testbed._
+import qurator.testbed.*
 import qurator.util.FidelityEstimator
 import qurator.util.HardwareAwareCuttingPlanner
 
 object RunCuttingDiagnostics extends IOApp.Simple {
 
-    implicit val logger = Slf4jLogger.getLogger[IO]
+    implicit val logger: SelfAwareStructuredLogger[IO] = Slf4jLogger.getLogger[IO]
 
     private val targetEstimatedFidelity = 0.90
     private val sampleSeed = 42L

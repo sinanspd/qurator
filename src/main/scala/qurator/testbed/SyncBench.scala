@@ -1,24 +1,23 @@
 package qurator.testbed
 
-import cats.effect._
-import cats.syntax.all._
+import cats.effect.*
+import cats.syntax.all.*
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
-import qurator.domain.Task._
-import qurator.domain.device._
-import qurator.domain.circuit._
+import qurator.domain.Task.*
+import qurator.domain.device.*
+import qurator.domain.circuit.*
 import qurator.effects.GenUUID
 import qurator.domain.ID
 import qurator.modules.HttpClients
 import qurator.programs.Scheduler
 import qurator.domain.QuantumResult
 import java.time.LocalDateTime
-import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.{Logger, SelfAwareStructuredLogger}
 import qurator.util.FidelityEstimator
 
 object SyncBench {
 
-  implicit val logger = Slf4jLogger.getLogger[IO]
+  implicit val logger: SelfAwareStructuredLogger[IO] = Slf4jLogger.getLogger[IO]
 
   final case class SyncGroupSpec(
     tasks: List[QuantumTaskSpec],
@@ -101,10 +100,10 @@ object SyncBench {
     def name: String
   }
 
-private def buildSubmittedTaskMetricsForGroup(
-  assignmentsInOrder: List[(TaskId, String, QuantumTaskSpec)],
-  registry: BenchmarkDeviceRegistry
-): IO[List[SyncTaskMetric]] = {
+  private def buildSubmittedTaskMetricsForGroup(
+      assignmentsInOrder: List[(TaskId, String, QuantumTaskSpec)],
+      registry: BenchmarkDeviceRegistry
+  ): IO[List[SyncTaskMetric]] = {
 
   def estimateRunMillis(device: Device, spec: QuantumTaskSpec): IO[Long] = {
     val rawCal = registry.calibration(device.platformId)
@@ -150,11 +149,11 @@ private def buildSubmittedTaskMetricsForGroup(
   }
 }
 
-private def buildGroupMetric(
-    groupIndex: Int,
-    coherenceBudgetMillis: Long,
-    taskMetrics: List[SyncTaskMetric]
-): SyncGroupMetric = {
+  private def buildGroupMetric(
+      groupIndex: Int,
+      coherenceBudgetMillis: Long,
+      taskMetrics: List[SyncTaskMetric]
+  ): SyncGroupMetric = {
     val starts = taskMetrics.map(_.startMillis)
     val finishes = taskMetrics.map(_.finishMillis)
 
@@ -259,11 +258,11 @@ private def buildGroupMetric(
     }
   }
 
-private def waitUntilAllCompleted(
-    completedRef: Ref[IO, Map[TaskId, QuantumResult]],
-    expectedIds: Set[TaskId],
-    pollEvery: scala.concurrent.duration.FiniteDuration
-): IO[List[SyncSubmittedQuantum]] = {
+  private def waitUntilAllCompleted(
+      completedRef: Ref[IO, Map[TaskId, QuantumResult]],
+      expectedIds: Set[TaskId],
+      pollEvery: scala.concurrent.duration.FiniteDuration
+  ): IO[List[SyncSubmittedQuantum]] = {
 
     def loop: IO[List[SyncSubmittedQuantum]] =
         completedRef.get.flatMap { seen =>
@@ -339,7 +338,7 @@ private def waitUntilAllCompleted(
       submittedById: Map[TaskId, String] =
         submitted.map(s => s.taskId -> s.deviceId).toMap
 
-     groupMetrics <- submittedGroups.zip(groups).traverse { case (sg, group) =>
+      groupMetrics <- submittedGroups.zip(groups).traverse { case (sg, group) =>
         val submittedById: Map[TaskId, String] =
             submitted.map(s => s.taskId -> s.deviceId).toMap
 

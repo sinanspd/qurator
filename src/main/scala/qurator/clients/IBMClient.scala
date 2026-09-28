@@ -33,6 +33,9 @@ import java.time.{Instant, LocalDateTime, OffsetDateTime, ZoneOffset, ZonedDateT
 import scala.util.Try
 
 trait IBMClient[F[_]] extends ProviderClient[F] {
+  override type Submission = CreateJobResponseV2
+  override type Status = JobDetailsResponseV2
+  
   def fetchBearerToken: F[String]
   def fetchDeviceInformation: F[BackendsResponseV2]
   def fetchDeviceDetails(ids: List[String]): F[List[IBMBackendDevice]]

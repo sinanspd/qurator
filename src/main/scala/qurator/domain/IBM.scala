@@ -1,18 +1,11 @@
 package qurator.domain
 
-import ciris._
-import ciris.refined._
-import com.comcast.ip4s.{ Host, Port }
-import eu.timepit.refined.cats._
-import eu.timepit.refined.types.net.UserPortNumber
-import eu.timepit.refined.types.numeric.PosInt
+import ciris.*
+import cats.derived.*
+import cats.Show
+import cats.Eq
 import eu.timepit.refined.types.string.NonEmptyString
-import io.estatico.newtype.macros.newtype
-import derevo.cats._
-import derevo.circe.magnolia.{ decoder, encoder }
-import derevo.derive
-import io.estatico.newtype.macros.newtype
-import qurator.domain.DeviceQueueInformation._
+import qurator.domain.DeviceQueueInformation.*
 import qurator.domain.device.Device
 
 object IBM{
@@ -21,8 +14,7 @@ object IBM{
         instanceId: NonEmptyString,
         apiKey: Secret[NonEmptyString]
     )
-
-    @derive(decoder, encoder, eqv, show)
+  
     case class IBMBearerToken(
         access_token: String,
         refresh_token: String,
@@ -30,14 +22,13 @@ object IBM{
         expires_in: Int,
         expiration: Int,
         scope: String
-    )
+    ) derives Eq, Show
 
-   @derive(decoder, encoder, eqv, show)
+
    case class BackendsResponseV2(
     devices: List[IBMBackendDevice]
-   ) extends ProviderDeviceList[IBMBackendDevice]
-
-   @derive(decoder, encoder, eqv, show)
+   ) extends ProviderDeviceList[IBMBackendDevice] derives Eq, Show
+  
     case class IBMBackendDevice(
         name: String,
         status: IBMBackendDeviceStatus,
@@ -48,7 +39,7 @@ object IBM{
         queue_length: Int,
         performance_metrics: Option[IBMBackendDevicePerformanceMetrics],
         wait_time_seconds: Option[IBMBackendDeviceWaitTimeSeconds]
-    ) extends ProviderDeviceSummary with ProviderDeviceDetails {
+    ) extends ProviderDeviceSummary with ProviderDeviceDetails derives Eq, Show {
         def platformId: String =
             name
 
@@ -66,48 +57,41 @@ object IBM{
                 gateSet = List.empty 
             )
     }
-
-    @derive(decoder, encoder, eqv, show)
+  
     case class IBMBackendDeviceStatus(
         name: String,
         reason: Option[String]
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendDeviceClops(
         `type`: String,
         value: Int
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendDeviceProcessorType(
         family: Option[String],
         revision: Option[String],
         segment: Option[String]
-    )
-        
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendDevicePerformanceMetrics(
         two_q_error_best: Option[IBMBackendDevicePerformanceMetricDetail],
         two_q_error_layered: Option[IBMBackendDevicePerformanceMetricDetail]
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendDevicePerformanceMetricDetail(
         value: Double,
         gate: Option[String],
         unit: Option[String],
         qubits: Option[List[Int]]
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendDeviceWaitTimeSeconds(
         average: Int,
         p50: Int,
         p95: Int
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendPropertiesResponse(
         backend_name: String,
         backend_version: Option[String],
@@ -115,25 +99,22 @@ object IBM{
         qubits: List[List[IBMBackendNamedValue]],
         gates: List[IBMBackendGateProperties],
         general: Option[List[IBMBackendNamedValue]]
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendNamedValue(
         date: Option[String],
         name: String,
         unit: Option[String],
         value: Double
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendGateProperties(
         gate: String,
         name: String,
         parameters: List[IBMBackendNamedValue],
         qubits: List[Int]
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendConfigurationResponse(
         backend_name: String,
         backend_version: Option[String],
@@ -141,13 +122,12 @@ object IBM{
         coupling_map: Option[List[List[Int]]],
         gates: Option[List[IBMBackendConfigurationGate]],
         n_qubits: Option[Int]
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class IBMBackendConfigurationGate(
         name: String,
         coupling_map: List[List[Int]]
-    )
+    ) derives Eq, Show
 
     def toDeviceQueueInformation(l : List[IBMBackendDevice]) =
         l.map(a => DeviceQueueInformationCreate(
@@ -160,8 +140,7 @@ object IBM{
             queueType   = NormalQueue
         ) )
 
-
-    @derive(decoder, encoder, eqv, show)
+  
     case class JobMetricsResponse(
         timestamps: JobTimeStamps,
         bss: JobBSS,
@@ -171,28 +150,24 @@ object IBM{
         estimated_completion_time: Option[String],
         position_in_queue: Option[Int],
         position_in_provider: Option[Int]
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class JobTimeStamps(
         created: String,
         finished: Option[String], // Do these Option just to be safe, what happens if the job fails?? 
         running: Option[String]
-    )
-    
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class JobBSS(
         seconds: Int
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class JobUsage(
         quantum_seconds: Int,
         seconds: Int
-    )
+    ) derives Eq, Show
 
-
-    @derive(decoder, encoder, eqv, show)
+  
     case class JobDetailsResponseV2(
         id: String,
         backend: String,
@@ -210,7 +185,7 @@ object IBM{
         `private`: Option[Boolean],
         estimated_running_time_seconds: Option[Double],
         calibration_id: Option[String]
-    ) extends ProviderTaskStatus {
+    ) extends ProviderTaskStatus derives Eq, Show{
         def taskStatus: String =
             status
     }
@@ -229,21 +204,18 @@ object IBM{
 //         "seconds"
 //       ]
 //     },
-
-    @derive(decoder, encoder, eqv, show)
+  
     case class JobState(
         status: String, // "Queued", "Running", "Completed","Cancelled", "Failed"
         reason: Option[String],
         reason_code: Option[Int],
         reason_solution: Option[String]
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class JobProgram(
         id: String
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class CreateSessionRequest(
         mode: String,
         backend: Option[String] = None,
@@ -251,20 +223,17 @@ object IBM{
         max_ttl: Option[Int] = None,
         interactive_ttl: Option[Int] = None,
         active_ttl: Option[Int] = None
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class UpdateSessionRequest(
         accepting_jobs: Boolean
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class SessionTimestamp(
         status: String,
         timestamp: String
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class SessionResponse(
         id: String,
         backend_name: Option[String],
@@ -283,21 +252,19 @@ object IBM{
         timestamps: Option[List[SessionTimestamp]],
         user_id: Option[String],
         elapsed_time: Option[Double]
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class CreateJobResponseV2(
         id: String, 
         backend: String, 
         session_id: Option[String],
         `private`: Option[Boolean],
         calibration_id: Option[String]
-    ) extends ProviderTaskSubmission {
+    ) extends ProviderTaskSubmission derives Eq, Show{
         def jobId: String =
             id
     }
-
-    @derive(decoder, encoder, eqv, show)
+  
     case class SubmitJobRequestV2(
         program_id: String,
         backend: String,
@@ -308,23 +275,21 @@ object IBM{
         session_id: Option[String] = None,
         calibration_id: Option[String] = None,
         params:  SamplerV2Input //Either[SamplerV2Input, EstimatorV2Input] // TODO: Don't support Estimators for now.  
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class SamplerV2Input(
         pubs: List[String],//List[SamplerV2PUB],
         //options: Option[SamplerV2Options], // TODO: Not supported yet 
         shots: Option[Int] = None,
         support_qiskit: Option[Boolean] = None,
         version: Int = 2
-    )
-
-    @derive(decoder, encoder, eqv, show)
+    ) derives Eq, Show
+  
     case class SamplerV2PUB(
         circuit: String,
         // parameters: Option[Map[String, Double]], // TODO: Not supported yet 
         shots: Option[Int]
-    )
+    ) derives Eq, Show
 
     // case class SamplerV2Options(
     //     default_shots: Option[Int],

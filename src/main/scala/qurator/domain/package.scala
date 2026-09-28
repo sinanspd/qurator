@@ -5,29 +5,27 @@ import qurator.domain.DeviceQueueInformation.DeviceProvider
 import qurator.domain.DeviceQueueInformation.QueueType
 import cats.{ Eq, Monoid, Show }
 import io.circe.{ Decoder, DecodingFailure, Encoder }
-import io.circe.generic.extras.semiauto.{ deriveEnumerationDecoder, deriveEnumerationEncoder }
-import io.circe.generic.semiauto._
-import io.circe.generic.auto._
+import io.circe.generic.semiauto.*
 import io.circe.parser
 import io.circe.Error
-import qurator.domain.Braket._
-import qurator.domain.circuit._
+import qurator.domain.Braket.*
+import qurator.domain.circuit.*
 import io.circe.parser.decode
 
 package object domain {
   type QuantumResult = QuantumJobResult
-  
+
   implicit val deviceProviderDecoder: Decoder[DeviceProvider] =
-    deriveEnumerationDecoder[DeviceProvider]
+    deriveDecoder[DeviceProvider]
 
   implicit val deviceProviderEncoder: Encoder[DeviceProvider] =
-    deriveEnumerationEncoder[DeviceProvider]
+    deriveEncoder[DeviceProvider]
 
   implicit val queueTypeDecoder: Decoder[QueueType] =
-    deriveEnumerationDecoder[QueueType]
+    deriveDecoder[QueueType]
 
   implicit val queueTypeEncoder: Encoder[QueueType] =
-    deriveEnumerationEncoder[QueueType]
+    deriveEncoder[QueueType]
 
   implicit val dataTimeEq: Eq[LocalDateTime] = Eq.fromUniversalEquals
 
@@ -53,7 +51,7 @@ package object domain {
           .toOption
           .getOrElse(Nil)
       val selectedNames =
-        if (nativeGateNames.nonEmpty) nativeGateNames else supportedOperationNames
+        if nativeGateNames.nonEmpty then nativeGateNames else supportedOperationNames
 
       selectedNames.distinct.flatMap(braketGatePrototype)
     }

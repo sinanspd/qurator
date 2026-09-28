@@ -7,11 +7,10 @@ import eu.timepit.refined.cats._
 import eu.timepit.refined.types.net.UserPortNumber
 import eu.timepit.refined.types.numeric.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
-import io.estatico.newtype.macros.newtype
-import derevo.cats._
-import derevo.circe.magnolia.{ decoder, encoder }
-import derevo.derive
-import io.estatico.newtype.macros.newtype
+import io.circe.generic.auto.*
+import cats.derived.*
+import cats.Show
+import cats.Eq
 import qurator.domain.DeviceQueueInformation._
 import qurator.domain.device.Device
 
@@ -24,27 +23,24 @@ object Azure{
         apiKey: Secret[NonEmptyString]
     )  
 
-    @derive(decoder, encoder, eqv, show)
     case class AzureDeviceStatusResponse(
         value: List[AzureDeviceStatus]
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class AzureDeviceStatus(
         currentAvailability: String, //ProviderAvailability, // Available, Degraded, Unavailable
         id: String,
         targets: List[AzureTargetStatus]
-    ){
+    ) derives Eq, Show {
         def toDevice: Device = ???
     }
 
-    @derive(decoder, encoder, eqv, show)
     case class AzureTargetStatus(
         averageQueueTime: Int,
         currentAvailability: String, //ProviderAvailability,
         id: String,
         statusPage: String
-    )
+    ) derives Eq, Show
 
     def toDeviceQueueInformation(l: List[AzureDeviceStatus]) = 
         l.flatMap(d => 
@@ -66,7 +62,6 @@ object Azure{
     // Unavailable	Target is unavailable.
     
 
-    @derive(decoder, encoder, eqv, show)
     case class AzureJobCreateRequest(
         containerUri: String,
         itemType: String,
@@ -83,9 +78,8 @@ object Azure{
         priority: Option[Int] = None, //Standard, High
         sessionId: Option[String] = None,
         tags: Option[List[String]] = None
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class AzureJobResponse(
         beginExecutionTime: String,
         cancellationTime: Option[String],
@@ -112,16 +106,14 @@ object Azure{
         tags: Option[List[String]],
         target: String,
         //usage: Option[String]
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class CostEstimate(
         currencyCode: String,
         estimatedTotal: Double,
         events: List[CostEstimateEvent]
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class CostEstimateEvent(
         description: Float,
         amountConsumed: Float,
@@ -129,11 +121,10 @@ object Azure{
         dimensionName: String,
         measureUnit: String,
         unitPrice: Float
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class QuantumComputingData(
         count: Int
-    )
+    ) derives Eq, Show
 
 }

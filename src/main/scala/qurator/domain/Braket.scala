@@ -7,11 +7,10 @@ import eu.timepit.refined.cats._
 import eu.timepit.refined.types.net.UserPortNumber
 import eu.timepit.refined.types.numeric.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
-import io.estatico.newtype.macros.newtype
-import derevo.cats._
-import derevo.circe.magnolia.{ decoder, encoder }
-import derevo.derive
-import io.estatico.newtype.macros.newtype
+import io.circe.generic.auto.*
+import cats.derived.*
+import cats.Show
+import cats.Eq
 import io.circe.Decoder
 import qurator.domain.DeviceQueueInformation._
 import java.time.LocalDateTime
@@ -32,13 +31,11 @@ object Braket{
             List("us-east-1", "us-west-1", "us-west-2", "eu-west-2", "eu-north-1").distinct
     }
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketDeviceListResponse(
         devices: List[BraketDevice],
         nextToken: Option[String]
-    ) extends ProviderDeviceList[BraketDevice]
+    ) extends ProviderDeviceList[BraketDevice] derives Eq, Show, Decoder
 
-    @derive(encoder, eqv, show)
     case class BraketDevice(
         deviceArn: String,
         deviceName: String,
@@ -46,7 +43,7 @@ object Braket{
         deviceStatus: String,
         deviceType: String,
         providerName: String
-    ) extends ProviderDeviceSummary {
+    ) extends ProviderDeviceSummary  derives Eq, Show {
         def platformId: String =
             deviceArn
 
@@ -75,7 +72,6 @@ object Braket{
             }
     }
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketDeviceDetailsResponse(
         deviceArn: String,
         deviceName: String,
@@ -84,7 +80,7 @@ object Braket{
         providerName: String,
         deviceCapabilities: String,
         deviceQueueInfo: List[BraketDeviceQueueInfo]
-    ) extends ProviderDeviceDetails {
+    ) extends ProviderDeviceDetails derives Eq, Show {
         def platformId: String =
             deviceArn
 
@@ -102,12 +98,11 @@ object Braket{
         }
     }
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketDeviceQueueInfo(
         queue: String,
         queuePriority: Option[String],
         queueSize: String
-    )
+    ) derives Eq, Show
 
 
     def toDeviceQueueInformation(l: List[BraketDeviceDetailsResponse]) = 
@@ -124,7 +119,6 @@ object Braket{
             ))
         )
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketCreateQuantumTaskRequest(
         action: String,
         associations: Option[List[BraketAssociation]],
@@ -135,35 +129,30 @@ object Braket{
         outputS3Bucket: Option[String] = None,
         outputS3KeyPrefix: Option[String] = None,
         shots: Int,        
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketAssociation(
         arn: String,
         `type`: String
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketCreateQuantumTaskResponse(
     quantumTaskArn: String
-    ) extends ProviderTaskSubmission {
+    ) extends ProviderTaskSubmission derives Eq, Show {
         def jobId: String =
             quantumTaskArn
     }
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketOpenQasmProgram(
         braketSchemaHeader: BraketOpenQasmHeader,
         source: String
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketOpenQasmHeader(
         name: String = "braket.ir.openqasm.program",
         version: String = "1"
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketQuantumTaskResponse(
         actionMetadata: BraketActionMetadata,
         associations: List[BraketAssociation],
@@ -183,17 +172,16 @@ object Braket{
         status: String,
         tags: Option[Map[String, String]],
         startedAt: Option[String] = None
-    ) extends ProviderTaskStatus {
+    ) extends ProviderTaskStatus derives Eq, Show {
         def taskStatus: String =
             status
     }
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketActionMetadata(
         actionType: String,
         executableCount: Int,
         programCount: Int
-    )
+    ) derives Eq, Show
 
 
 //    "experimentalCapabilities": { ... },
@@ -202,45 +190,39 @@ object Braket{
 //    }
 
 
-    @derive(decoder, encoder, eqv, show)
     case class DeviceCapabilities(
         service: DeviceCapabilitiesService, 
         paradigm: Option[BraketParadigm] = None 
-    )
+    ) derives Eq, Show, Decoder
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketParadigm(
         qubitCount: Option[Int] = None,
         modes: Option[Int] = None,
         connectivity: Option[BraketConnectivity] = None,
         nativeGateSet: Option[List[String]] = None
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketConnectivity(
         fullyConnected: Option[Boolean] = None,
         connectivityGraph: Option[Map[String, List[String]]] = None
-    )
+    ) derives Eq, Show
 
 
-    @derive(decoder, encoder, eqv, show)
     case class DeviceCapabilitiesService(
         braketSchemaHeader: BraketSchemaHeader,
         executionWindows: List[BraketExecutionWindows]
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketSchemaHeader(
         name: String,
         version: String
-    )
+    ) derives Eq, Show
 
-    @derive(decoder, encoder, eqv, show)
     case class BraketExecutionWindows(
         executionDay: String,
         windowStartHour: String,
         windowEndHour: String
-    )
+    ) derives Eq, Show
 
 
     sealed trait BraketTimeParseError extends Product with Serializable

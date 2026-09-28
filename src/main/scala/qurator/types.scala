@@ -3,13 +3,14 @@ package qurator
 import ciris._
 import ciris.refined._
 import com.comcast.ip4s.{ Host, Port }
-import derevo.cats.show
-import derevo.derive
+import io.circe.generic.auto.*
+import cats.derived.*
+import cats.Show
+import cats.Eq
 import eu.timepit.refined.cats._
 import eu.timepit.refined.types.net.UserPortNumber
 import eu.timepit.refined.types.numeric.PosInt
 import eu.timepit.refined.types.string.NonEmptyString
-import io.estatico.newtype.macros.newtype
 import qurator.domain.IBM._
 import scala.concurrent.duration.FiniteDuration
 import qurator.domain.Braket.BraketConfig

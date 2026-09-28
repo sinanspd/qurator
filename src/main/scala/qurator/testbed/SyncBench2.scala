@@ -1,25 +1,25 @@
 package qurator.testbed
 
-import cats.effect._
-import cats.syntax.all._
+import cats.effect.*
+import cats.syntax.all.*
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
-import qurator.domain.Task._
-import qurator.domain.device._
-import qurator.domain.circuit._
+import qurator.domain.Task.*
+import qurator.domain.device.*
+import qurator.domain.circuit.*
+import qurator.domain.calibration.*
 import qurator.effects.GenUUID
 import qurator.domain.ID
 import qurator.modules.HttpClients
 import qurator.programs.Scheduler
 import qurator.domain.QuantumResult
 import java.time.LocalDateTime
-import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.{Logger, SelfAwareStructuredLogger}
 import qurator.util.FidelityEstimator
 import scala.util.Random
 
 object SyncBench2 {
 
-  implicit val logger = Slf4jLogger.getLogger[IO]
+  implicit val logger: SelfAwareStructuredLogger[IO] = Slf4jLogger.getLogger[IO]
 
   sealed trait PathStage
   case object ClassicalStage extends PathStage

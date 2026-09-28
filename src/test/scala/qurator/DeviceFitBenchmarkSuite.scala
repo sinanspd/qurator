@@ -3,11 +3,11 @@ package qurator
 import cats.effect.IO
 import org.typelevel.log4cats.noop.NoOpLogger
 import qurator.domain.Task.QuantumTask
-import qurator.domain.Braket._
-import qurator.domain.calibration._
-import qurator.domain.circuit._
+import qurator.domain.Braket.*
+import qurator.domain.calibration.*
+import qurator.domain.circuit.*
 import qurator.domain.device.Device
-import qurator.domain._
+import qurator.domain.*
 import qurator.testbed.HaqaMapper.DeviceTopology
 import qurator.testbed.DeviceFitBenchmark
 import qurator.util.{CircuitProcessConverter, Qasm3Parser}
@@ -17,8 +17,8 @@ import qurator.util.HaloCircuitMerger.ProcessInstruction.Op
 import qurator.util.HaloCircuitMerger.VirtualQubitRef.Helper
 import io.circe.parser.decode
 import weaver.SimpleIOSuite
-
 import java.nio.charset.StandardCharsets
+import org.typelevel.log4cats.SelfAwareStructuredLogger
 
 object DeviceFitBenchmarkSuite extends SimpleIOSuite {
 
@@ -260,7 +260,7 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
   }
 
   test("run uses all-to-all topology fallback for topology-less IonQ calibrations") {
-    implicit val logger = NoOpLogger.impl[IO]
+    implicit val logger: SelfAwareStructuredLogger[IO] = NoOpLogger.impl[IO]
 
     val client = new ProviderClient[IO] {
       def provider: String = "test"
@@ -280,6 +280,9 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
             topology = None
           )
         )
+
+      type Submission = ProviderTaskSubmission
+      type Status = ProviderTaskStatus
       def submitTask(device: Device, task: QuantumTask, compiled: Circuit): IO[ProviderTaskSubmission] = ???
       def getTask(taskId: String): IO[ProviderTaskStatus] = ???
       def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] = ???
@@ -313,7 +316,7 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
   }
 
   test("run scores IonQ native lowering instead of direct generic H gates") {
-    implicit val logger = NoOpLogger.impl[IO]
+    implicit val logger: SelfAwareStructuredLogger[IO] = NoOpLogger.impl[IO]
 
     val ionqNativeGateSet =
       List(
@@ -340,6 +343,9 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
             topology = None
           )
         )
+
+      type Submission = ProviderTaskSubmission
+      type Status = ProviderTaskStatus
       def submitTask(device: Device, task: QuantumTask, compiled: Circuit): IO[ProviderTaskSubmission] = ???
       def getTask(taskId: String): IO[ProviderTaskStatus] = ???
       def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] = ???

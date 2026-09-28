@@ -37,6 +37,7 @@ import qurator.domain.DeviceQueueInformation.DeviceQueueInformationId
 import io.circe.{HCursor, Json}
 import io.circe.syntax._ 
 import io.circe.parser.parse
+import io.circe.generic.auto.*
 import java.util.UUID
 import qurator.domain.Task.QuantumTask
 import qurator.domain.calibration._
@@ -50,6 +51,9 @@ import scala.util.Try
 import java.time.{Instant, LocalDateTime, OffsetDateTime, ZoneOffset, ZonedDateTime}
 
 trait BraketClient[F[_]] extends ProviderClient[F] {
+  override type Submission = BraketCreateQuantumTaskResponse
+  override type Status = BraketQuantumTaskResponse
+
   def fetchAvailableDevices: F[List[Device]]
   def fetchDeviceList: F[BraketDeviceListResponse]
   def fetchDeviceDetails(ids: List[String]): F[List[BraketDeviceDetailsResponse]]
@@ -799,7 +803,7 @@ object BraketClient {
                 source             = qasmSource
             )
 
-             val clientToken = id.value.toString
+             val clientToken = id.toString
 
              
             // This must be serialized as a *string* into the action field

@@ -1,15 +1,15 @@
 package qurator
 
 
-import cats.effect._
+import cats.effect.*
 import cats.effect.std.Supervisor
-import eu.timepit.refined.auto._
-import org.typelevel.log4cats.Logger
+import eu.timepit.refined.auto.*
+import org.typelevel.log4cats.{Logger, SelfAwareStructuredLogger}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import qurator.Config
 import scala.language.postfixOps
 import fs2.Stream
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 import qurator.clients.IBMClient
 import cats.effect.Temporal
 import qurator.AppResources
@@ -21,7 +21,7 @@ import qurator.resources.MkHttpServer
 
 object DataPersitance extends IOApp.Simple {
 
-  implicit val logger = Slf4jLogger.getLogger[IO]
+  implicit val logger: SelfAwareStructuredLogger[IO] = Slf4jLogger.getLogger[IO]
 
    override def run: IO[Unit] = 
     Config.load[IO].flatMap { cfg =>

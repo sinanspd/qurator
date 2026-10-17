@@ -902,37 +902,10 @@ object HardwareAwareCuttingPlanner {
         circuit: Circuit,
         calibration: CanonicalCalibration
     ): Vector[ScheduledGate] = {
-        var availableByQubit = Map.empty[Int, Long].withDefaultValue(0L)
-        var globalAvailableNs = 0L
-
-        circuit.remainingGates.zipWithIndex.map { case (gate, idx) =>
-            val qubits = gateQubits(gate).distinct
-            val duration = gateDurationNs(gate, calibration)
-            val localStart =
-                if (qubits.isEmpty) 0L
-                else qubits.map(q => availableByQubit(q)).max
-            val globalStart =
-                if (usesGlobalGateResource(gate) && calibration.executionModel == ExecutionModel.GlobalSerialGates) globalAvailableNs
-                else 0L
-            val start = math.max(localStart, globalStart)
-            val end = start + duration
-
-            qubits.foreach { q =>
-                availableByQubit = availableByQubit.updated(q, end)
-            }
-            if (usesGlobalGateResource(gate) && calibration.executionModel == ExecutionModel.GlobalSerialGates) {
-                globalAvailableNs = end
-            }
-
-            ScheduledGate(idx, qubits, start, end)
-        }.toVector
-    }
-
-    private def usesGlobalGateResource(gate: Gate): Boolean =
-        gate match {
-            case Measure(_) | GPhase(_) => false
-            case _                      => gateQubits(gate).nonEmpty
+        FidelityEstimator.estimateSchedule(circuit.remainingGates, calibration).operations.map { gate =>
+            ScheduledGate(gate.index, gate.qubits, gate.startNs, gate.endNs)
         }
+    }
 
     private def idleDecoherenceSavedLog(
         q: Int,

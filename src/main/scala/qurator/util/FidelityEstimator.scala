@@ -2,7 +2,7 @@ package qurator.util
 
 import qurator.domain.calibration._
 import qurator.domain.circuit._
-import scala.math.{log, log1p, exp, max}
+import scala.math.{log, log1p}
 
 object FidelityEstimator{
 
@@ -192,7 +192,8 @@ object FidelityEstimator{
                 durMeasNs = nanosOpt(a.readoutDurationSec),
                 dur1qAvgNs = nanosOpt(a.oneQGateDurationSec),
                 dur2qAvgNs = nanosOpt(a.twoQGateDurationSec),
-                executionModel = ExecutionModel.GlobalSerialGates
+                executionModel = a.parallelism.map(ExecutionModel.TrappedIon).getOrElse(ExecutionModel.GlobalSerialGates),
+                warnings = if (a.parallelism.isEmpty) Vector("Ion resources unavailable: assuming globally serial gates.") else Vector.empty
             )
 
         case a : IQMCalibration =>
@@ -219,6 +220,19 @@ object FidelityEstimator{
                 dur1qAvgNs = None,
                 dur2qAvgNs = None,
                 initSurvivalPerQubit = None
+            )
+
+        case a: NeutralAtomCalibration =>
+            CanonicalCalibration(
+                eps1q = Map.empty, eps2q = Map.empty,
+                eps1qAvg = Some(a.oneQGateError), eps2qAvg = Some(a.twoQGateError),
+                readoutFidelity = Map.empty, readoutFidelityAvg = Some(a.readoutFidelity),
+                t1 = Map.empty, t2 = Map.empty, t1Avg = a.t1Seconds, t2Avg = a.t2Seconds,
+                dur1qNs = Map.empty, dur2qNs = Map.empty,
+                durMeasNs = Some(a.readoutDurationNs),
+                dur1qAvgNs = Some(a.oneQGateDurationNs), dur2qAvgNs = Some(a.twoQGateDurationNs),
+                initSurvivalPerQubit = a.initSurvivalPerQubit,
+                executionModel = ExecutionModel.NeutralAtom(a.parallelism)
             )
 
         case a : QuEraCalibration =>
@@ -252,7 +266,9 @@ object FidelityEstimator{
                 durMeasNs = None,
                 dur1qAvgNs = None,
                 dur2qAvgNs = None,
-                initSurvivalPerQubit = initSurvivalPerQubit
+                initSurvivalPerQubit = initSurvivalPerQubit,
+                executionModel = ExecutionModel.NeutralAtom(NeutralAtomParallelism()),
+                warnings = Vector("QuEra AHS calibration does not provide gate-model timing or placement; supply NeutralAtomCalibration for gate-model fidelity.")
             )
 
         case a : RigettiCalibration =>
@@ -302,139 +318,23 @@ object FidelityEstimator{
                 durMeasNs = nanosOpt(a.readoutDurationSec),
                 dur1qAvgNs = nanosOpt(a.oneQGateDurationSec),
                 dur2qAvgNs = nanosOpt(a.twoQGateDurationSec),
-                executionModel = ExecutionModel.GlobalSerialGates
+                executionModel = a.parallelism.map(ExecutionModel.TrappedIon).getOrElse(ExecutionModel.GlobalSerialGates),
+                warnings = if (a.parallelism.isEmpty) Vector("Ion resources unavailable: assuming globally serial gates.") else Vector.empty
             )
         }
 
-        private final case class ScheduleState(
-            availableByQubitNs: Map[Int, Long],
-            globalGateAvailableNs: Long
-        ) {
-            private def qubitAvailableNs(qubits: Vector[Int]): Long =
-                qubits.map(q => availableByQubitNs.getOrElse(q, 0L)).foldLeft(0L)(math.max)
+        def estimateSchedule(ops: List[Gate], cal: CanonicalCalibration): HardwareSchedule =
+            HardwareScheduleEstimator.estimate(ops, cal)
 
-            def schedule(
-                qubits: Vector[Int],
-                durationNs: Long,
-                usesGlobalGateResource: Boolean,
-                executionModel: ExecutionModel
-            ): ScheduleState = {
-                val localStart = qubitAvailableNs(qubits)
-                val globalStart =
-                    executionModel match {
-                        case ExecutionModel.GlobalSerialGates => globalGateAvailableNs
-                        case ExecutionModel.ParallelByQubitOrEdge => 0L
-                    }
-                val start = math.max(localStart, globalStart)
-                val end = start + durationNs
-                val updatedAvailable =
-                    qubits.foldLeft(availableByQubitNs) { case (acc, q) => acc.updated(q, end) }
-                val updatedGlobal =
-                    if (usesGlobalGateResource && executionModel == ExecutionModel.GlobalSerialGates) end
-                    else globalGateAvailableNs
-
-                ScheduleState(updatedAvailable, updatedGlobal)
-            }
-        }
-
-        private object ScheduleState {
-            val empty: ScheduleState =
-                ScheduleState(Map.empty, 0L)
-        }
-
-        private final case class ScheduledOperation(
-            qubits: Vector[Int],
-            durationNs: Long,
-            usesGlobalGateResource: Boolean
-        )
-
-        private def scheduledOperation(op: Gate, cal: CanonicalCalibration): Option[ScheduledOperation] =
-            op match {
-                case gate @ X(q) =>
-                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
-                case gate @ H(q) =>
-                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
-                case gate @ SX(q) =>
-                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
-                case gate @ RX(_, q) =>
-                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
-                case gate @ RZ(_, q) =>
-                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
-                case gate @ RY(_, q) =>
-                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = true))
-                case gate @ Measure(q) =>
-                    Some(ScheduledOperation(Vector(q), cal.durationNsFor(gate), usesGlobalGateResource = false))
-                case gate @ CX(a, b) =>
-                    Some(ScheduledOperation(Vector(a, b), cal.durationNsFor(gate), usesGlobalGateResource = true))
-                case gate @ CZ(a, b) =>
-                    Some(ScheduledOperation(Vector(a, b), cal.durationNsFor(gate), usesGlobalGateResource = true))
-                case gate @ Swap(a, b) =>
-                    Some(ScheduledOperation(Vector(a, b), cal.durationNsFor(gate), usesGlobalGateResource = true))
-                case gate @ CRZ(a, _, b) =>
-                    Some(ScheduledOperation(Vector(a, b), cal.durationNsFor(gate), usesGlobalGateResource = true))
-
-                case _ =>
-                    None
-            }
-
-        def scheduleEndTimesSec(ops: List[Gate], cal: CanonicalCalibration): Map[Int, Double] = {
-            val finalState =
-                ops.foldLeft(ScheduleState.empty) { (state, op) =>
-                    scheduledOperation(op, cal).fold(state) { scheduled =>
-                        state.schedule(
-                            qubits = scheduled.qubits,
-                            durationNs = scheduled.durationNs,
-                            usesGlobalGateResource = scheduled.usesGlobalGateResource,
-                            executionModel = cal.executionModel
-                        )
-                    }
-                }
-
-            finalState.availableByQubitNs.view.mapValues(ns => ns.toDouble / 1e9).toMap
-        }
-
-        private def touchedQubits(op: Gate): Vector[Int] =
-            op match {
-                case X(q) => Vector(q)
-                case Y(q) => Vector(q)
-                case Z(q) => Vector(q)
-                case H(q) => Vector(q)
-                case S(q) => Vector(q)
-                case SDG(q) => Vector(q)
-                case T(q) => Vector(q)
-                case TDG(q) => Vector(q)
-                case SX(q) => Vector(q)
-                case SXDG(q) => Vector(q)
-                case Id(q) => Vector(q)
-                case Phase(_, q) => Vector(q)
-                case RX(_, q) => Vector(q)
-                case RY(_, q) => Vector(q)
-                case RZ(_, q) => Vector(q)
-                case U(_, _, _, q) => Vector(q)
-                case U2(_, _, q) => Vector(q)
-                case U3(_, _, _, q) => Vector(q)
-                case CX(a, b) => Vector(a, b)
-                case CY(a, b) => Vector(a, b)
-                case CZ(a, b) => Vector(a, b)
-                case CH(a, b) => Vector(a, b)
-                case Swap(a, b) => Vector(a, b)
-                case CP(a, _, b) => Vector(a, b)
-                case CRX(a, _, b) => Vector(a, b)
-                case CRY(a, _, b) => Vector(a, b)
-                case CRZ(a, _, b) => Vector(a, b)
-                case CU(a, _, _, _, b) => Vector(a, b)
-                case CCX(a, b, c) => Vector(a, b, c)
-                case Measure(q) => Vector(q)
-                case Reset(q) => Vector(q)
-                case GPhase(_) => Vector.empty
-                case NamedGate(_, _, qubits) => qubits
-            }
+        def scheduleEndTimesSec(ops: List[Gate], cal: CanonicalCalibration): Map[Int, Double] =
+            estimateSchedule(ops, cal).perQubitEndTimeSec
 
         def score(compiled: Circuit, cal: CanonicalCalibration): FidelityEstimate = {
-            val endTimesSec = scheduleEndTimesSec(compiled.remainingGates, cal)
+            val schedule = estimateSchedule(compiled.remainingGates, cal)
+            val endTimesSec = schedule.perQubitEndTimeSec
 
             val touchedQubitCount =
-                compiled.remainingGates.iterator.flatMap(touchedQubits).toSet.size
+                compiled.remainingGates.iterator.flatMap(gateKey(_)._2).toSet.size
 
             val widthForCorrection =
                 if (touchedQubitCount > 0) touchedQubitCount
@@ -442,52 +342,26 @@ object FidelityEstimator{
 
             val logPOps = compiled.remainingGates.foldLeft(0.0) { (acc, op) =>
                 op match {
-                    case a @ (X(_) | H(_) | RX(_, _) | RZ(_ ,_))  =>
-                        val (q, g) = a match { 
-                            case X(q)       => (q, "X")
-                            case H(q)       => (q, "H")
-                            case RX(_, q) => (q, "Rotate")
-                            case RZ(_, q) => (q, "RZ")
-                        }
-                        val eps = cal.epsFor(op)
-                        acc + log1p(-eps)
-
-                    case a @ (CX(_, _) | CZ(_, _) | Swap(_, _) | CRZ(_, _, _) ) =>
-                        val (a, b, g) = op match{
-                            case CX(a, b) => (a, b, "CX")
-                            case CZ(a, b) => (a, b, "CZ")
-                            case Swap(a , b) => (a, b, "SWAP")
-                            case CRZ(a, _, b) => (a, b, "CRotate")
-                        }
-                        val eps = cal.epsFor(op)
-                        acc + log1p(-eps)
-
-                    case a @ Measure(q) =>
-                        val fro = cal.readoutFidFor(q)
-                        acc + log(fro)
-
-                    case _ =>
-                        acc
+                    case Measure(q) => acc + log(cal.readoutFidFor(q))
+                    case _ => acc + log1p(-cal.epsFor(op))
                 }
             }
-
-            val logPDecoh = endTimesSec.foldLeft(0.0) { case (acc, (q, tSec)) =>
-                cal.t2For(q) match {
-                    case Some(t2Sec) if t2Sec > 0.0 =>
-                    acc + (-tSec / t2Sec)
-                    case _ =>
-                    acc
-                }
-            }
-
-            val logPTotal = logPOps + logPDecoh
+            val logPDecoh = HardwareScheduleEstimator.decoherenceLog(endTimesSec, cal)
+            val logPInitialization =
+                if (touchedQubitCount == 0) 0.0
+                else cal.initSurvivalPerQubit.map(p => touchedQubitCount.toDouble * log(p)).getOrElse(0.0)
+            val logPTotal = logPOps + logPDecoh + schedule.logPCrosstalk + schedule.logPTransport + logPInitialization
             val pTotal = Math.exp(logPTotal) 
             val est = FidelityEstimate(
                 logPOps = logPOps,
                 logPDecoh = logPDecoh,
                 logPTotal = logPTotal,
                 pTotal = pTotal,
-                perQubitEndTimeSec = endTimesSec
+                perQubitEndTimeSec = endTimesSec,
+                logPCrosstalk = schedule.logPCrosstalk,
+                logPTransport = schedule.logPTransport,
+                logPInitialization = logPInitialization,
+                schedule = Some(schedule)
             )
 
             val fcoeff =

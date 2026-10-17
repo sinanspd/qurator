@@ -171,8 +171,8 @@ object RunBenchmarks extends IOApp.Simple {
 
                     for{
                         loaded <- WorkloadSpecs.loadedTasks
-                        loadedFiltered = loaded.filter(t => t.qubits.value <= 5) // && t.qubits.value >= 21 )
-                        specs <- WorkloadSpecs.sample(n = 100, seed = 42L, T = loadedFiltered)
+                        loadedFiltered = loaded.filter(t => t.qubits.value <= 20) // && t.qubits.value >= 21 )
+                        specs <- WorkloadSpecs.sample(n = 5, seed = 42L, T = loadedFiltered)
                         (reg1, cl1, co1, sch1, cutting1) <- mkEnv(42L) //reinit so that the queue isn't tainted 
                         schedRun <- Logger[IO].info("Running Scheduler Benchmarks") *>
                             sch1.startRuntime.use(_ =>

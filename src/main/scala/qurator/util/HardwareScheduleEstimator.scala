@@ -44,8 +44,13 @@ object HardwareScheduleEstimator {
       case ExecutionModel.TrappedIon(p) if p.concurrentGateError.isEmpty =>
         warnings += "Ion concurrent-gate error is uncalibrated; no residual crosstalk penalty is assumed."
       case ExecutionModel.NeutralAtom(p) =>
-        if (!usedQubits.subsetOf(p.positions.keySet) || p.blockadeRadiusUm.isEmpty || p.addressingExclusionRadiusUm.isEmpty)
+        val interactionRadius = if (p.requireInteractionExclusionForAllGates) p.interactionExclusionRadiusUm
+          else p.interactionExclusionRadiusUm.orElse(p.blockadeRadiusUm)
+        if (!usedQubits.subsetOf(p.positions.keySet) || interactionRadius.isEmpty || p.addressingExclusionRadiusUm.isEmpty)
           warnings += "Incomplete atom geometry/exclusion radii: independent gates are serialized when spatial safety is unknown."
+        if (p.requireInteractionExclusionForAllGates &&
+            ops.exists(op => gateKey(op)._2.size == 2) && (p.blockadeRadiusUm.isEmpty || !usedQubits.subsetOf(p.positions.keySet)))
+          warnings += "Two-atom interaction reach is unverified: missing blockade radius or atom placement."
         if (p.laserWaistUm.isEmpty || p.crosstalkErrorAtZeroDistance.isEmpty)
           warnings += "Neutral-atom optical crosstalk is uncalibrated; only hard exclusion constraints are applied."
       case _ => ()
@@ -60,9 +65,6 @@ object HardwareScheduleEstimator {
       case ExecutionModel.NeutralAtom(p) => p.crosstalkErrorAtZeroDistance.exists(_ > 0.0) && p.laserWaistUm.nonEmpty
       case _ => false
     }
-    if (hasHardwareResources && usedQubits.exists(q => !cal.t2For(q).exists(t => t.isFinite && t > 0)))
-      warnings += "Missing positive T2 for some atoms/ions; their decoherence cost is omitted."
-
     // A round-trip approximation keeps physical IDs/home positions stable between gates.
     val measured = mutable.Set.empty[Int]
     val operations = ops.zipWithIndex.map { case (gate, index) =>
@@ -122,8 +124,10 @@ object HardwareScheduleEstimator {
     }.toVector
 
     def spatialConflict(a: Operation, b: Operation, p: NeutralAtomParallelism): Boolean = {
-      val radius = if (a.qubits.size >= 2 || b.qubits.size >= 2)
-        for { block <- p.blockadeRadiusUm; address <- p.addressingExclusionRadiusUm } yield block.max(address)
+      val interactionRadius = if (p.requireInteractionExclusionForAllGates) p.interactionExclusionRadiusUm
+        else p.interactionExclusionRadiusUm.orElse(p.blockadeRadiusUm)
+      val radius = if (p.requireInteractionExclusionForAllGates || a.qubits.size >= 2 || b.qubits.size >= 2)
+        for { interaction <- interactionRadius; address <- p.addressingExclusionRadiusUm } yield interaction.max(address)
       else p.addressingExclusionRadiusUm
       radius match {
         case None => true
@@ -226,8 +230,11 @@ object HardwareScheduleEstimator {
             .filter(r => !r.op.measurement && r.timed.endNs > first && r.timed.startNs < firstEnd)
             .map(_.timed.endNs).toVector.distinct.sorted
           val candidates = (Vector(first) ++ releases.map(earliest)).distinct
-          val rate = op.qubits.flatMap(q => cal.t2For(q).filter(t => t.isFinite && t > 0.0).map(1.0 / _)).sum / 1e9
-          candidates.minBy(start => ((start - first).toDouble * rate - crossAt(start), start))
+          val rate = op.qubits.map(q => DecoherenceEstimator.infidelityRate(q, cal)).sum / 1e9
+          candidates.minBy { start =>
+            val waitingCost = if (start == first) 0.0 else (start - first).toDouble * rate
+            (waitingCost - crossAt(start), start)
+          }
         } else first
         val timed = at(chosen)
         logCross += crossAt(chosen)
@@ -242,6 +249,7 @@ object HardwareScheduleEstimator {
       val events = gates.flatMap(g => Vector(g.gateStartNs -> 1, g.endNs -> -1))
         .groupMapReduce(_._1)(_._2)(_ + _).toVector.sortBy(_._1)
       val peak = events.scanLeft(0)((n, e) => n + e._2).max
+      val decoherence = DecoherenceEstimator.estimate(ops, timed, cal)
       HardwareSchedule(
         operations = timed,
         perQubitEndTimeSec = available.iterator.map { case (q, t) => q -> (t.toDouble / 1e9) }.toMap,
@@ -250,18 +258,14 @@ object HardwareScheduleEstimator {
         peakGateParallelism = peak,
         logPCrosstalk = logCross,
         logPTransport = operations.map(_.logSurvival).sum,
-        warnings = warnings.toVector
+        warnings = (warnings.toVector ++ decoherence.warnings).distinct,
+        decoherence = decoherence
       )
     }
 
     val candidates = if (hasSoftNoise) Vector(build(0), build(1), build(2)) else Vector(build(0))
     // Exact comparison under the scoring model, including waiting propagated to
     // dependent gates and terminal measurement. Ties prefer the shorter schedule.
-    candidates.minBy(s => (-decoherenceLog(s.perQubitEndTimeSec, cal) - s.logPCrosstalk - s.logPTransport, s.makespanNs))
+    candidates.minBy(s => (-s.decoherence.logP - s.logPCrosstalk - s.logPTransport, s.makespanNs))
   }
-
-  def decoherenceLog(endTimesSec: Map[Int, Double], cal: CanonicalCalibration): Double =
-    endTimesSec.iterator.map { case (q, time) =>
-      cal.t2For(q).filter(t => t.isFinite && t > 0.0).map(t => -time / t).getOrElse(0.0)
-    }.sum
 }

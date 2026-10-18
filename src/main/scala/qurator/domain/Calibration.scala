@@ -6,6 +6,67 @@ object calibration {
 
     sealed trait DeviceCalibration 
 
+    /** A Pasqal Device snapshot, not a synthetic gate-model calibration. Rates are /microsecond. */
+    case class PasqalNoiseCalibration(
+        statePrepError: Option[Double], falsePositive: Option[Double], falseNegative: Option[Double],
+        relaxationRate: Option[Double], dephasingRate: Option[Double]
+    ) {
+        require(List(statePrepError, falsePositive, falseNegative).flatten.forall(validProbability), "Invalid Pasqal SPAM probability")
+        require(List(relaxationRate, dephasingRate).flatten.forall(x => x.isFinite && x >= 0), "Invalid Pasqal noise rate")
+        def t1Seconds: Option[Double] = relaxationRate.filter(_ > 0).map(1e-6 / _)
+        // Pulser's dephasing collapse operator supplies pure transverse decay.
+        def t2Seconds: Option[Double] = for {
+            r <- relaxationRate; d <- dephasingRate; rate = r / 2 + d if rate > 0
+        } yield 1e-6 / rate
+        def memoryInfidelityRatePerSecond: Option[Double] = for {
+            r <- relaxationRate; d <- dephasingRate
+            rate = 1e6 * (r / 3 + d / 3) if rate.isFinite
+        } yield rate
+        def readoutFidelity: Option[Double] = for { p <- falsePositive; n <- falseNegative } yield 1 - (p + n) / 2
+    }
+
+    /** A reusable timing template, independent of which runtime circuit uses it. */
+    case class GateTimingKey(name: String, parameters: Vector[String] = Vector.empty)
+    case class PasqalTimingModel(
+        fixedDurationNs: Map[GateTimingKey, Long] = Map.empty,
+        rabiFrequencyRadPerUs: Option[Double] = None,
+        useSquarePulseRotations: Boolean = false,
+        pulseOverheadNs: Long = 0L,
+        source: String = "User-configured timing templates"
+    ) {
+        require(fixedDurationNs.forall { case (k, t) => k.name.nonEmpty && t >= 0 }, "Invalid timing template")
+        require(rabiFrequencyRadPerUs.forall(x => x.isFinite && x > 0), "Rabi frequency must be positive and finite")
+        require(!useSquarePulseRotations || rabiFrequencyRadPerUs.nonEmpty, "Square-pulse timing requires an operating Rabi frequency")
+        require(pulseOverheadNs >= 0 && source.trim.nonEmpty, "Timing assumptions need nonnegative overhead and a source")
+    }
+    /** Optional configuration is explicit estimation input, not claimed provider calibration. */
+    case class PasqalEstimationConfig(
+        timing: PasqalTimingModel = PasqalTimingModel(),
+        positions: Map[Int, AtomPosition] = Map.empty,
+        interactionCoeffRadPerUsUm6: Option[Double] = None,
+        residualInteractionTolerance: Option[Double] = None,
+        addressingExclusionRadiusUm: Option[Double] = None,
+        independentGateCapacity: Int = 1,
+        positionUncertaintyUm: Double = 0.0
+    ) {
+        require(positions.keys.forall(_ >= 0), "Invalid atom index")
+        require(interactionCoeffRadPerUsUm6.forall(x => x.isFinite && x != 0), "Invalid interaction coefficient")
+        require(residualInteractionTolerance.forall(x => x.isFinite && x > 0 && x <= 1), "Interaction tolerance must be in (0, 1]")
+        require(addressingExclusionRadiusUm.forall(x => x.isFinite && x >= 0), "Invalid addressing exclusion radius")
+        require(independentGateCapacity > 0, "Independent gate capacity must be positive")
+        require(positionUncertaintyUm.isFinite && positionUncertaintyUm >= 0, "Invalid position uncertainty")
+    }
+    case class PasqalCalibration(
+        deviceName: String, noise: PasqalNoiseCalibration,
+        timing: PasqalTimingModel = PasqalTimingModel(),
+        parallelism: NeutralAtomParallelism = NeutralAtomParallelism(requireInteractionExclusionForAllGates = true),
+        readoutDurationNs: Option[Long] = None,
+        warnings: Vector[String] = Vector.empty,
+        assumptions: Vector[String] = Vector.empty
+    ) extends DeviceCalibration {
+        require(readoutDurationNs.forall(_ >= 0), "Invalid readout duration")
+    }
+
     sealed trait ExecutionModel
     object ExecutionModel {
         case object ParallelByQubitOrEdge extends ExecutionModel
@@ -16,6 +77,7 @@ object calibration {
 
     /** Resources of a gate-model ion device, not inferred from all-to-all connectivity.
       * Cross-zone gates use a conservative round trip to the home zones. Times are ns.
+      * Transport/overlap errors must exclude memory loss modeled by T1/T2 separately.
       */
     case class IonTrapParallelism(
         gateZones: Int = 1,
@@ -44,6 +106,7 @@ object calibration {
 
     /** Physical-qubit positions after placement. None means unknown, not zero.
       * Exclusion uses distance minus twice position uncertainty. Motion/reload blocks gates.
+      * Survival and overlap errors describe additional loss beyond the T1/T2 memory model.
       */
     case class NeutralAtomParallelism(
         positions: Map[Int, AtomPosition] = Map.empty,
@@ -57,11 +120,14 @@ object calibration {
         moveSurvival: Double = 1.0,
         reloadNs: Option[Long] = None,
         reloadSurvival: Double = 1.0,
-        measurementBlocksGates: Boolean = true
+        measurementBlocksGates: Boolean = true,
+        // Distinct from blockadeRadiusUm, which controls intra-gate reach.
+        interactionExclusionRadiusUm: Option[Double] = None,
+        requireInteractionExclusionForAllGates: Boolean = false
     ) {
         require(positions.keys.forall(_ >= 0), "Invalid atom index")
         require(maxParallelGates > 0, "Parallel gate capacity must be positive")
-        require(List(blockadeRadiusUm, laserWaistUm).flatten.forall(x => x.isFinite && x > 0.0), "Radii must be positive and finite")
+        require(List(blockadeRadiusUm, laserWaistUm, interactionExclusionRadiusUm).flatten.forall(x => x.isFinite && x > 0.0), "Radii must be positive and finite")
         require(addressingExclusionRadiusUm.forall(x => x.isFinite && x >= 0.0), "Invalid addressing radius")
         require(positionUncertaintyUm.isFinite && positionUncertaintyUm >= 0.0, "Invalid position uncertainty")
         require(crosstalkErrorAtZeroDistance.forall(validProbability), "Invalid crosstalk error")
@@ -241,6 +307,15 @@ object calibration {
                 a.topology
             case a: RigettiCalibration =>
                 a.topology
+            case a: PasqalCalibration =>
+                val p = a.parallelism
+                p.blockadeRadiusUm.filter(_ => p.positions.nonEmpty).map { r =>
+                    val qs = p.positions.keys.toList.sorted
+                    val edges = qs.combinations(2).collect {
+                        case List(x, y) if p.positions(x).distanceTo(p.positions(y)) + 2 * p.positionUncertaintyUm <= r => x -> y
+                    }.toList
+                    CalibrationTopology(qs, edges)
+                }
             case a: NeutralAtomCalibration =>
                 a.topology.orElse {
                     val p = a.parallelism
@@ -318,28 +393,40 @@ object calibration {
         dur2qAvgNs: Option[Long],
         initSurvivalPerQubit: Option[Double] = None,
         executionModel: ExecutionModel = ExecutionModel.ParallelByQubitOrEdge,
-        warnings: Vector[String] = Vector.empty
+        warnings: Vector[String] = Vector.empty,
+        // Set false only for error budgets explicitly stripped of relaxation/dephasing.
+        gateErrorsIncludeDecoherence: Boolean = true,
+        pasqalTiming: Option[PasqalTimingModel] = None,
+        analyticalAssumptions: Vector[String] = Vector.empty,
+        // Explicit model rate also represents calibrated zero decay without using infinite T1/T2.
+        memoryInfidelityRatePerSecond: Option[Double] = None
     ){
         private def edgeKey(a: Int, b: Int): (Int, Int) = if (a <= b) (a, b) else (b, a)
 
-        def epsFor(op: Gate): Double = {
+        private def probability(value: Option[Double]): Option[Double] =
+            value.filter(p => p.isFinite && p >= 0.0 && p <= 1.0)
+
+        def epsOptionFor(op: Gate): Option[Double] = {
             val (name, qs) = gateKey(op)
             qs match {
-                case _ if op.isInstanceOf[Measure] || name == "BARRIER" => 0.0
-                case Vector(q) => eps1q.get((q, name)).orElse(eps1qAvg).getOrElse(0.0)
-                case Vector(a, b) => eps2q.get((edgeKey(a, b), name)).orElse(eps2qAvg).getOrElse(0.0)
-                case _ => 0.0 // Higher-arity operations must be lowered first.
+                case _ if op.isInstanceOf[Measure] || name == "BARRIER" || name == "GPHASE" => Some(0.0)
+                case Vector(q) => probability(eps1q.get((q, name))).orElse(probability(eps1qAvg))
+                case Vector(a, b) => probability(eps2q.get((edgeKey(a, b), name))).orElse(probability(eps2qAvg))
+                case _ => None // Higher-arity operations must be lowered first.
             }
         }
+
+        def epsFor(op: Gate): Double = epsOptionFor(op).getOrElse(0.0)
 
         def durationNsOptionFor(op: Gate): Option[Long] = {
             val (name, qs) = gateKey(op)
             op match {
-                case Measure(_) => durMeasNs
+                case Measure(_) => durMeasNs.filter(_ >= 0L)
                 case GPhase(_) => Some(0L)
                 case _ if name == "BARRIER" => Some(0L)
-                case _ if qs.size == 1 => dur1qNs.get(name).orElse(dur1qAvgNs)
-                case _ if qs.size == 2 => dur2qNs.get(name).orElse(dur2qAvgNs)
+                case _ if pasqalTiming.nonEmpty => qurator.util.PasqalAnalyticalEstimator.durationNs(op, pasqalTiming.get)
+                case _ if qs.size == 1 => dur1qNs.get(name).filter(_ >= 0L).orElse(dur1qAvgNs.filter(_ >= 0L))
+                case _ if qs.size == 2 => dur2qNs.get(name).filter(_ >= 0L).orElse(dur2qAvgNs.filter(_ >= 0L))
                 case _ => None
             }
         }
@@ -349,9 +436,32 @@ object calibration {
         def readoutFidFor(q: Int): Double =
             readoutFidelity.get(q).orElse(readoutFidelityAvg).getOrElse(0.0)
 
-        def t2For(q: Int): Option[Double] = t2.get(q).orElse(t2Avg)
-        def t1For(q: Int): Option[Double] = t1.get(q).orElse(t1Avg)
+        private def coherence(value: Option[Double]): Option[Double] = value.filter(t => t.isFinite && t > 0.0)
 
+        def t2For(q: Int): Option[Double] = coherence(t2.get(q)).orElse(coherence(t2Avg))
+        def t1For(q: Int): Option[Double] = coherence(t1.get(q)).orElse(coherence(t1Avg))
+
+    }
+
+    def gateTimingKey(op: Gate): GateTimingKey = {
+        val (name, _) = gateKey(op)
+        val params = op match {
+            case Phase(t, _) => Vector(t)
+            case RX(t, _) => Vector(t)
+            case RY(t, _) => Vector(t)
+            case RZ(t, _) => Vector(t)
+            case U(t, p, l, _) => Vector(t, p, l)
+            case U2(p, l, _) => Vector(p, l)
+            case U3(t, p, l, _) => Vector(t, p, l)
+            case CP(_, t, _) => Vector(t)
+            case CRX(_, t, _) => Vector(t)
+            case CRY(_, t, _) => Vector(t)
+            case CRZ(_, t, _) => Vector(t)
+            case CU(_, t, p, l, _) => Vector(t, p, l)
+            case NamedGate(_, ps, _) => ps
+            case _ => Vector.empty
+        }
+        GateTimingKey(if (name == "CRotate") "CRZ" else name.toUpperCase, params.map(_.trim))
     }
 
     /** Shared gate identity for timing, scoring and dependency reconstruction. */
@@ -400,8 +510,36 @@ object calibration {
         logPCrosstalk: Double = 0.0,
         logPTransport: Double = 0.0,
         logPInitialization: Double = 0.0,
-        schedule: Option[HardwareSchedule] = None
-    ) 
+        schedule: Option[HardwareSchedule] = None,
+        analyticalCoverage: Option[AnalyticalFidelityCoverage] = None
+    ) {
+        def decoherence: Option[DecoherenceEstimate] = schedule.map(_.decoherence)
+        def warnings: Vector[String] = schedule.toVector.flatMap(_.warnings)
+    }
+
+    /** Describes a partial analytical noise score, never a calibrated full-circuit fidelity. */
+    case class AnalyticalFidelityCoverage(
+        modeledContributions: Vector[String],
+        unmodeledEffects: Vector[String],
+        assumptions: Vector[String]
+    ) {
+        def isComplete: Boolean = unmodeledEffects.isEmpty
+    }
+
+    /** Coverage of the memory-noise calculation, not a guarantee of complete device calibration. */
+    case class DecoherenceEstimate(
+        logP: Double,
+        perQubitExposureSec: Map[Int, Double],
+        missingT1Qubits: Set[Int],
+        missingT2Qubits: Set[Int],
+        adjustedT2Qubits: Set[Int],
+        missingDurationOperations: Vector[Int],
+        uncalibratedGateOperations: Vector[Int],
+        warnings: Vector[String]
+    ) {
+        def isComplete: Boolean = missingT1Qubits.isEmpty && missingT2Qubits.isEmpty &&
+            adjustedT2Qubits.isEmpty && missingDurationOperations.isEmpty && uncalibratedGateOperations.isEmpty
+    }
 
     case class TimedGate(
         index: Int,
@@ -421,7 +559,8 @@ object calibration {
         peakGateParallelism: Int,
         logPCrosstalk: Double,
         logPTransport: Double,
-        warnings: Vector[String]
+        warnings: Vector[String],
+        decoherence: DecoherenceEstimate
     )
 
 }

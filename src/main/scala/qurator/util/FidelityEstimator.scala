@@ -70,6 +70,20 @@ object FidelityEstimator{
         }.toMap
 
     def normalizeCalibration(c: DeviceCalibration): CanonicalCalibration = c match {
+        case a: PasqalCalibration =>
+            CanonicalCalibration(
+                eps1q = Map.empty, eps2q = Map.empty, eps1qAvg = None, eps2qAvg = None,
+                readoutFidelity = Map.empty, readoutFidelityAvg = a.noise.readoutFidelity,
+                t1 = Map.empty, t2 = Map.empty, t1Avg = a.noise.t1Seconds, t2Avg = a.noise.t2Seconds,
+                dur1qNs = Map.empty, dur2qNs = Map.empty, durMeasNs = a.readoutDurationNs,
+                dur1qAvgNs = None, dur2qAvgNs = None,
+                initSurvivalPerQubit = a.noise.statePrepError.map(1 - _),
+                executionModel = ExecutionModel.NeutralAtom(a.parallelism),
+                warnings = a.warnings,
+                gateErrorsIncludeDecoherence = false,
+                pasqalTiming = Some(a.timing), analyticalAssumptions = a.assumptions,
+                memoryInfidelityRatePerSecond = a.noise.memoryInfidelityRatePerSecond
+            )
         case a : IBMCalibration =>
             val qubitMetrics = a.qubitMetrics
             val edgeMetrics = a.edgeMetrics.map { case (edge, metrics) => edgeKey(edge._1, edge._2) -> metrics }
@@ -330,6 +344,7 @@ object FidelityEstimator{
             estimateSchedule(ops, cal).perQubitEndTimeSec
 
         def score(compiled: Circuit, cal: CanonicalCalibration): FidelityEstimate = {
+            if (cal.pasqalTiming.nonEmpty) PasqalAnalyticalEstimator.validate(compiled.remainingGates, cal)
             val schedule = estimateSchedule(compiled.remainingGates, cal)
             val endTimesSec = schedule.perQubitEndTimeSec
 
@@ -346,7 +361,7 @@ object FidelityEstimator{
                     case _ => acc + log1p(-cal.epsFor(op))
                 }
             }
-            val logPDecoh = HardwareScheduleEstimator.decoherenceLog(endTimesSec, cal)
+            val logPDecoh = schedule.decoherence.logP
             val logPInitialization =
                 if (touchedQubitCount == 0) 0.0
                 else cal.initSurvivalPerQubit.map(p => touchedQubitCount.toDouble * log(p)).getOrElse(0.0)
@@ -361,7 +376,8 @@ object FidelityEstimator{
                 logPCrosstalk = schedule.logPCrosstalk,
                 logPTransport = schedule.logPTransport,
                 logPInitialization = logPInitialization,
-                schedule = Some(schedule)
+                schedule = Some(schedule),
+                analyticalCoverage = cal.pasqalTiming.map(_ => PasqalAnalyticalEstimator.coverage(cal))
             )
 
             val fcoeff =

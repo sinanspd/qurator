@@ -11,7 +11,7 @@ object HardwareParallelismSuite extends SimpleIOSuite {
   private def cal(model: ExecutionModel, t2: Double = 1.0): CanonicalCalibration =
     CanonicalCalibration(
       Map.empty, Map.empty, Some(0.0), Some(0.0), Map.empty, Some(1.0),
-      Map.empty, Map.empty, None, Some(t2), Map.empty, Map.empty,
+      Map.empty, Map.empty, Some(1.0), Some(t2), Map.empty, Map.empty,
       Some(0L), Some(10L), Some(40L), executionModel = model
     )
   private val zones = IonTrapParallelism(
@@ -49,7 +49,7 @@ object HardwareParallelismSuite extends SimpleIOSuite {
     val out = score(List(CX(0, 2)), cal(ExecutionModel.TrappedIon(profile)))
     val schedule = out.schedule.get
     IO.pure(expect(schedule.makespanNs == 67L) and expect(schedule.operations.head.gateStartNs == 27L) and
-      approx(out.logPDecoh, -134e-9) and approx(out.logPTransport, 2 * math.log(0.99)) and
+      approx(out.logPDecoh, -27e-9) and approx(out.logPTransport, 2 * math.log(0.99)) and
       approx(out.logPTotal, out.logPOps + out.logPDecoh + out.logPCrosstalk + out.logPTransport))
   }
 
@@ -104,7 +104,7 @@ object HardwareParallelismSuite extends SimpleIOSuite {
     val out = score(List(CZ(0, 2), X(3)), cal(ExecutionModel.NeutralAtom(p)))
     IO.pure(expect(out.schedule.get.makespanNs == 150L) and
       expect(out.schedule.get.operations.head.gateStartNs == 100L) and
-      approx(out.logPTransport, math.log(0.98)) and approx(out.logPDecoh, -430e-9))
+      approx(out.logPTransport, math.log(0.98)) and approx(out.logPDecoh, -180e-9))
   }
 
   test("measurement barriers synchronize readout without serializing readout channels") {
@@ -129,9 +129,21 @@ object HardwareParallelismSuite extends SimpleIOSuite {
     val expectedOverlapLog = math.log1p(-0.2 * math.exp(-0.5))
     IO.pure(expect(shortCoherence.schedule.get.peakGateParallelism == 2) and
       approx(shortCoherence.logPCrosstalk, expectedOverlapLog) and
-      approx(shortCoherence.logPTotal, -2.0 + expectedOverlapLog) and
+      approx(shortCoherence.logPTotal, expectedOverlapLog) and
       expect(longCoherence.schedule.get.peakGateParallelism == 1) and
-      approx(longCoherence.logPCrosstalk, 0.0) and approx(longCoherence.logPTotal, -0.004))
+      approx(longCoherence.logPCrosstalk, 0.0) and approx(longCoherence.logPTotal, -0.001))
+  }
+
+  test("CWCS changes concurrency with T1 while T2 and gate errors stay fixed") {
+    val p = atoms.copy(laserWaistUm = Some(20.0), crosstalkErrorAtZeroDistance = Some(0.15))
+    val base = cal(ExecutionModel.NeutralAtom(p), t2 = 0.01).copy(dur1qAvgNs = Some(1000000L))
+    val ops = List(X(0), X(2), Measure(0), Measure(2))
+    val shortT1 = score(ops, base.copy(t1Avg = Some(0.005)))
+    val longT1 = score(ops, base.copy(t1Avg = Some(1.0)))
+    IO.pure(expect(shortT1.schedule.get.peakGateParallelism == 2) and
+      expect(longT1.schedule.get.peakGateParallelism == 1) and
+      expect(shortT1.decoherence.get.isComplete) and expect(longT1.decoherence.get.isComplete) and
+      approx(longT1.logPDecoh, -0.002 * (1.0 / 6.0 + 1.0 / 0.03)))
   }
 
   test("ion residual crosstalk is charged once per overlapping pair") {

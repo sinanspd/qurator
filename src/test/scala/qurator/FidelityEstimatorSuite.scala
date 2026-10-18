@@ -442,6 +442,7 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
       eps1qAvg = Some(0.0),
       eps2qAvg = Some(0.0),
       readoutFidelityAvg = Some(1.0),
+      t1Avg = Some(1.0),
       t2Avg = Some(1.0),
       dur1qAvgNs = Some(10L),
       durMeasNs = Some(0L),
@@ -454,8 +455,8 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
     val serialEstimate = FidelityEstimator.score(circuit, serial)
 
     IO.pure(
-      approx(parallelEstimate.logPDecoh, -20.0 / 1e9) and
-      approx(serialEstimate.logPDecoh, -40.0 / 1e9) and
+      approx(parallelEstimate.logPDecoh, 0.0) and
+      approx(serialEstimate.logPDecoh, -10.0 / 1e9) and
       expect(serialEstimate.pTotal < parallelEstimate.pTotal)
     )
   }
@@ -521,7 +522,7 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
     )
   }
 
-  test("score multiplies gate and readout success probabilities when there is no decoherence") {
+  test("score retains the known gate/readout contribution and reports missing coherence") {
     val cal = mkCanonical(
       eps1qAvg = Some(0.10),          
       eps2qAvg = Some(0.20),          
@@ -554,6 +555,9 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
     IO.pure(
         approx(out.logPOps, expectedLogPOps) and
         approx(out.logPDecoh, 0.0) and 
+        expect(!out.decoherence.get.isComplete) and
+        expect(out.decoherence.get.missingT1Qubits == Set(1)) and
+        expect(out.decoherence.get.missingT2Qubits == Set(1)) and
         approx(out.logPTotal, expectedLogPOps) and
         approx(out.pTotal, expectedP) and
         approx(out.perQubitEndTimeSec(0), 150.0 / 1e9) and 
@@ -561,11 +565,12 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
     )
   }
 
-  test("score adds T2 decoherence from each qubit end time") {
+  test("score adds joint T1/T2 noise only on exposure outside calibrated gates and readout") {
     val cal = mkCanonical(
       eps1qAvg = Some(0.10),
       eps2qAvg = Some(0.20),
       readoutFidelityAvg = Some(0.90),
+      t1Avg = Some(1.0),
       t2Avg = Some(1.0), 
       dur1qAvgNs = Some(10L),
       dur2qAvgNs = Some(40L),
@@ -587,7 +592,7 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
       math.log(0.90) + math.log(0.80) + math.log(0.90) + math.log(0.90)
 
     val perQubitEnd = 150.0 / 1e9
-    val expectedLogPDecoh = -(perQubitEnd / 1.0) - (perQubitEnd / 1.0)
+    val expectedLogPDecoh = -10e-9 * (1.0 / 6.0 + 1.0 / 3.0) // q1 waits for X(q0).
     val expectedTotal = expectedLogPOps + expectedLogPDecoh
     val expectedP = math.exp(expectedTotal)
 
@@ -601,7 +606,7 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
     )
   }
 
-  test("score ignores non-positive T2 values in the decoherence term") {
+  test("score treats non-positive coherence values as missing and reports incomplete coverage") {
     val cal = mkCanonical(
       eps1qAvg = Some(0.10),
       eps2qAvg = Some(0.20),
@@ -625,6 +630,8 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
 
     IO.pure(
         approx(out.logPDecoh, 0.0) and 
+        expect(!out.decoherence.get.isComplete) and
+        expect(out.decoherence.get.missingT2Qubits == Set(1)) and
         approx(out.logPTotal, out.logPOps) and
         approx(out.pTotal, math.exp(out.logPOps))
     )

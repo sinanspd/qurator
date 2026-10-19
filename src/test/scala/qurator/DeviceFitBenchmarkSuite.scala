@@ -6,7 +6,7 @@ import qurator.domain.Task.QuantumTask
 import qurator.domain.Braket._
 import qurator.domain.calibration._
 import qurator.domain.circuit._
-import qurator.domain.device.Device
+import qurator.domain.device.{Device, QubitReuseCapabilities}
 import qurator.domain._
 import qurator.testbed.HaqaMapper.DeviceTopology
 import qurator.testbed.DeviceFitBenchmark
@@ -21,6 +21,7 @@ import weaver.SimpleIOSuite
 import java.nio.charset.StandardCharsets
 
 object DeviceFitBenchmarkSuite extends SimpleIOSuite {
+  private val reuseSupported = QubitReuseCapabilities(true, true, true)
 
   private def approx(actual: Double, expected: Double, tol: Double = 1e-12) =
     if (math.abs(actual - expected) <= tol) success
@@ -136,7 +137,8 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
         name = "sample"
       )
 
-    val process = DeviceFitBenchmark.processFromCircuit(circuit)
+    val process = DeviceFitBenchmark.processFromCircuit(circuit, reuseSupported,
+      CircuitProcessConverter.OutputContract(discardedQubits = Set(0)))
 
     IO.pure(
       expect(process.dataQubits == 0) and
@@ -168,7 +170,7 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
         name = "reset-segment"
       )
 
-    val process = DeviceFitBenchmark.processFromCircuit(circuit)
+    val process = DeviceFitBenchmark.processFromCircuit(circuit, reuseSupported)
 
     IO.pure(
       expect(
@@ -197,7 +199,7 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
         name = "sequential-wires"
       )
 
-    val process = DeviceFitBenchmark.processFromCircuit(circuit)
+    val process = DeviceFitBenchmark.processFromCircuit(circuit, reuseSupported)
     val topology = DeviceTopology.fromEdges(Nil, List(0))
     val attempt = HaloCircuitMerger.mergeProcesses(Vector(process), topology)
     val plan = attempt.toOption.get
@@ -312,6 +314,47 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
       expect(report.rows.headOption.flatMap(_.minEstimatedFidelity).exists(_.isFinite))
   }
 
+  test("run checks each target's reuse capabilities before using a reduced live width") {
+    implicit val logger = NoOpLogger.impl[IO]
+    val client = new ProviderClient[IO] {
+      def provider: String = "test"
+      def fetchAvailableDevices: IO[List[Device]] = IO.pure(List(
+        Device("test", "unknown", 2, t1 = 0f, t2 = 0f, gateSet = Nil),
+        Device("test", "supported", 2, t1 = 0f, t2 = 0f, gateSet = Nil,
+          qubitReuseCapabilities = reuseSupported)
+      ))
+      def fetchDeviceCalibration(deviceId: String): IO[DeviceCalibration] = IO.pure(
+        IonQCalibration(t1Seconds = 1.0, t2Seconds = 1.0, avg1qFidelityPct = 99.0,
+          avg2qFidelityPct = 98.0, avgReadoutFidelity = 0.97,
+          oneQGateDurationSec = 1e-6, twoQGateDurationSec = 2e-6, readoutDurationSec = 1e-6))
+      def submitTask(device: Device, task: QuantumTask, compiled: Circuit): IO[ProviderTaskSubmission] =
+        IO.raiseError(new IllegalStateException("benchmark must not submit"))
+      def getTask(taskId: String): IO[ProviderTaskStatus] = IO.raiseError(new IllegalStateException("unused"))
+      def fetchJobTiming(taskId: String, status: ProviderTaskStatus): IO[ProviderJobTiming] =
+        IO.pure(ProviderJobTiming(None, None))
+      def fetchTaskResult(taskId: String, status: ProviderTaskStatus): IO[QuantumJobResult] =
+        IO.raiseError(new IllegalStateException("unused"))
+      def completedStatuses: Set[String] = Set("DONE")
+    }
+    val qasm = """OPENQASM 3.0;
+      |include "stdgates.inc";
+      |qubit[2] q;
+      |bit[2] c;
+      |h q[0];
+      |c[0] = measure q[0];
+      |x q[1];
+      |c[1] = measure q[1];
+      |""".stripMargin
+    for {
+      dir <- IO.blocking(java.nio.file.Files.createTempDirectory("device-fit-capabilities"))
+      _ <- IO.blocking(java.nio.file.Files.writeString(dir.resolve("a.qasm"), qasm, StandardCharsets.UTF_8))
+      _ <- IO.blocking(java.nio.file.Files.writeString(dir.resolve("b.qasm"), qasm, StandardCharsets.UTF_8))
+      report <- DeviceFitBenchmark.run(List(client), DeviceFitBenchmark.Settings(
+        qasmFolder = fs2.io.file.Path.fromNioPath(dir), loaderParallelism = 1, deviceFetchParallelism = 1))
+    } yield expect(report.rows.size == 1) and expect(report.rows.head.accommodatingDevices == 1) and
+      expect(report.rows.head.maxEstimatedFidelityDevice.contains("test/supported"))
+  }
+
   test("run scores IonQ native lowering instead of direct generic H gates") {
     implicit val logger = NoOpLogger.impl[IO]
 
@@ -370,7 +413,9 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
       fidelity <- IO.fromOption(report.rows.headOption.flatMap(_.maxEstimatedFidelity))(
         new RuntimeException("expected a benchmark row with finite fidelity")
       )
-    } yield approx(fidelity, math.pow(0.9, 8.0)) and
+    // Unknown reuse support selects static mode, so no helper-release resets
+    // are appended; each H still lowers to three native operations.
+    } yield approx(fidelity, math.pow(0.9, 6.0)) and
       expect(fidelity < math.pow(0.9, 2.0))
   }
 

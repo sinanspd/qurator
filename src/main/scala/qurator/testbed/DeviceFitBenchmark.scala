@@ -10,7 +10,7 @@ import org.typelevel.log4cats.Logger
 import qurator.domain.ProviderClient
 import qurator.domain.calibration._
 import qurator.domain.circuit._
-import qurator.domain.device.Device
+import qurator.domain.device.{Device, QubitReuseCapabilities}
 import qurator.testbed.HaqaMapper.DeviceTopology
 import qurator.util.{CircuitProcessConverter, FidelityEstimator, HaloCircuitMerger, QuantumTaskLoader, QuantumTaskLoadWarning}
 
@@ -200,8 +200,12 @@ object DeviceFitBenchmark {
       depth = task.depth.value
     )
 
-  def processFromCircuit(circuit: Circuit): HaloCircuitMerger.ProcessCircuit =
-    CircuitProcessConverter.liveIntervalProcessFromCircuit(circuit)
+  def processFromCircuit(
+      circuit: Circuit,
+      capabilities: QubitReuseCapabilities = QubitReuseCapabilities(),
+      outputs: CircuitProcessConverter.OutputContract = CircuitProcessConverter.OutputContract()
+  ): HaloCircuitMerger.ProcessCircuit =
+    CircuitProcessConverter.liveIntervalProcessFromCircuit(circuit, capabilities, outputs)
 
   private def fetchTargets(
       clients: List[ProviderClient[IO]],
@@ -310,10 +314,16 @@ object DeviceFitBenchmark {
       targets: Vector[DeviceTarget],
       settings: Settings
   )(implicit logger: Logger[IO]): IO[IterationResult] = {
-    val processes = prefix.map(_.process)
-    val minimumRequiredQubits = minimumRequiredPhysicalQubits(processes)
-    val candidates =
-      targets.filter(_.topology.qubits.size >= minimumRequiredQubits)
+    // Conversion is target-specific: a device without confirmed reuse support
+    // must be checked against the static width, not the optimistic live width.
+    val targetProcesses = targets.map { target =>
+      target -> prefix.map(c => processFromCircuit(c.circuit, target.device.qubitReuseCapabilities))
+    }
+    val minimumRequiredQubits = targetProcesses.map { case (_, ps) => minimumRequiredPhysicalQubits(ps) }
+      .minOption.getOrElse(prefix.map(_.qubits).sum)
+    val candidates = targetProcesses.filter { case (target, ps) =>
+      target.topology.qubits.size >= minimumRequiredPhysicalQubits(ps)
+    }
 
     val candidateLog =
       if (candidates.isEmpty) {
@@ -324,7 +334,9 @@ object DeviceFitBenchmark {
         )
       } else IO.unit
 
-    candidateLog *> candidates.traverse(target => attemptDeviceFit(processes, target, settings.haloConfig)).flatMap { attempts =>
+    candidateLog *> candidates.traverse { case (target, ps) =>
+      attemptDeviceFit(ps, target, settings.haloConfig)
+    }.flatMap { attempts =>
       val failures = attempts.collect { case Left(failure) => failure }
       val successful = attempts.collect { case Right(success) => success }
       val minAttempt = successful.sortBy(_.estimatedFidelity).headOption

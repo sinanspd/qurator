@@ -2170,7 +2170,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         devices = List(device),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = 0.0
+        targetEstimatedFidelity = 0.9
       )
 
       seen <- state.get
@@ -2220,7 +2220,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         devices = List(tooSmall, bad, good),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -0.1
+        targetEstimatedFidelity = 0.9
       )
 
       seen <- state.get
@@ -2272,7 +2272,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         devices = List(tooSmall, feasibleA, feasibleB),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1.0
+        targetEstimatedFidelity = 0.0
       )
 
       seen <- state.get
@@ -2281,7 +2281,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     }
   }
 
-  test("flattenGroup propagates calibration fetch failure and stops before later feasible devices") {
+  test("flattenGroup tries another device after calibration failure") {
     for {
       state <- Ref.of[IO, FetchState](FetchState())
       List(id1, id2) <- ids(2)
@@ -2323,13 +2323,13 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         devices = List(first, second),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1.0
+        targetEstimatedFidelity = 0.0
       ).attempt
 
       seen <- state.get
     } yield {
-      expect(attempt.swap.exists(_.getMessage == "fetch failed")) and
-      expect(seen.fetchOrder == List("first"))
+      expect(attempt.exists(out => out.size == 1 && out.head.childTasks == List(id1, id2))) and
+      expect(seen.fetchOrder == List("first", "second"))
     }
   }
 
@@ -2446,7 +2446,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         tasks = List(t1),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1e9
+        targetEstimatedFidelity = 0.0
       )
 
       seen <- state.get
@@ -2492,7 +2492,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         tasks = List(t1, t2),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1e9
+        targetEstimatedFidelity = 0.0
       )
 
       seen <- state.get
@@ -2536,7 +2536,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         tasks = List(t1, t2),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1e9
+        targetEstimatedFidelity = 0.0
       )
 
       seen <- state.get
@@ -2555,14 +2555,14 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
   }
 
 
-  test("attemptToMergeSyncTasks keeps the original group when threshold is above achievable log fidelity") {
+  test("attemptToMergeSyncTasks keeps the original group when threshold is above achievable fidelity") {
     for {
       state <- Ref.of[IO, FetchState](FetchState())
       List(id1, id2) <- ids(2)
 
       t1 = mkTask(
         id = id1,
-        circuit = Circuit(List.empty, 6),
+        circuit = Circuit(List(X(0)), 6),
         qubits = 6,
         shots = 1000,
         depth = 10,
@@ -2582,14 +2582,14 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
       clients = mkClients2(
         state = state,
         ibmDevicesF = IO.pure(BackendsResponseV2(List(mkIBMDevice("big", 10)))),
-        ibmCalibrations = Map("big" -> IO.pure(mkIonQCalibration(100.0)))
+        ibmCalibrations = Map("big" -> IO.pure(mkIonQCalibration(50.0)))
       )
 
       out <- Scheduler.attemptToMergeSyncTasks[IO](
         tasks = List(t1, t2),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = 0.1
+        targetEstimatedFidelity = 0.9
       )
 
       seen <- state.get
@@ -2643,7 +2643,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         tasks = List(t1, t2, t3),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1e9
+        targetEstimatedFidelity = 0.0
       )
 
       merged = out.find(_.childTasks.nonEmpty).get
@@ -2698,7 +2698,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         tasks = List(t1, t2, t3),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1e9
+        targetEstimatedFidelity = 0.0
       )
 
       merged = out.find(_.childTasks.nonEmpty).get
@@ -2763,7 +2763,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         tasks = List(t1, t2, t3, t4),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1e9
+        targetEstimatedFidelity = 0.0
       )
 
       merged = out.find(_.childTasks.nonEmpty).get
@@ -2814,7 +2814,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         tasks = List(t1, t2),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1e9
+        targetEstimatedFidelity = 0.0
       )
 
       seen <- state.get
@@ -2865,7 +2865,7 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         tasks = List(t1, t2),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -0.1
+        targetEstimatedFidelity = 0.9
       )
 
       seen <- state.get
@@ -2876,7 +2876,70 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
     }
   }
 
-  test("attemptToMergeSyncTasks propagates calibration fetch failure from the first merged group") {
+  test("merge construction failures preserve original IDs and dependencies without evaluating devices") {
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(a, b, parent) <- ids(3)
+      group = List(a, b).map(id => mkTask(id, Circuit(List(H(0)), 1), 1, 100, 1, List(parent), t0))
+      clients = mkClients(state, Map.empty)
+      failures = List[Scheduler.CircuitMerge](
+        _ => Left("helper allocation deadlock"),
+        _ => throw new IllegalArgumentException("merge lowering failed")
+      )
+      results <- failures.traverse(merger => Scheduler.flattenGroup[IO](group, List(mkDevice("A", 10)),
+        clients, passthroughCompiler, 0.0, circuitMerger = merger))
+      seen <- state.get
+    } yield expect(results.forall(_ == group)) and expect(seen.fetchOrder.isEmpty)
+  }
+
+  test("pending merge failures retain all original tasks for subsequent scheduling") {
+    val attemptedWidths = new java.util.concurrent.ConcurrentLinkedQueue[Int]()
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(parent) <- ids(1)
+      clients = mkClients2(state,
+        IO.pure(BackendsResponseV2(List(mkIBMDevice("big", 10).copy(queue_length = 10)))),
+        Map("big" -> IO.pure(mkIonQCalibration(100.0))))
+      scheduler <- Scheduler.make[IO](fakeTestDataPersistance, clients, identity,
+        CuttingStrategies.none[IO], 0.0, c => List(c), compiler = passthroughCompiler,
+        cuttingEnabled = false, circuitMerger = cs => {
+          attemptedWidths.add(cs.map(_.qubits).sum)
+          Left("helper allocation deadlock")
+        })
+      request = NewQuantumTaskRequest(Circuit(List(H(0), Measure(0)), 1), TaskQubits(1),
+        TaskShots(100), TaskDepth(2), List(parent), Nil, t0)
+      first <- scheduler.submitTask(request)
+      second <- scheduler.submitTask(request)
+      third <- scheduler.submitTask(request)
+      submitted <- scheduler.getSubmittedTasks()
+    } yield expect((first ++ second ++ third).distinct.size == 3) and
+      expect(attemptedWidths.toArray.toList == List(2, 3)) and expect(submitted.isEmpty)
+  }
+
+  test("pending merging rejects descendants of an already merged original task") {
+    val attempts = new java.util.concurrent.atomic.AtomicInteger(0)
+    for {
+      state <- Ref.of[IO, FetchState](FetchState())
+      List(parent) <- ids(1)
+      clients = mkClients2(state,
+        IO.pure(BackendsResponseV2(List(mkIBMDevice("big", 10).copy(queue_length = 10)))),
+        Map("big" -> IO.pure(mkIonQCalibration(100.0))))
+      scheduler <- Scheduler.make[IO](fakeTestDataPersistance, clients, identity,
+        CuttingStrategies.none[IO], 0.0, c => List(c), compiler = passthroughCompiler,
+        cuttingEnabled = false, circuitMerger = cs => {
+          attempts.incrementAndGet()
+          Scheduler.simpleCircuitMerge(cs)
+        })
+      request = NewQuantumTaskRequest(Circuit(List(H(0), Measure(0)), 1), TaskQubits(1),
+        TaskShots(100), TaskDepth(2), List(parent), Nil, t0)
+      first <- scheduler.submitTask(request)
+      _ <- scheduler.submitTask(request)
+      _ <- scheduler.submitTask(request.copy(parentTasks = first))
+      submitted <- scheduler.getSubmittedTasks()
+    } yield expect(attempts.get() == 1) and expect(submitted.isEmpty)
+  }
+
+  test("attemptToMergeSyncTasks restores individual tasks when every device rejects the merge") {
     for {
       state <- Ref.of[IO, FetchState](FetchState())
       List(id1, id2) <- ids(2)
@@ -2914,12 +2977,12 @@ object SchedulerUtilitySuite extends SimpleIOSuite {
         tasks = List(t1, t2),
         clients = clients,
         compiler = passthroughCompiler,
-        targetEstimatedFidelity = -1e9
+        targetEstimatedFidelity = 0.0
       ).attempt
 
       seen <- state.get
     } yield {
-      expect(attempt.swap.exists(_.getMessage == "fetch failed")) and
+      expect(attempt.contains(List(t1, t2))) and
       expect(seen.fetchOrder == List("big"))
     }
   }

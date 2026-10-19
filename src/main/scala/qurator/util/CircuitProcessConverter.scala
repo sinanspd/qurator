@@ -1,6 +1,7 @@
 package qurator.util
 
 import qurator.domain.circuit._
+import qurator.domain.device.QubitReuseCapabilities
 import qurator.util.HaloCircuitMerger.ProcessCircuit
 import qurator.util.HaloCircuitMerger.ProcessInstruction
 import qurator.util.HaloCircuitMerger.ProcessInstruction.Op
@@ -11,6 +12,46 @@ import scala.annotation.tailrec
 
 object CircuitProcessConverter {
 
+  // Unmeasured wires are quantum outputs unless explicitly discarded. A caller
+  // may also require a measured wire's post-measurement quantum state to survive.
+  final case class OutputContract(
+      quantumOutputs: Set[Int] = Set.empty,
+      discardedQubits: Set[Int] = Set.empty
+  )
+
+  final case class Conversion(
+      process: ProcessCircuit,
+      usedLiveIntervals: Boolean,
+      fallbackReason: Option[String]
+  )
+
+  def convertLiveIntervals(
+      circuit: Circuit,
+      capabilities: QubitReuseCapabilities = QubitReuseCapabilities(),
+      outputs: OutputContract = OutputContract()
+  ): Conversion = {
+    val qubits = logicalQubits(circuit)
+    require((outputs.quantumOutputs ++ outputs.discardedQubits).forall(q => q >= 0 && q < qubits),
+      "Output contract references a qubit outside the circuit")
+    require((outputs.quantumOutputs intersect outputs.discardedQubits).isEmpty,
+      "A quantum output cannot also be discarded")
+    val lastUses = circuit.remainingGates.flatMap(g => gateQubits(g).map(_ -> g)).toMap
+    val unmeasuredOutputs = (0 until qubits).filter { q =>
+      !outputs.discardedQubits(q) && !lastUses.get(q).contains(Measure(q))
+    }
+    val reason =
+      if (!capabilities.supportsLiveIntervals)
+        Some("Backend has not confirmed mid-circuit measurement, reset, and qubit reuse")
+      else if (outputs.quantumOutputs.nonEmpty || unmeasuredOutputs.nonEmpty)
+        Some("Persistent quantum outputs require static conversion")
+      else None
+
+    reason match {
+      case Some(_) => Conversion(staticProcessFromCircuit(circuit), false, reason)
+      case None => Conversion(convertEligibleLiveIntervals(circuit), true, None)
+    }
+  }
+
   def staticProcessFromCircuit(circuit: Circuit): ProcessCircuit =
     ProcessCircuit(
       dataQubits = logicalQubits(circuit),
@@ -19,7 +60,13 @@ object CircuitProcessConverter {
       name = circuit.name
     )
 
-  def liveIntervalProcessFromCircuit(circuit: Circuit): ProcessCircuit = {
+  def liveIntervalProcessFromCircuit(
+      circuit: Circuit,
+      capabilities: QubitReuseCapabilities = QubitReuseCapabilities(),
+      outputs: OutputContract = OutputContract()
+  ): ProcessCircuit = convertLiveIntervals(circuit, capabilities, outputs).process
+
+  private def convertEligibleLiveIntervals(circuit: Circuit): ProcessCircuit = {
     val qubits = logicalQubits(circuit)
     val gates = circuit.remainingGates.toVector
     val initialRemainingUses =

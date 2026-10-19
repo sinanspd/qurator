@@ -25,6 +25,7 @@ import qurator.domain.calibration._
 import qurator.domain.Braket._
 import qurator.effects.Background
 import qurator.util.Retry
+import qurator.util.MergeSafety
 import retry.RetryPolicies._
 import retry.RetryPolicy
 import cats.Monad
@@ -66,6 +67,11 @@ trait Scheduler[F[_]]{
 }
 
 object Scheduler{
+  // A failed construction is a rejected merge, not a failed task submission.
+  // The simple merger remains the default; a later merger can report Left here.
+  type CircuitMerge = List[Circuit] => Either[String, Circuit]
+  val simpleCircuitMerge: CircuitMerge = circuits => Right(mergeCircuits(circuits))
+
   private sealed trait TaskContinuation[F[_]]
 
   private object TaskContinuation {
@@ -160,11 +166,13 @@ object Scheduler{
         cuttingEnabled: Boolean = true,
         mergingEnabled: Boolean = true,
         cuttingEffectiveWidthEnabled: Boolean = true,
-        batchSubmissionsEnabled: Boolean = true
+        batchSubmissionsEnabled: Boolean = true,
+        circuitMerger: CircuitMerge = simpleCircuitMerge
   ): F[Scheduler[F]] =
     for {
       readyTasks       <- Ref.of[F, List[Task]](List.empty)
       pendingTasks     <- Ref.of[F, List[Task]](List.empty)
+      pendingMergeLock <- cats.effect.std.Semaphore[F](1)
       submittedTasks   <- Ref.of[F, List[(String, String, String, TaskId)]](List.empty) //platform, platformId, jobId, taskId
       submittedBatches <- Ref.of[F, Map[(String, String), Set[String]]](Map.empty) //provider, batchId -> jobIds
       completedTasks   <- Ref.of[F, Set[TaskId]](Set.empty)
@@ -447,7 +455,13 @@ object Scheduler{
                     )
                 )
                 _ <- Logger[F].info(s"Attempting Merge Sync Tasks")
-                possiblyMergedTasks <- Scheduler.attemptToMergeSyncTasks(tasks, clients, compiler, targetEstimatedFidelity) 
+                knownTasks <- taskIndex.get
+                aliases <- mergedAliases.get
+                possiblyMergedTasks <-
+                    if (mergeEnabled)
+                        Scheduler.attemptToMergeSyncTasks(tasks, clients, compiler, targetEstimatedFidelity,
+                            knownTasks, aliases, circuitMerger)
+                    else tasks.pure[F]
                 _ <- Logger[F].info(
                     s"Merge attempt: original=${tasks.size}, after=${possiblyMergedTasks.size}, " +
                     s"ids=${possiblyMergedTasks.map(_.uuid).mkString(", ")}"
@@ -947,10 +961,12 @@ object Scheduler{
                 _ <- closeCompletedSubmittedBatches
                 done <- completedTasks.get
 
-                promotable <- pendingTasks.modify { ps =>
-                val (goReady, stayPending) =
-                    ps.partition(t => Scheduler.allParentResultsAvailable(done, t)) 
-                (stayPending, goReady)
+                promotable <- pendingMergeLock.permit.use { _ =>
+                    pendingTasks.modify { ps =>
+                        val (goReady, stayPending) =
+                            ps.partition(t => Scheduler.allParentResultsAvailable(done, t))
+                        (stayPending, goReady)
+                    }
                 }
 
                 _ <- readyTasks.update(_ ++ promotable)
@@ -1231,38 +1247,35 @@ object Scheduler{
                 false.pure[F]
             } else {
                 val feasible = devices.filter(_.qubits >= mergedQubits)
-
-                feasible
-                    .traverse { d =>
-                        estimateSynronizationCost(d, group).map { syncCost =>
-                            syncCost < d.queueLength.toLong * mergeQueueFactorMillis
+                (taskIndex.get, mergedAliases.get).tupled.flatMap { case (index, aliases) =>
+                    if (!MergeSafety.independent(group, index, aliases)) false.pure[F]
+                    else feasible.traverse { d =>
+                        estimateSynronizationCost(d, group).attempt.flatMap {
+                            case Right(syncCost) => (syncCost < d.queueLength.toLong * mergeQueueFactorMillis).pure[F]
+                            case Left(error) =>
+                                Logger[F].warn(error)(s"Rejecting merge candidate on ${d.platform}/${d.platformId}").as(false)
                         }
-                    }
-                    .map(_.exists(identity))
+                    }.map(_.exists(identity))
+                }
             }
         }
 
-        private def createMergedPendingTask(group: List[QuantumTask]): F[QuantumTask] =
+        private def createMergedPendingTasks(group: List[QuantumTask], devices: List[Device]): F[List[QuantumTask]] =
             for {
-                mergedId <- ID.make[F, TaskId]
-                logicalIds <- group
-                    .traverse(q => logicalIdsFor(q.uuid))
-                    .map(_.flatten.distinct)
-
-                merged = QuantumTask(
-                    uuid        = mergedId,
-                    circuit     = mergeCircuits(group.map(_.circuit)),
-                    qubits      = TaskQubits(group.map(_.qubits.value).sum),
-                    shots       = TaskShots(group.map(_.shots.value).max),
-                    depth       = TaskDepth(group.map(_.depth.value).max),
-                    parentTasks = group.flatMap(_.parentTasks).distinct,
-                    childTasks  = group.flatMap(_.childTasks).distinct,
-                    createdAt   = group.map(_.createdAt).min
-                )
-
-                _ <- mergedAliases.update(_ + (mergedId -> logicalIds))
-                _ <- rememberTask(merged)
-            } yield merged
+                index <- taskIndex.get
+                aliases <- mergedAliases.get
+                attempted <- flattenGroup(group, devices, clients, compiler, targetEstimatedFidelity,
+                    index, aliases, circuitMerger)
+                result <- attempted match {
+                    case merged :: Nil if !group.exists(_.uuid == merged.uuid) =>
+                        val withChildren = merged.copy(childTasks = group.flatMap(_.childTasks).distinct)
+                        group.traverse(q => logicalIdsFor(q.uuid)).map(_.flatten.distinct).flatMap { logicalIds =>
+                            mergedAliases.update(_ + (merged.uuid -> logicalIds)) *>
+                                rememberTask(withChildren).as(List(withChildren))
+                        }
+                    case _ => group.pure[F]
+                }
+            } yield result
 
         private def growMergeGroup(
             seed: QuantumTask,
@@ -1296,7 +1309,7 @@ object Scheduler{
                         case (group, leftovers) =>
                             val currentF =
                                 if (group.size >= 2) {
-                                    createMergedPendingTask(group).map(List(_))
+                                    createMergedPendingTasks(group, devices)
                                 } else {
                                     List(h).pure[F]
                                 }
@@ -1322,7 +1335,7 @@ object Scheduler{
 
         private def maybeMergePendingQuantumTasks: F[Unit] =
             if (!mergeEnabled) Applicative[F].unit
-            else
+            else pendingMergeLock.permit.use { _ =>
                 for {
                     devices  <- Scheduler.getAvailableDevices[F](clients)
                     before   <- pendingTasks.get
@@ -1351,6 +1364,7 @@ object Scheduler{
                             Logger[F].info(s"Pending merge pass: before=${before.size}, after=${after.size}")
                         else Applicative[F].unit
                 } yield ()
+            }
 
         private def enqueuePendingQuantumTasksAndMaybeMerge(qs: List[QuantumTask]): F[Unit] =
             enqueuePending(qs.map(identity[Task])) *> maybeMergePendingQuantumTasks
@@ -1698,7 +1712,7 @@ object Scheduler{
             readyTasks.update(ts => prioritizationStrategy(newTasks ++ ts))
 
         private def enqueuePending(newTasks: List[Task]): F[Unit] =
-            pendingTasks.update(ts => newTasks ++ ts)
+            pendingMergeLock.permit.use(_ => pendingTasks.update(ts => newTasks ++ ts))
 
         private def fakeClassicalTaskScheduler(ct: ClassicalTask): F[Unit] = {
             val computationTime = 500 + Random.nextInt(1500)
@@ -1789,7 +1803,10 @@ object Scheduler{
             tasks: List[QuantumTask],
             clients: HttpClients[F],
             compiler: FakeCompiler[F],
-            targetEstimatedFidelity: Double
+            targetEstimatedFidelity: Double,
+            knownTasks: Map[TaskId, Task] = Map.empty,
+            aliases: Map[TaskId, List[TaskId]] = Map.empty,
+            circuitMerger: CircuitMerge = simpleCircuitMerge
         ): F[List[QuantumTask]] = 
             for{
                 devices <- getAvailableDevices[F](clients)
@@ -1800,10 +1817,13 @@ object Scheduler{
                     assignToFinalBuckets(
                         bucket = bucket,
                         capacity = maxQubits, 
-                        maxTasksPerBin = 3 //fix this, obv shouldn't be constant
+                        maxTasksPerBin = 3, //fix this, obv shouldn't be constant
+                        knownTasks = knownTasks ++ tasks.map(t => t.uuid -> t),
+                        aliases = aliases
                     )
                 }
-                merged <- groups.traverse(g => Scheduler.flattenGroup(g, devices, clients, compiler, targetEstimatedFidelity))
+                merged <- groups.traverse(g => Scheduler.flattenGroup(g, devices, clients, compiler,
+                    targetEstimatedFidelity, knownTasks ++ tasks.map(t => t.uuid -> t), aliases, circuitMerger))
             } yield merged.flatten
         
         private[qurator] def getAvailableDevices[F[_]: MonadThrow](clients: HttpClients[F]): F[List[Device]] =
@@ -1821,11 +1841,15 @@ object Scheduler{
         private[qurator] def assignToFinalBuckets( 
             bucket: List[QuantumTask],
             capacity: Int,
-            maxTasksPerBin: Int
+            maxTasksPerBin: Int,
+            knownTasks: Map[TaskId, Task] = Map.empty,
+            aliases: Map[TaskId, List[TaskId]] = Map.empty
         ): List[List[QuantumTask]] = { 
+            val dependencyIndex = knownTasks ++ bucket.map(t => t.uuid -> t)
             final case class Bin(tasks: List[QuantumTask], used: Int) {
                 def canFit(t: QuantumTask): Boolean =
-                    (used + t.qubits.value <= capacity) && (tasks.size < maxTasksPerBin)
+                    (used + t.qubits.value <= capacity) && (tasks.size < maxTasksPerBin) &&
+                        MergeSafety.independent(tasks :+ t, dependencyIndex, aliases)
                 def add(t: QuantumTask): Bin = Bin(tasks :+ t, used + t.qubits.value)
             }
 
@@ -1849,13 +1873,16 @@ object Scheduler{
             devices: List[Device],
             clients: HttpClients[F],
             compiler: FakeCompiler[F],
-            targetEstimatedFidelity: Double
+            targetEstimatedFidelity: Double,
+            knownTasks: Map[TaskId, Task] = Map.empty,
+            aliases: Map[TaskId, List[TaskId]] = Map.empty,
+            circuitMerger: CircuitMerge = simpleCircuitMerge
         ): F[List[QuantumTask]] = {
-            println("Starting Flatten Group")
-            println(s"Group Size ${group.length}")
             group match {
                 case Nil          => List.empty[QuantumTask].pure[F]
                 case single :: Nil => List(single).pure[F]
+                case g if !MergeSafety.independent(g, knownTasks, aliases) =>
+                    Logger[F].info("Rejecting merge of dependent tasks; retaining individual tasks").as(g)
                 case g =>
                     val mergedQubits = g.map(_.qubits.value).sum
                     val feasibleDevices = devices.filter(_.qubits >= mergedQubits)
@@ -1863,10 +1890,11 @@ object Scheduler{
                     if (feasibleDevices.isEmpty) {
                         g.pure[F]
                     } else {
-                        val mergedCircuit: Circuit =
-                            mergeCircuits(g.map(_.circuit)) 
-                        ID.make[F, TaskId].flatMap { mergedId =>
-                            val mergedTask =
+                        val attempt = for {
+                            built <- MonadThrow[F].catchNonFatal(circuitMerger(g.map(_.circuit)))
+                            mergedCircuit <- built.leftMap(reason => new IllegalArgumentException(reason)).liftTo[F]
+                            mergedId <- ID.make[F, TaskId]
+                            mergedTask =
                                 QuantumTask(
                                     uuid        = mergedId,
                                     circuit     = mergedCircuit,
@@ -1878,15 +1906,28 @@ object Scheduler{
                                     createdAt   = g.map(_.createdAt).min
                                 )
 
-                            feasibleDevices
-                                .traverse(d => Scheduler.estimateFidelity(d, mergedTask.circuit, clients, compiler)) 
-                                .map(_.map(_.logPTotal).maxOption.getOrElse(0.0))
-                                .flatMap { bestFidelity =>
-                                    Logger[F].info(s"Group Size: ${group.size}, mergedQubits: ${mergedQubits}, feasibleDevices: ${feasibleDevices.size}, bestFidelity: ${bestFidelity}, targetFidelity: ${math.log(targetEstimatedFidelity)}") *>
-                                    {if (bestFidelity >= math.log(targetEstimatedFidelity)) List(mergedTask).pure[F]
-                                    else g.pure[F]}
+                            estimates <- feasibleDevices.traverse { d =>
+                                MonadThrow[F].catchNonFatal(
+                                    Scheduler.estimateFidelity(d, mergedTask.circuit, clients, compiler)
+                                ).flatten.attempt.flatMap {
+                                    case Right(estimate) => Option(estimate.logPTotal).filterNot(_.isNaN).pure[F]
+                                    case Left(error) =>
+                                        Logger[F].warn(error)(
+                                            s"Merge rejected on ${d.platform}/${d.platformId}; trying remaining devices"
+                                        ).as(Option.empty[Double])
                                 }
                             }
+                            result <-
+                                if (estimates.flatten.exists(_ >= math.log(targetEstimatedFidelity)))
+                                    List(mergedTask).pure[F]
+                                else Logger[F].info("No device accepted the merge; retaining individual tasks").as(g)
+                        } yield result
+
+                        // Recovery is before submission: no partial merged circuit
+                        // is executed and the original IDs/dependencies are kept.
+                        attempt.handleErrorWith { error =>
+                            Logger[F].warn(error)("Merge construction failed; retaining individual tasks").as(g)
+                        }
                     }
             } 
         }

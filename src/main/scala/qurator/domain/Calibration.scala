@@ -221,7 +221,8 @@ object calibration {
         qubitMetrics: Map[Int, QubitCalibrationMetrics] = Map.empty,
         edgeMetrics: Map[(Int, Int), EdgeCalibrationMetrics] = Map.empty,
         updatedAt: Option[String] = None,
-        parallelism: Option[IonTrapParallelism] = None
+        parallelism: Option[IonTrapParallelism] = None,
+        warnings: Vector[String] = Vector.empty
     ) extends DeviceCalibration
 
     case class IQMCalibration(
@@ -233,7 +234,12 @@ object calibration {
         topology: Option[CalibrationTopology] = None,
         qubitMetrics: Map[Int, QubitCalibrationMetrics] = Map.empty,
         edgeMetrics: Map[(Int, Int), EdgeCalibrationMetrics] = Map.empty,
-        updatedAt: Option[String] = None
+        updatedAt: Option[String] = None,
+        // Optional explicit timings; absent provider values remain unknown.
+        oneQGateDurationNs: Option[Long] = None,
+        twoQGateDurationNs: Option[Long] = None,
+        readoutDurationNs: Option[Long] = None,
+        warnings: Vector[String] = Vector.empty
         // typicalDetectionFalsePositive: Double,
         // typicalDetectionFalseNegative: Double,
         // typicalVacancyError: Option[Double],     

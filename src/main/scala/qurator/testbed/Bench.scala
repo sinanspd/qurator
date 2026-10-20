@@ -32,6 +32,7 @@ import fs2.io.file.Path
 import qurator.domain.cutting.CuttingRequest
 import qurator.util.CuttingStrategies.CuttingStrategy
 import qurator.util.FidelityEstimator
+import qurator.testbed.fidelity.{BenchmarkFidelityEvaluator, FidelityEvaluation}
 
 
 final case class QuantumTaskSpec(
@@ -282,7 +283,7 @@ object BenchmarkDeviceRegistry {
                 gateSet = List.empty
             )
         )
-    ///saaaaaymmmm 
+    // Saved calibration snapshots, with explicitly labeled benchmark assumptions for missing fields.
     def defaultCalibrations: Map[String, DeviceCalibration] =
         Map(
             "braket-rigetti-ankaa" -> //
@@ -303,15 +304,19 @@ object BenchmarkDeviceRegistry {
                     t2 = 8.677614628987359e-6,
                     q1fidelity = 99.90661687868104,
                     q2fidelity = 99.33252648664347,
-                    readoutFidelity = 97.89
-                    // typicalDetectionFalsePositive = 0.02,
-                    // typicalDetectionFalseNegative = 0.03,
-                    // typicalVacancyError = Some(0.04),
-                    // typicalFillingError = None,
-                    // typicalAtomLossProbability = Some(0.03),
-                    // t1SingleSec = Some(7.0),
-                    // t2EchoSingleSec = Some(4.0),
-                    // t2SingleSec = Some(3.5)
+                    readoutFidelity = 97.89,
+                    // Benchmark-only timing assumptions; these were absent from the saved snapshot.
+                    // Garnet's whitepaper gives typical CZ durations of 20–40 ns:
+                    // https://meetiqm.com/wp-content/uploads/2025/04/IQM-Garnet-20Q-Whitepaper-2024.pdf
+                    // A published IQM simulation uses 20 ns PRX / 40 ns CZ (Table I):
+                    // https://eviden.com/wp-content/uploads/2025/08/Eviden-Quantum-Article-Simulation-and-Benchmarking-of-Real-Quantum-Hardware-1.pdf
+                    oneQGateDurationNs = Some(20L),
+                    twoQGateDurationNs = Some(40L),
+                    readoutDurationNs = Some(1000L),
+                    warnings = Vector(
+                        "Benchmark assumptions: IQM one-/two-qubit/readout durations = 20/40/1000 ns; " +
+                          "not present in the saved calibration. Gate times are literature-informed; readout is an assumed 1 us."
+                    )
                 ),
             "braket-aqt-ibex-q1" -> //
                 AQTCalibration(
@@ -328,12 +333,18 @@ object BenchmarkDeviceRegistry {
                 IonQCalibration(
                     t1Seconds = 100,
                     t2Seconds = 1,
-                    avg1qFidelityPct = Double.NaN,
+                    // Benchmark fill-in from a historical Forte report (0.03% 1q error), not this snapshot:
+                    // https://ionq.com/blog/ionq-achieves-new-performance-milestone-of-29-algorithmic-qubits-aq-on-ionq
+                    avg1qFidelityPct = 99.97,
                     avg2qFidelityPct = 98.9,
                     avgReadoutFidelity = 98.65,
                     oneQGateDurationSec = 130e-6,
                     twoQGateDurationSec = 970e-6,
-                    readoutDurationSec = 150e-6
+                    readoutDurationSec = 150e-6,
+                    warnings = Vector(
+                        "Benchmark assumption: IonQ one-qubit fidelity = 99.97%, from a historical Forte report; " +
+                          "not present in the saved calibration."
+                    )
                 ),
             "braket-quera-aquila" -> //
                 QuEraCalibration(
@@ -396,7 +407,8 @@ final case class QuantumTaskMetric(
     deviceId: String,
     queueWaitMillis: Long,
     predictedLogFidelity: Double,
-    predictedSuccessProbability: Double
+    predictedSuccessProbability: Double,
+    evaluation: Option[FidelityEvaluation] = None
 )
 
 final case class BenchmarkRun(
@@ -427,6 +439,29 @@ final case class BenchmarkRun(
     lazy val meanPredictedSuccessProbability: Double =
         if (quantumMetrics.isEmpty) 0.0
         else quantumMetrics.map(_.predictedSuccessProbability).sum / quantumMetrics.size.toDouble
+
+    // Keep prediction fields intact: they describe the scheduler's objective, not independent evidence.
+    lazy val meanEvaluationScore: Option[Double] =
+        Option.when(quantumMetrics.nonEmpty && quantumMetrics.forall(_.evaluation.nonEmpty))(
+            quantumMetrics.flatMap(_.evaluation).map(_.score).sum / quantumMetrics.size
+        )
+
+    lazy val evaluationWarnings: Vector[String] =
+        quantumMetrics.flatMap(_.evaluation.toList.flatMap(_.warnings)).distinct.toVector
+
+    def evaluationSummary: String = {
+        val first = quantumMetrics.flatMap(_.evaluation).headOption
+        s"evaluator=${first.map(_.evaluator).getOrElse("none")}, " +
+          s"metric=${first.map(_.metric).getOrElse("none")}, meanEvaluation=${meanEvaluationScore}, " +
+          s"scoreAggregation=task_rows, expandedTasks=$selectedQuantumTasks, metricRows=${quantumMetrics.size}, " +
+          s"providerJobs=$uniqueSubmittedJobs, mergedJobs=${quantumMetrics.groupBy(_.jobId).count(_._2.size > 1)}, " +
+          s"samplesPerJob=${first.flatMap(_.samples)}, seed=${first.flatMap(_.seed)}, " +
+          s"zeroScoreJobs=${quantumMetrics.filter(_.evaluation.exists(_.score == 0)).map(_.jobId).distinct.size}"
+    }
+
+    def predictionSummary: String =
+        s"predictor=legacy, meanPredictedLogFidelity=$meanPredictedLogFidelity, " +
+          s"predicted_arith=$meanPredictedSuccessProbability, predicted_geo=$geometricMeanPredictedSuccessProbability"
 }
 
 
@@ -773,7 +808,8 @@ object SchedulerBenchmarkRunner {
         queueWaitMillis: Long,
         runMillis: Long,
         predictedLogFidelity: Double,
-        predictedSuccessProbability: Double
+        predictedSuccessProbability: Double,
+        selectionEvaluation: Option[FidelityEvaluation] = None
     )
 
     private[qurator] final case class BaselinePlanningState(
@@ -803,7 +839,8 @@ object SchedulerBenchmarkRunner {
 
                 case BaselinePolicy.HighestFidelity =>
                     candidates.minByOption(c =>
-                        (-c.predictedSuccessProbability, c.queueWaitMillis, c.device.platformId)
+                        (-c.selectionEvaluation.fold(c.predictedSuccessProbability)(_.score),
+                            c.queueWaitMillis, c.device.platformId)
                     )
 
                 case p: BaselinePolicy.ShortestQueueTargetFidelity =>
@@ -969,6 +1006,12 @@ object SchedulerBenchmarkRunner {
                     )
                 else IO.unit
 
+            _ <- Logger[IO].info(
+                s"Benchmark input=${spec.circuit.name}, originalQubits=${spec.circuit.qubits}, " +
+                    s"originalGates=${spec.circuit.remainingGates.size}, expandedTasks=${quantumIds.size}, " +
+                    s"submittedCircuits=${expectedExpanded.map(s => s"${s.circuit.name}:${s.circuit.qubits}q/${s.circuit.remainingGates.size}g").mkString("[", ", ", "]")}"
+            )
+
             childReq = NewClassicalTaskRequest(
                 program = (),
                 parentTasks = quantumIds,
@@ -1004,11 +1047,12 @@ object SchedulerBenchmarkRunner {
         else loop
     }
 
-    private def quantumMetricsForAssignments(
+    private[testbed] def quantumMetricsForAssignments(
         completions: List[QuantumResult],
         registry: BenchmarkDeviceRegistry,
         clients: HttpClients[IO],
-        compiler: FakeCompiler[IO]
+        compiler: FakeCompiler[IO],
+        fidelityEvaluator: BenchmarkFidelityEvaluator
     ): IO[List[QuantumTaskMetric]] =
           completions
             .groupBy(_.jobId)
@@ -1037,6 +1081,16 @@ object SchedulerBenchmarkRunner {
                         clients,
                         compiler
                     )
+                    evaluated <-
+                        if (fidelityEvaluator == BenchmarkFidelityEvaluator.Legacy)
+                            IO.pure(FidelityEvaluation("legacy", "estimated_success_probability", est.pTotal, est.logPTotal))
+                        else
+                            // Completion callbacks retain the submitted circuit, which may still be logical.
+                            // Use the same device-specific compiled trace as baseline evaluation.
+                            compiler.compileCircuitFor(device, executedCircuit).flatMap { compiled =>
+                                IO.delay(fidelityEvaluator.evaluate(compiled,
+                                    FidelityEstimator.normalizeCalibration(registry.calibration(deviceId))))
+                            }
                 } yield subs.map { sub =>
                     QuantumTaskMetric(
                         taskId = sub.taskId.getOrElse(
@@ -1046,7 +1100,8 @@ object SchedulerBenchmarkRunner {
                         deviceId = deviceId,
                         queueWaitMillis = rec.queueWaitMillis,
                         predictedLogFidelity = est.logPTotal,
-                        predictedSuccessProbability = est.pTotal
+                        predictedSuccessProbability = est.pTotal,
+                        evaluation = Some(evaluated)
                     )
                 }
             }
@@ -1063,7 +1118,8 @@ object SchedulerBenchmarkRunner {
         cuttingEnabled: Boolean = true,
         cuttingEffectiveWidthEnabled: Boolean = true,
         policyName: String = "scheduler",
-        pollEvery: scala.concurrent.duration.FiniteDuration = scala.concurrent.duration.DurationInt(100).millis
+        pollEvery: scala.concurrent.duration.FiniteDuration = scala.concurrent.duration.DurationInt(100).millis,
+        fidelityEvaluator: BenchmarkFidelityEvaluator = BenchmarkFidelityEvaluator.Legacy
     ): IO[BenchmarkRun] = {
         for{
             t0 <- monotonicMillis
@@ -1097,7 +1153,8 @@ object SchedulerBenchmarkRunner {
                 completions,
                 registry,
                 clients,
-                compiler
+                compiler,
+                fidelityEvaluator
             )
         } yield BenchmarkRun(
             policyName = policyName,
@@ -1111,7 +1168,8 @@ object SchedulerBenchmarkRunner {
         task: QuantumTaskSpec,
         registry: BenchmarkDeviceRegistry,
         clients: HttpClients[IO],
-        compiler: FakeCompiler[IO]
+        compiler: FakeCompiler[IO],
+        selectionEvaluator: Option[BenchmarkFidelityEvaluator]
     ): IO[List[BaselineCandidate]] =
         Scheduler.getAvailableDevices[IO](clients).flatMap { devices =>
             devices
@@ -1129,6 +1187,9 @@ object SchedulerBenchmarkRunner {
                             )
                         calibration = FidelityEstimator.normalizeCalibration(rawCalibration)
                         estimate = FidelityEstimator.score(compiled, calibration)
+                        selectionEvaluation <- selectionEvaluator.traverse { evaluator =>
+                            IO.delay(evaluator.evaluate(compiled, calibration))
+                        }
                         queueWaitMillis <- registry.fakeDevicesById
                             .get(device.platformId)
                             .fold(device.queueLength.toLong.pure[IO])(_.estimatedCurrentQueueWaitMillis)
@@ -1146,7 +1207,8 @@ object SchedulerBenchmarkRunner {
                         queueWaitMillis = math.max(0L, queueWaitMillis),
                         runMillis = runMillis,
                         predictedLogFidelity = estimate.logPTotal,
-                        predictedSuccessProbability = estimate.pTotal
+                        predictedSuccessProbability = estimate.pTotal,
+                        selectionEvaluation = selectionEvaluation
                     )
                 }
         }
@@ -1156,13 +1218,17 @@ object SchedulerBenchmarkRunner {
         quantumTasks: List[QuantumTaskSpec],
         registry: BenchmarkDeviceRegistry,
         clients: HttpClients[IO],
-        compiler: FakeCompiler[IO]
+        compiler: FakeCompiler[IO],
+        fidelityEvaluator: BenchmarkFidelityEvaluator
     ): IO[List[(QuantumTaskSpec, BaselineCandidate)]] =
         quantumTasks
             .foldLeftM(
                 (List.empty[(QuantumTaskSpec, BaselineCandidate)], BaselinePlanningState())
             ) { case ((assignments, state), spec) =>
-                candidatesForBaseline(spec, registry, clients, compiler).flatMap { candidates =>
+                val selectionEvaluator = Option.when(
+                    policy == BaselinePolicy.HighestFidelity && fidelityEvaluator != BenchmarkFidelityEvaluator.Legacy
+                )(fidelityEvaluator)
+                candidatesForBaseline(spec, registry, clients, compiler, selectionEvaluator).flatMap { candidates =>
                     selectBaselineCandidate(policy, candidates, state)
                         .leftMap(new RuntimeException(_))
                         .liftTo[IO]
@@ -1181,12 +1247,13 @@ object SchedulerBenchmarkRunner {
         quantumTasks: List[QuantumTaskSpec],
         registry: BenchmarkDeviceRegistry,
         clients: HttpClients[IO],
-        compiler: FakeCompiler[IO]
+        compiler: FakeCompiler[IO],
+        fidelityEvaluator: BenchmarkFidelityEvaluator = BenchmarkFidelityEvaluator.Legacy
     ): IO[BenchmarkRun] =
         for {
             t0 <- monotonicMillis
-            assignments <- planBaseline(policy, quantumTasks, registry, clients, compiler)
-            metrics <- assignments.traverse { case (_, selected) =>
+            assignments <- planBaseline(policy, quantumTasks, registry, clients, compiler, fidelityEvaluator)
+            submitted <- assignments.traverse { case (spec, selected) =>
                 for {
                     logicalTaskId <- ID.make[IO, TaskId]
                     device = selected.device
@@ -1199,16 +1266,34 @@ object SchedulerBenchmarkRunner {
                         deviceId = device.platformId
                     )
 
-                } yield QuantumTaskMetric(
+                } yield (spec, selected, QuantumTaskMetric(
                     taskId = logicalTaskId,
                     jobId = jobId,
                     deviceId = device.platformId,
                     queueWaitMillis = rec.queueWaitMillis,
                     predictedLogFidelity = selected.predictedLogFidelity,
                     predictedSuccessProbability = selected.predictedSuccessProbability
-                )
+                ))
             }
             t1 <- monotonicMillis
+            // Post-selection evaluation is outside the timer. HighestFidelity includes candidate
+            // evaluation in its selection cost and reuses the exact winning sample below.
+            metrics <- submitted.traverse { case (spec, selected, metric) =>
+                val evaluated = selected.selectionEvaluation match {
+                    case Some(result) => IO.pure(result)
+                    case None =>
+                        compiler.compileCircuitFor(selected.device, spec.circuit).flatMap { compiled =>
+                            IO.delay {
+                                if (fidelityEvaluator == BenchmarkFidelityEvaluator.Legacy)
+                                    FidelityEvaluation("legacy", "estimated_success_probability",
+                                        metric.predictedSuccessProbability, metric.predictedLogFidelity)
+                                else fidelityEvaluator.evaluate(compiled,
+                                    FidelityEstimator.normalizeCalibration(registry.calibration(selected.device.platformId)))
+                            }
+                        }
+                }
+                evaluated.map(result => metric.copy(evaluation = Some(result)))
+            }
         } yield BenchmarkRun(
             policyName = policy.name,
             selectedQuantumTasks = quantumTasks.size,

@@ -8,6 +8,7 @@ import qurator.clients.{BraketClient, IBMClient}
 import qurator.domain.ProviderClient
 import qurator.{Config, MkHttpClient}
 import qurator.testbed.DeviceFitBenchmark
+import qurator.testbed.fidelity.BenchmarkFidelityEvaluator
 
 import java.nio.file.Files
 
@@ -17,6 +18,7 @@ object RunDeviceFitBenchmark extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] =
     for {
+      evaluator <- IO.delay(BenchmarkFidelityEvaluator.configured)
       cfg <- Config.load[IO]
       folder <- resolveQasmFolder(args.headOption, cfg.deviceFitConfig.qasmFolder.map(_.value))
       output <- resolveOutputPath(args.lift(1), cfg.deviceFitConfig.output.map(_.value))
@@ -30,7 +32,7 @@ object RunDeviceFitBenchmark extends IOApp {
 
         DeviceFitBenchmark.run(
           clients = clients,
-          settings = DeviceFitBenchmark.Settings(qasmFolder = folder)
+          settings = DeviceFitBenchmark.Settings(qasmFolder = folder, fidelityEvaluator = evaluator)
         )
       }
       _ <- Logger[IO].info(

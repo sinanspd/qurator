@@ -2,6 +2,7 @@
 import cats.effect._
 import org.typelevel.log4cats.noop.NoOpLogger
 import qurator.testbed._
+import qurator.testbed.fidelity.BenchmarkFidelityEvaluator
 import cats.effect.std.Supervisor
 import eu.timepit.refined.auto._
 import org.typelevel.log4cats.Logger
@@ -120,8 +121,9 @@ object RunBenchmarks extends IOApp.Simple {
             List(leftCircuit, rightCircuit).pure[IO]
         }
 
-    def run: IO[Unit] = 
+    def run: IO[Unit] = IO.delay(BenchmarkFidelityEvaluator.configured).flatMap { evaluator =>
         Config.load[IO].flatMap { cfg =>
+            Logger[IO].info(s"Benchmark evaluation backend: ${evaluator.id}; Qurator selection uses the existing estimator; highest_fidelity selection uses ${evaluator.id}") *>
             Logger[IO].info(s"Loaded config: $cfg") *>
             Supervisor[IO].use { implicit sp =>
                 AppResources
@@ -183,7 +185,8 @@ object RunBenchmarks extends IOApp.Simple {
                                     cl1,
                                     cutting1,
                                     co1,
-                                    cuttingEffectiveWidthEnabled = cuttingEffectiveWidthEnabled
+                                    cuttingEffectiveWidthEnabled = cuttingEffectiveWidthEnabled,
+                                    fidelityEvaluator = evaluator
                                 )
                             )
 
@@ -201,7 +204,8 @@ object RunBenchmarks extends IOApp.Simple {
                                         coNoCut,
                                         cuttingEnabled = false,
                                         cuttingEffectiveWidthEnabled = cuttingEffectiveWidthEnabled,
-                                        policyName = "scheduler_no_cutting_no_merging"
+                                        policyName = "scheduler_no_cutting_no_merging",
+                                        fidelityEvaluator = evaluator
                                     )
                                 )
 
@@ -221,18 +225,21 @@ object RunBenchmarks extends IOApp.Simple {
                                         specs,
                                         registry,
                                         clients,
-                                        compiler
+                                        compiler,
+                                        fidelityEvaluator = evaluator
                                     )
                             } yield run
                         }
 
-                         _ <- IO.println(s"Scheduler: q/s=${schedRun.throughputQuantumPerSec}, meanQ=${schedRun.meanQueueWaitMillis}, meanLogF=${schedRun.meanPredictedLogFidelity}, pos_arith=${schedRun.meanPredictedSuccessProbability}, pos_geo=${schedRun.geometricMeanPredictedSuccessProbability}, n=${schedRun.uniqueSubmittedJobs}")
-                         _ <- IO.println(s"SchedulerNoCutNoMerge: q/s=${noCutNoMergeRun.throughputQuantumPerSec}, meanQ=${noCutNoMergeRun.meanQueueWaitMillis}, meanLogF=${noCutNoMergeRun.meanPredictedLogFidelity}, pos_arith=${noCutNoMergeRun.meanPredictedSuccessProbability}, pos_geo=${noCutNoMergeRun.geometricMeanPredictedSuccessProbability}, n=${noCutNoMergeRun.uniqueSubmittedJobs}")
-                         _ <- baselineRuns.traverse_ { run =>
-                            IO.println(s"${run.policyName}: q/s=${run.throughputQuantumPerSec}, meanQ=${run.meanQueueWaitMillis}, meanLogF=${run.meanPredictedLogFidelity}, pos_arith=${run.meanPredictedSuccessProbability}, pos_geo=${run.geometricMeanPredictedSuccessProbability}")
+                         allRuns = schedRun :: noCutNoMergeRun :: baselineRuns
+                         _ <- allRuns.traverse_ { run =>
+                            IO.println(s"${run.policyName}: q/s=${run.throughputQuantumPerSec}, meanQueueMillis=${run.meanQueueWaitMillis}, inputTasks=${specs.size}, ${run.evaluationSummary}") *>
+                                IO.println(s"${run.policyName} prediction: ${run.predictionSummary}")
                          }
+                         _ <- allRuns.flatMap(_.evaluationWarnings).distinct.traverse_(Logger[IO].warn(_))
                     } yield ()
                 }.useForever
             }
         }
+    }
 }

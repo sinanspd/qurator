@@ -352,6 +352,22 @@ object FidelityEstimatorSuite extends SimpleIOSuite {
     )
   }
 
+  test("IQM timings are optional and preserve explicit calibration provenance") {
+    val raw = IQMCalibration(1.0, 1.0, 99.9, 99.0, 98.0)
+    val unknown = FidelityEstimator.normalizeCalibration(raw)
+    val explicit = FidelityEstimator.normalizeCalibration(raw.copy(
+      oneQGateDurationNs = Some(20L), twoQGateDurationNs = Some(40L),
+      readoutDurationNs = Some(1000L), warnings = Vector("benchmark timing assumptions")))
+    val invalid = FidelityEstimator.normalizeCalibration(raw.copy(
+      oneQGateDurationNs = Some(-20L), twoQGateDurationNs = Some(0L), readoutDurationNs = Some(-1L)))
+    IO.pure(expect(unknown.dur1qAvgNs.isEmpty && unknown.dur2qAvgNs.isEmpty && unknown.durMeasNs.isEmpty) and
+      expect(explicit.durationNsFor(X(0)) == 20L) and
+      expect(explicit.durationNsFor(CZ(0, 1)) == 40L) and
+      expect(explicit.durationNsFor(Measure(0)) == 1000L) and
+      expect(explicit.warnings.contains("benchmark timing assumptions")) and
+      expect(invalid.dur1qAvgNs.isEmpty && invalid.dur2qAvgNs.isEmpty && invalid.durMeasNs.isEmpty))
+  }
+
   test("HaqaMapper builds topology-aware calibration from provider calibration") {
     val in = IQMCalibration(
       t1 = 0.0,

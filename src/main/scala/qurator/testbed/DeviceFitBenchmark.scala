@@ -12,6 +12,7 @@ import qurator.domain.calibration._
 import qurator.domain.circuit._
 import qurator.domain.device.{Device, QubitReuseCapabilities}
 import qurator.testbed.HaqaMapper.DeviceTopology
+import qurator.testbed.fidelity.{BenchmarkFidelityEvaluator, FidelityEvaluation}
 import qurator.util.{CircuitProcessConverter, FidelityEstimator, HaloCircuitMerger, QuantumTaskLoader, QuantumTaskLoadWarning}
 
 import scala.util.control.NonFatal
@@ -24,7 +25,8 @@ object DeviceFitBenchmark {
       depthTolerance: Double = 0.15,
       loaderParallelism: Int = math.max(2, Runtime.getRuntime.availableProcessors()),
       deviceFetchParallelism: Int = 8,
-      haloConfig: HaloCircuitMerger.Config = HaloCircuitMerger.Config()
+      haloConfig: HaloCircuitMerger.Config = HaloCircuitMerger.Config(),
+      fidelityEvaluator: BenchmarkFidelityEvaluator = BenchmarkFidelityEvaluator.Legacy
   )
 
   final case class PreparedCircuit(
@@ -78,7 +80,8 @@ object DeviceFitBenchmark {
       minEstimatedFidelity: Option[Double],
       minEstimatedFidelityDevice: Option[String],
       maxEstimatedFidelity: Option[Double],
-      maxEstimatedFidelityDevice: Option[String]
+      maxEstimatedFidelityDevice: Option[String],
+      evaluations: Vector[(String, Either[String, FidelityEvaluation])] = Vector.empty
   ) {
     def csvLine: String =
       List(
@@ -91,6 +94,33 @@ object DeviceFitBenchmark {
         maxEstimatedFidelity.map(formatDouble).getOrElse("NaN"),
         maxEstimatedFidelityDevice.getOrElse("none")
       ).map(csvField).mkString(",")
+
+    def evaluationCsvFields: String = {
+      val scored = evaluations.collect { case (device, Right(result)) => device -> result }
+      val min = scored.sortBy(_._2.score).headOption
+      val max = scored.sortBy(_._2.score).lastOption
+      // Retain every device's uncertainty, approximations and coverage, including evaluation failures.
+      val details = io.circe.Json.arr(evaluations.map { case (device, result) =>
+        val fields = result match {
+          case Left(error) => List("error" -> io.circe.Json.fromString(error))
+          case Right(e) => List(
+            "metric" -> io.circe.Json.fromString(e.metric),
+            "score" -> io.circe.Json.fromDoubleOrNull(e.score),
+            "samples" -> e.samples.fold(io.circe.Json.Null)(io.circe.Json.fromInt),
+            "seed" -> e.seed.fold(io.circe.Json.Null)(io.circe.Json.fromLong),
+            "confidence95" -> e.confidence95.fold(io.circe.Json.Null) { case (lo, hi) =>
+              io.circe.Json.arr(io.circe.Json.fromDoubleOrNull(lo), io.circe.Json.fromDoubleOrNull(hi))
+            },
+            "approximatedGates" -> io.circe.Json.fromInt(e.approximatedGates),
+            "warnings" -> io.circe.Json.arr(e.warnings.map(io.circe.Json.fromString): _*)
+          )
+        }
+        io.circe.Json.obj(("device" -> io.circe.Json.fromString(device)) :: fields: _*)
+      }: _*).noSpaces
+      List(scored.size.toString, min.map(x => formatDouble(x._2.score)).getOrElse("NaN"),
+        min.map(_._1).getOrElse("none"), max.map(x => formatDouble(x._2.score)).getOrElse("NaN"),
+        max.map(_._1).getOrElse("none"), details).map(csvField).mkString(",")
+    }
   }
 
   final case class Report(
@@ -98,10 +128,13 @@ object DeviceFitBenchmark {
       parseWarnings: Vector[QuantumTaskLoadWarning],
       partitions: Vector[DepthPartition],
       targets: Vector[DeviceTarget],
-      rows: Vector[IterationResult]
+      rows: Vector[IterationResult],
+      evaluationBackend: String = "legacy"
   ) {
     def csvLines: Vector[String] =
-      Vector(DeviceFitBenchmark.csvHeader) ++ rows.map(_.csvLine)
+      if (evaluationBackend == "legacy") Vector(DeviceFitBenchmark.csvHeader) ++ rows.map(_.csvLine)
+      else Vector(DeviceFitBenchmark.csvHeader + ",evaluation_backend,evaluated_devices,min_evaluation_score,min_evaluation_device,max_evaluation_score,max_evaluation_device,evaluation_details") ++
+        rows.map(row => row.csvLine + "," + csvField(evaluationBackend) + "," + row.evaluationCsvFields)
   }
 
   val csvHeader: String =
@@ -143,7 +176,8 @@ object DeviceFitBenchmark {
       parseWarnings = loadReport.warnings,
       partitions = partitions,
       targets = targets,
-      rows = rows
+      rows = rows,
+      evaluationBackend = settings.fidelityEvaluator.id
     )
 
   def partitionBySimilarDepth(
@@ -361,7 +395,19 @@ object DeviceFitBenchmark {
           )
         } else IO.unit
 
-      failureLog.as(result)
+      // An unsupported evaluation does not turn a physically fitting device into a fit failure.
+      val evaluation = if (settings.fidelityEvaluator == BenchmarkFidelityEvaluator.Legacy)
+        IO.pure(result)
+      else successful.traverse { attempt =>
+        IO.delay(settings.fidelityEvaluator.evaluate(attempt.compiledCircuit, attempt.target.canonicalCalibration))
+          .attempt.flatMap { outcome =>
+            val evaluated = outcome.leftMap(error => Option(error.getMessage).getOrElse(error.toString))
+            val warnings = evaluated.fold(error => Vector(error), _.warnings)
+            warnings.traverse_(w => logger.warn(s"Evaluation ${attempt.target.label}: $w"))
+              .as(attempt.target.label -> evaluated)
+          }
+      }.map(values => result.copy(evaluations = values))
+      failureLog *> evaluation
     }
   }
 

@@ -207,7 +207,7 @@ object FidelityEstimator{
                 dur1qAvgNs = nanosOpt(a.oneQGateDurationSec),
                 dur2qAvgNs = nanosOpt(a.twoQGateDurationSec),
                 executionModel = a.parallelism.map(ExecutionModel.TrappedIon).getOrElse(ExecutionModel.GlobalSerialGates),
-                warnings = if (a.parallelism.isEmpty) Vector("Ion resources unavailable: assuming globally serial gates.") else Vector.empty
+                warnings = a.warnings ++ (if (a.parallelism.isEmpty) Vector("Ion resources unavailable: assuming globally serial gates.") else Vector.empty)
             )
 
         case a : IQMCalibration =>
@@ -230,10 +230,11 @@ object FidelityEstimator{
                 t2Avg = avgOption(t2Map.values).orElse(secondsOpt(a.t2)),
                 dur1qNs = Map.empty,
                 dur2qNs = Map.empty,
-                durMeasNs = None,
-                dur1qAvgNs = None,
-                dur2qAvgNs = None,
-                initSurvivalPerQubit = None
+                durMeasNs = a.readoutDurationNs.filter(_ > 0L),
+                dur1qAvgNs = a.oneQGateDurationNs.filter(_ > 0L),
+                dur2qAvgNs = a.twoQGateDurationNs.filter(_ > 0L),
+                initSurvivalPerQubit = None,
+                warnings = a.warnings
             )
 
         case a: NeutralAtomCalibration =>

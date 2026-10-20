@@ -323,8 +323,8 @@ object Scheduler{
                             selectedPlan = decision.selected
                             cut = selectedPlan.subcircuits
                             _ <- Logger[F].info(
-                                s"Selected cutting plan=${selectedPlan.name}, cuts=${selectedPlan.parameters.maxCuts}, " +
-                                    s"subcircuits=${selectedPlan.parameters.maxSubcircuits}, maxWidth=${selectedPlan.parameters.maxSubcircuitWidth}, " +
+                                s"Selected cutting plan=${selectedPlan.name}, input=${taskReq.circuit.name}, cuts=${selectedPlan.cuts}, " +
+                                    s"subcircuits=${selectedPlan.subcircuitCount}, maxWidth=${selectedPlan.parameters.maxSubcircuitWidth}, " +
                                     s"frontier=${decision.frontier.map(_.name).mkString("[", ", ", "]")}"
                             )
                             optimized = cut.flatMap(additionalOptimizationRuns(_))

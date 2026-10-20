@@ -407,7 +407,9 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
         settings = DeviceFitBenchmark.Settings(
           qasmFolder = fs2.io.file.Path.fromNioPath(dir),
           loaderParallelism = 1,
-          deviceFetchParallelism = 1
+          deviceFetchParallelism = 1,
+          fidelityEvaluator = new qurator.testbed.fidelity.PauliTraceEvaluator(
+            qurator.testbed.fidelity.PauliTraceEvaluator.Settings(samples = 256))
         )
       )
       fidelity <- IO.fromOption(report.rows.headOption.flatMap(_.maxEstimatedFidelity))(
@@ -416,7 +418,9 @@ object DeviceFitBenchmarkSuite extends SimpleIOSuite {
     // Unknown reuse support selects static mode, so no helper-release resets
     // are appended; each H still lowers to three native operations.
     } yield approx(fidelity, math.pow(0.9, 6.0)) and
-      expect(fidelity < math.pow(0.9, 2.0))
+      expect(fidelity < math.pow(0.9, 2.0)) and
+      expect(report.evaluationBackend == "pauli") and
+      expect(report.rows.head.evaluations.exists(_._2.exists(_.evaluator == "pauli")))
   }
 
   test("writeCsv writes benchmark rows to a file") {

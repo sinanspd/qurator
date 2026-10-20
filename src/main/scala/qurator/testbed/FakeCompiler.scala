@@ -83,8 +83,16 @@ object FakeCompiler {
         registry: BenchmarkDeviceRegistry,
         compiled: List[Tuple2[String, Map[String, Circuit]]] = Nil,
         config: TopologyAwareConfig = TopologyAwareConfig.balanced
+    ): FakeCompiler[F] =
+        topologyAwareFromCalibrations(registry.calibrationsById, compiled, config)
+
+    /** Use the scheduler's compiler offline, without queue state, clients or a database. */
+    def topologyAwareFromCalibrations[F[_] : Applicative](
+        calibrationsById: Map[String, DeviceCalibration],
+        compiled: List[Tuple2[String, Map[String, Circuit]]] = Nil,
+        config: TopologyAwareConfig = TopologyAwareConfig.balanced
     ): FakeCompiler[F] = {
-        val compiler = new TopologyAwareBenchmarkCompiler(registry, config)
+        val compiler = new TopologyAwareBenchmarkCompiler(calibrationsById, config)
         FakeCompiler[F](compiled = compiled, compileFallback = compiler.compile)
     }
 }
@@ -102,7 +110,7 @@ private final case class TopologyAwareDeviceIndex(
 )
 
 private final class TopologyAwareBenchmarkCompiler(
-    registry: BenchmarkDeviceRegistry,
+    calibrationsById: Map[String, DeviceCalibration],
     config: FakeCompiler.TopologyAwareConfig
 ) {
 
@@ -134,7 +142,7 @@ private final class TopologyAwareBenchmarkCompiler(
         indexCache.getOrElseUpdate(device.platformId, buildIndex(device))
 
     private def buildIndex(device: Device): Option[TopologyAwareDeviceIndex] =
-        registry.calibrationsById.get(device.platformId).flatMap { raw =>
+        calibrationsById.get(device.platformId).flatMap { raw =>
             HaqaMapper.topologyFromCalibration(raw).map { topology =>
                 val calibration = FidelityEstimator.normalizeCalibration(raw)
                 val supportedGateKinds = effectiveGateKinds(device, raw, calibration)
@@ -489,10 +497,11 @@ private final class TopologyAwareBenchmarkCompiler(
     ): Option[Vector[Int]] =
         if (!config.routeNonAdjacentGates) None
         else {
+            val key = edgeKey(a, b)
             index.routePathCache.getOrElseUpdate(
-                edgeKey(a, b),
-                index.topology.shortestPath(a, b, routingCost(index))
-            )
+                key,
+                index.topology.shortestPath(key._1, key._2, routingCost(index))
+            ).map(path => if (a == key._1) path else path.reverse)
         }
 
     private def lowerSingleQubitGate(gate: Gate, supportedGateKinds: Set[String]): List[Gate] =

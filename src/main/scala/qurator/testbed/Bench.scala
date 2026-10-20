@@ -673,7 +673,8 @@ object BenchmarkHttpClients{
 
     def make(
         registry: BenchmarkDeviceRegistry,
-        dummies: FakeBenchmarkClients
+        dummies: FakeBenchmarkClients,
+        batchSubmissionsEnabled: Boolean = false
     ): HttpClients[IO] = {
         val azure = new AzureQuantumClient[IO]{
             def fetchDeviceInformation: IO[AzureDeviceStatusResponse] = 
@@ -700,6 +701,8 @@ object BenchmarkHttpClients{
         }
 
         val ibm = new IBMClient[IO]{
+            override val batchSubmitter: Option[qurator.domain.ProviderBatchSubmitter[IO]] =
+                if (batchSubmissionsEnabled) Some(IBMClient.batchSubmitter(this)) else None
             def fetchBearerToken: IO[String] = dummies.ibmFetchBearerToken
             def fetchDeviceInformation: IO[BackendsResponseV2] = dummies.ibmDeviceInfo
             def fetchAvailableDevices: IO[List[Device]] =
@@ -709,7 +712,7 @@ object BenchmarkHttpClients{
             def createSession(r: CreateSessionRequest): IO[SessionResponse] =
                 IO.pure(
                     SessionResponse(
-                        id = "bench-session-1",
+                        id = if (batchSubmissionsEnabled) s"bench-session-${java.util.UUID.randomUUID()}" else "bench-session-1",
                         backend_name = r.backend.orElse(r.backend_name),
                         started_at = None,
                         activated_at = None,

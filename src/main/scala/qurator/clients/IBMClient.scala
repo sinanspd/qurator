@@ -72,7 +72,7 @@ trait IBMClient[F[_]] extends ProviderClient[F] {
 }
 
 object IBMClient {
-  private[clients] def batchSubmitter[F[_]: Monad](
+  private[qurator] def batchSubmitter[F[_]: Monad](
       client: IBMClient[F]
   ): ProviderBatchSubmitter[F] =
     new ProviderBatchSubmitter[F] {

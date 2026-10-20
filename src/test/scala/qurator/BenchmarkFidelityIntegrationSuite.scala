@@ -137,11 +137,15 @@ object BenchmarkFidelityIntegrationSuite extends SimpleIOSuite {
         List(completion), env._1, env._2, compiler, evaluator)
       alreadyCompiledMetrics <- SchedulerBenchmarkRunner.quantumMetricsForAssignments(
         List(completion.copy(executedCircuit = Some(compiled))), env._1, env._2, compiler, evaluator)
+      offline <- DeviceFidelityEvaluation.run(input, env._1.device(selected.deviceId),
+        env._1.calibration(selected.deviceId), evaluator)
     } yield expect(compiled.remainingGates != input.remainingGates) and
       expect(selected.evaluation.exists(_.score == candidateScores.max)) and
       expect(metrics.head.evaluation == selected.evaluation) and
       expect(metrics.head.predictedSuccessProbability == selected.predictedSuccessProbability) and
-      expect(alreadyCompiledMetrics.head.evaluation == selected.evaluation)
+      expect(alreadyCompiledMetrics.head.evaluation == selected.evaluation) and
+      expect(offline.compiledCircuit == compiled) and
+      expect(selected.evaluation.contains(offline.evaluation))
   }
 
   test("device-fit CSV keeps predictions separate and retains evaluation failures and uncertainty") {

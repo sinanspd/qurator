@@ -67,8 +67,76 @@ trait Scheduler[F[_]]{
 }
 
 object Scheduler{
-  // A failed construction is a rejected merge, not a failed task submission.
-  // The simple merger remains the default; a later merger can report Left here.
+
+  private def clamp(x: Double, lo: Double, hi: Double): Double = math.max(lo, math.min(hi, x))
+
+  private[qurator] def estimatedTranspilationMillis(circuit: Circuit): Long =
+    circuit.remainingGates.length / 1000000L
+
+  private[qurator] def bestQuantumDeviceScore(scores: List[QuantumDeviceScore]): QuantumDeviceScore =
+    scores.maxBy(s => (s.assignmentCoefficient, s.logFidelity, -s.queueLength, -s.transpileMillis))
+
+  private[qurator] def getAssignmentCoefficient(
+      pTotal: Double,
+      queueLength: Long,
+      transpileMillis: Long,
+      fleetMeanQueue: Double,
+      observedQueueMillis: Option[Long] = None,
+      observedFleetMeanQueueMillis: Option[Double] = None,
+      lightLoadQueue: Double = 500.0,
+      heavyLoadQueue: Double = 10000.0,
+      lightLoadQueueMillis: Double = 1.minute.toMillis.toDouble,
+      heavyLoadQueueMillis: Double = 1.hour.toMillis.toDouble,
+      transpileScaleMillis: Double = 5000.0
+  ): Double = {
+      val load =
+          observedFleetMeanQueueMillis match {
+              case Some(meanQueueMillis) =>
+                  clamp(
+                      (meanQueueMillis - lightLoadQueueMillis) / (heavyLoadQueueMillis - lightLoadQueueMillis),
+                      0.0,
+                      1.0
+                  )
+
+              case None =>
+                  clamp(
+                      (fleetMeanQueue - lightLoadQueue) / (heavyLoadQueue - lightLoadQueue),
+                      0.0,
+                      1.0
+                  )
+          }
+
+      val wF = 0.80 - 0.55 * load  //0.80 + 0.55  // - 0.75
+      val wQ = 0.15 + 0.45 * load //0.15 - 0.45.  //0.75 + 0.75
+      val wT = 1.0 - wF - wQ
+
+      val qScaled =
+          observedQueueMillis match {
+              case Some(queueMillis) =>
+                  clamp(
+                      math.log1p(queueMillis.toDouble) / math.log1p(heavyLoadQueueMillis),
+                      0.0,
+                      1.0
+                  )
+
+              case None =>
+                  clamp(
+                      math.log1p(queueLength.toDouble) / math.log1p(heavyLoadQueue),
+                      0.0,
+                      1.0
+                  )
+          }
+
+      val tScaled =
+          clamp(
+              transpileMillis.toDouble / transpileScaleMillis,
+              0.0,
+              1.0
+          )
+
+      wF * pTotal - wQ * qScaled - wT * tScaled
+  }
+
   type CircuitMerge = List[Circuit] => Either[String, Circuit]
   val simpleCircuitMerge: CircuitMerge = circuits => Right(mergeCircuits(circuits))
 
@@ -85,7 +153,7 @@ object Scheduler{
       run: List[QuantumResult] => F[Unit]
   )
 
-  private final case class QuantumDeviceScore(
+  private[qurator] final case class QuantumDeviceScore(
       device: Device,
       assignmentCoefficient: Double,
       logFidelity: Double,
@@ -167,7 +235,9 @@ object Scheduler{
         mergingEnabled: Boolean = true,
         cuttingEffectiveWidthEnabled: Boolean = true,
         batchSubmissionsEnabled: Boolean = true,
-        circuitMerger: CircuitMerge = simpleCircuitMerge
+        circuitMerger: CircuitMerge = simpleCircuitMerge,
+        stageQuantumWorkload: Boolean = false,
+        dashboardEnabled: Boolean = true
   ): F[Scheduler[F]] =
     for {
       readyTasks       <- Ref.of[F, List[Task]](List.empty)
@@ -353,7 +423,7 @@ object Scheduler{
                                 )
                             )
                             tids <-
-                                if (taskReq.parentTasks.nonEmpty)
+                                if (taskReq.parentTasks.nonEmpty || stageQuantumWorkload)
                                     enqueuePendingQuantumTasksAndMaybeMerge(recreatedTasks) *> List(recreatedTasks.map(_.uuid): _*).pure[F]
                                 else
                                     enqueueReady(recreatedTasks) *> List(recreatedTasks.map(_.uuid): _*).pure[F]
@@ -376,7 +446,7 @@ object Scheduler{
                                 t,
                                 if (taskReq.parentTasks.nonEmpty) "waiting_on_dependencies" else "ready"
                             ) *>                      
-                            (if(taskReq.parentTasks.nonEmpty){
+                            (if(taskReq.parentTasks.nonEmpty || stageQuantumWorkload){
                                 enqueuePendingQuantumTasksAndMaybeMerge(List(t)) *> 
                                  (readyTasks.get, pendingTasks.get).tupled.flatMap { case (r, p) =>
                                         Logger[F].info(s"enqueuePending: ready=${r.size}, pending=${p.size}") } *>
@@ -559,8 +629,7 @@ object Scheduler{
                 }
             }
 
-       private def bestQuantumDeviceScore(scores: List[QuantumDeviceScore]): QuantumDeviceScore =
-            scores.maxBy(s => (s.assignmentCoefficient, s.logFidelity, -s.queueLength, -s.transpileMillis))
+
 
        private def scheduleOneQuantumTask(
             task: QuantumTask,
@@ -932,7 +1001,8 @@ object Scheduler{
                 .drain
         
         def startRuntime: Resource[F, Unit] =
-            SchedulerDashboard.resource[F](dashboardConfig, dashboardState) *>
+            (if (dashboardEnabled) SchedulerDashboard.resource[F](dashboardConfig, dashboardState)
+             else Resource.pure[F, Unit](())) *>
             Resource
                 .make {
                     (Concurrent[F].start(startScheduling), Concurrent[F].start(startFetchingResults)).tupled
@@ -1219,7 +1289,6 @@ object Scheduler{
         private def gateCount(c: Circuit): Long =
             c.remainingGates.size.toLong 
 
-        private def clamp(x: Double, lo: Double, hi: Double): Double = math.max(lo, math.min(hi, x))
 
         private def depthsWithinTolerance(
             group: List[QuantumTask],
@@ -1369,66 +1438,6 @@ object Scheduler{
         private def enqueuePendingQuantumTasksAndMaybeMerge(qs: List[QuantumTask]): F[Unit] =
             enqueuePending(qs.map(identity[Task])) *> maybeMergePendingQuantumTasks
 
-        private def getAssignmentCoefficient(
-            pTotal: Double,
-            queueLength: Long,
-            transpileMillis: Long,
-            fleetMeanQueue: Double,
-            observedQueueMillis: Option[Long] = None,
-            observedFleetMeanQueueMillis: Option[Double] = None,
-            lightLoadQueue: Double = 500.0,
-            heavyLoadQueue: Double = 10000.0,
-            lightLoadQueueMillis: Double = 1.minute.toMillis.toDouble,
-            heavyLoadQueueMillis: Double = 1.hour.toMillis.toDouble,
-            transpileScaleMillis: Double = 5000.0
-        ): Double = {
-            val load =
-                observedFleetMeanQueueMillis match {
-                    case Some(meanQueueMillis) =>
-                        clamp(
-                            (meanQueueMillis - lightLoadQueueMillis) / (heavyLoadQueueMillis - lightLoadQueueMillis),
-                            0.0,
-                            1.0
-                        )
-
-                    case None =>
-                        clamp(
-                            (fleetMeanQueue - lightLoadQueue) / (heavyLoadQueue - lightLoadQueue),
-                            0.0,
-                            1.0
-                        )
-                }
-
-            val wF = 0.80 - 0.55 * load  //0.80 + 0.55  // - 0.75
-            val wQ = 0.15 + 0.45 * load //0.15 - 0.45.  //0.75 + 0.75
-            val wT = 1.0 - wF - wQ        
-
-            val qScaled =
-                observedQueueMillis match {
-                    case Some(queueMillis) =>
-                        clamp(
-                            math.log1p(queueMillis.toDouble) / math.log1p(heavyLoadQueueMillis),
-                            0.0,
-                            1.0
-                        )
-
-                    case None =>
-                        clamp(
-                            math.log1p(queueLength.toDouble) / math.log1p(heavyLoadQueue),
-                            0.0,
-                            1.0
-                        )
-                }
-
-            val tScaled =
-                clamp(
-                    transpileMillis.toDouble / transpileScaleMillis,
-                    0.0,
-                    1.0
-                )
-
-            wF * pTotal - wQ * qScaled - wT * tScaled
-        }
 
 
         private def rememberTask(t: Task): F[Unit] =
@@ -1459,12 +1468,7 @@ object Scheduler{
                 devices
                     .filter(_.qubits >= task.qubits.value)
                     .traverse(d => Scheduler.estimateFidelity(d, task.circuit, clients, compiler))
-                    .map(lf => {
-                        val x = lf.filter(_.pTotal > targetEstimatedFidelity)   
-                        println(s"========== HERE: ${math.log(targetEstimatedFidelity)} ========") 
-                        println(x.mkString(", "))
-                        x.isEmpty
-                    })
+                    .map(lf => !lf.exists(_.pTotal > targetEstimatedFidelity))
 
         ////////////////////////////////////////////////////////////
         private def allParentResultsAvailable(t: Task) : F[Boolean] = 
@@ -1706,7 +1710,7 @@ object Scheduler{
         }
 
         private def estimateTranspilationTime(circuit: Circuit, targetGateSet: List[Gate]) : F[Long] = 
-            (circuit.remainingGates.length / 1000000L).pure[F] 
+            estimatedTranspilationMillis(circuit).pure[F]
 
         private def enqueueReady(newTasks: List[Task]): F[Unit] =
             readyTasks.update(ts => prioritizationStrategy(newTasks ++ ts))
@@ -1923,8 +1927,6 @@ object Scheduler{
                                 else Logger[F].info("No device accepted the merge; retaining individual tasks").as(g)
                         } yield result
 
-                        // Recovery is before submission: no partial merged circuit
-                        // is executed and the original IDs/dependencies are kept.
                         attempt.handleErrorWith { error =>
                             Logger[F].warn(error)("Merge construction failed; retaining individual tasks").as(g)
                         }
